@@ -1,0 +1,82 @@
+from __future__ import annotations
+
+from .config import FEEDS
+from .models import Conversation, Message, User
+
+
+def photo_url(user: User) -> str | None:
+    return f"/media/{user.photo_path}" if user.photo_path else None
+
+
+def own_profile(user: User) -> dict:
+    return {
+        "id": user.id,
+        "email": user.email,
+        "email_verified": user.email_verified,
+        "email_notifications": user.email_notifications,
+        "auth_provider": user.auth_provider,
+        "telegram_username": user.telegram_username,
+        "name": user.name,
+        "age": user.age,
+        "bio": user.bio,
+        "use_common_bio": user.use_common_bio,
+        "photo_url": photo_url(user),
+        "photo_verified": user.photo_verified,
+        "has_location": user.lat is not None,
+        "max_distance_km": user.max_distance_km,
+        "is_admin": user.is_admin,
+        "is_complete": user.is_complete,
+        "feeds": {
+            key: {
+                "title": title,
+                "enabled": bool(user.feed(key) and user.feed(key).enabled),
+                "bio": user.feed(key).bio if user.feed(key) else "",
+            }
+            for key, title in FEEDS.items()
+        },
+    }
+
+
+def public_card(user: User, feed: str, distance_km: float | None = None) -> dict:
+    return {
+        "id": user.id,
+        "name": user.name,
+        "age": user.age,
+        "bio": user.bio_for(feed),
+        "photo_url": photo_url(user),
+        "verified": user.photo_verified,
+        "distance_km": None if distance_km is None else round(distance_km, 1),
+    }
+
+
+def message_out(m: Message) -> dict:
+    return {
+        "id": m.id,
+        "conversation_id": m.conversation_id,
+        "sender_id": m.sender_id,
+        "kind": m.kind,
+        "text": m.text,
+        "media_url": f"/media/{m.media_path}" if m.media_path else None,
+        "duration": m.duration,
+        "created_at": m.created_at.isoformat() + "Z",
+        "read_at": m.read_at.isoformat() + "Z" if m.read_at else None,
+    }
+
+
+def conversation_out(c: Conversation, me_id: int, last: Message | None, unread: int, online: bool) -> dict:
+    other = c.other(me_id)
+    return {
+        "id": c.id,
+        "active": c.active,
+        "feeds": sorted({m.feed for m in c.matches}),
+        "user": {
+            "id": other.id,
+            "name": other.name,
+            "age": other.age,
+            "photo_url": photo_url(other),
+            "online": online,
+        },
+        "last_message": message_out(last) if last else None,
+        "unread": unread,
+        "created_at": c.created_at.isoformat() + "Z",
+    }
