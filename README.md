@@ -7,6 +7,10 @@
 
 ## Запуск
 
+Быстро: **Windows** — двойной клик по `Запуск.bat`, **macOS/Linux** — `./start.sh`. Скрипт сам создаст окружение, поставит зависимости, скачает модели и откроет http://localhost:8000.
+
+Вручную:
+
 ```bash
 cd dating_app
 python -m venv venv && source venv/bin/activate      # Windows: venv\Scripts\activate
