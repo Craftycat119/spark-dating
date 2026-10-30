@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from .config import FEEDS
 from .models import Conversation, Message, User
 
 
@@ -19,32 +18,32 @@ def own_profile(user: User) -> dict:
         "name": user.name,
         "age": user.age,
         "bio": user.bio,
-        "use_common_bio": user.use_common_bio,
+        "gender": user.gender,
+        "looking_for": user.looking_for,
+        "interests": user.interests,
+        "goals": user.goals,
+        "survey_done": user.survey_done,
         "photo_url": photo_url(user),
         "photo_verified": user.photo_verified,
         "has_location": user.lat is not None,
         "max_distance_km": user.max_distance_km,
         "is_admin": user.is_admin,
         "is_complete": user.is_complete,
-        "feeds": {
-            key: {
-                "title": title,
-                "enabled": bool(user.feed(key) and user.feed(key).enabled),
-                "bio": user.feed(key).bio if user.feed(key) else "",
-            }
-            for key, title in FEEDS.items()
-        },
     }
 
 
-def public_card(user: User, feed: str, distance_km: float | None = None) -> dict:
+def public_card(user: User, match: int, common: list[str], distance_km: float | None = None) -> dict:
     return {
         "id": user.id,
         "name": user.name,
         "age": user.age,
-        "bio": user.bio_for(feed),
+        "bio": user.bio,
         "photo_url": photo_url(user),
         "verified": user.photo_verified,
+        "interests": user.interests,
+        "goals": user.goals,
+        "match": match,
+        "common": common,
         "distance_km": None if distance_km is None else round(distance_km, 1),
     }
 
@@ -68,7 +67,6 @@ def conversation_out(c: Conversation, me_id: int, last: Message | None, unread: 
     return {
         "id": c.id,
         "active": c.active,
-        "feeds": sorted({m.feed for m in c.matches}),
         "user": {
             "id": other.id,
             "name": other.name,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 from sqlalchemy import (
@@ -16,6 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
+from .interests import MIN_INTERESTS
 
 
 def utcnow() -> datetime:
@@ -39,11 +41,14 @@ class User(Base):
 
     auth_provider: Mapped[str] = mapped_column(String(16), default="email")  # email | telegram
 
-    # Профиль (один на все ленты)
+    # Профиль
     name: Mapped[str] = mapped_column(String(64), default="")
     age: Mapped[int | None] = mapped_column(Integer)
-    bio: Mapped[str] = mapped_column(Text, default="")  # единое описание
-    use_common_bio: Mapped[bool] = mapped_column(Boolean, default=True)
+    gender: Mapped[str | None] = mapped_column(String(16))  # male | female
+    looking_for: Mapped[str | None] = mapped_column(String(16))  # male | female | any
+    bio: Mapped[str] = mapped_column(Text, default="")
+    interests_json: Mapped[str] = mapped_column(Text, default="[]")
+    goals_json: Mapped[str] = mapped_column(Text, default="[]")
 
     photo_path: Mapped[str | None] = mapped_column(String(255))
     photo_verified: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -68,42 +73,33 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    feeds: Mapped[list[ProfileFeed]] = relationship(
-        back_populates="user", cascade="all, delete-orphan", lazy="selectin"
-    )
+    @property
+    def interests(self) -> list[str]:
+        return json.loads(self.interests_json or "[]")
 
-    def feed(self, key: str) -> ProfileFeed | None:
-        return next((f for f in self.feeds if f.feed == key), None)
-
-    def bio_for(self, key: str) -> str:
-        if self.use_common_bio:
-            return self.bio
-        f = self.feed(key)
-        return (f.bio if f and f.bio else self.bio) or ""
+    @interests.setter
+    def interests(self, values: list[str]) -> None:
+        self.interests_json = json.dumps(values, ensure_ascii=False)
 
     @property
-    def active_feeds(self) -> list[str]:
-        return [f.feed for f in self.feeds if f.enabled]
+    def goals(self) -> list[str]:
+        return json.loads(self.goals_json or "[]")
+
+    @goals.setter
+    def goals(self, values: list[str]) -> None:
+        self.goals_json = json.dumps(values, ensure_ascii=False)
+
+    @property
+    def survey_done(self) -> bool:
+        return len(self.interests) >= MIN_INTERESTS and bool(self.goals)
 
     @property
     def is_complete(self) -> bool:
-        """Анкета готова к показу в лентах."""
-        return bool(self.name and self.photo_path and self.photo_verified and self.age)
-
-
-class ProfileFeed(Base):
-    """В какой ленте показывается пользователь и с каким описанием."""
-
-    __tablename__ = "profile_feeds"
-    __table_args__ = (UniqueConstraint("user_id", "feed"),)
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    feed: Mapped[str] = mapped_column(String(16))
-    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    bio: Mapped[str] = mapped_column(Text, default="")
-
-    user: Mapped[User] = relationship(back_populates="feeds")
+        """Анкета готова к показу в ленте."""
+        return bool(
+            self.name and self.age and self.gender and self.looking_for
+            and self.survey_done and self.photo_path and self.photo_verified
+        )
 
 
 class EmailCode(Base):
@@ -134,18 +130,17 @@ class AuthSession(Base):
 
 class Swipe(Base):
     __tablename__ = "swipes"
-    __table_args__ = (UniqueConstraint("from_user_id", "to_user_id", "feed"),)
+    __table_args__ = (UniqueConstraint("from_user_id", "to_user_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     from_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     to_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    feed: Mapped[str] = mapped_column(String(16))
     liked: Mapped[bool] = mapped_column(Boolean)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Conversation(Base):
-    """Один чат на пару людей, даже если метч случился в нескольких лентах."""
+    """Пара (взаимный лайк) и её чат."""
 
     __tablename__ = "conversations"
     __table_args__ = (UniqueConstraint("user_a_id", "user_b_id"),)
@@ -159,29 +154,12 @@ class Conversation(Base):
 
     user_a: Mapped[User] = relationship(foreign_keys=[user_a_id], lazy="joined")
     user_b: Mapped[User] = relationship(foreign_keys=[user_b_id], lazy="joined")
-    matches: Mapped[list[Match]] = relationship(
-        back_populates="conversation", cascade="all, delete-orphan", lazy="selectin"
-    )
 
     def other(self, user_id: int) -> User:
         return self.user_b if self.user_a_id == user_id else self.user_a
 
     def has(self, user_id: int) -> bool:
         return user_id in (self.user_a_id, self.user_b_id)
-
-
-class Match(Base):
-    __tablename__ = "matches"
-    __table_args__ = (UniqueConstraint("conversation_id", "feed"),)
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    conversation_id: Mapped[int] = mapped_column(
-        ForeignKey("conversations.id", ondelete="CASCADE"), index=True
-    )
-    feed: Mapped[str] = mapped_column(String(16))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
-
-    conversation: Mapped[Conversation] = relationship(back_populates="matches")
 
 
 class Message(Base):

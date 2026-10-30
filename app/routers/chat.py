@@ -82,7 +82,6 @@ def get_chat(conv_id: int, before_id: int | None = None, limit: int = 50, user: 
     other = conv.other(user.id)
     return {
         "id": conv.id,
-        "feeds": sorted({m.feed for m in conv.matches}),
         "user": {
             "id": other.id,
             "name": other.name,

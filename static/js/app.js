@@ -4,27 +4,17 @@ import { icons } from "./icons.js";
 import { recordCircle, VoiceRecorder } from "./recorder.js";
 import { runScanner } from "./scanner.js";
 import { PACKS } from "./stickers.js";
-import { $, $$, confirmDialog, esc, fmtDay, fmtDur, fmtShort, fmtTime, h, toast } from "./ui.js";
+import { $, $$, confirmDialog, esc, fmtDay, fmtDur, fmtShort, fmtTime, h, toast, wordmark } from "./ui.js";
 
 const app = document.getElementById("app");
-const FEED_KEYS = ["dating", "sex", "friends"];
-const FEED_SHORT = { dating: "Знакомства", sex: "18+", friends: "Дружба" };
-const FEED_HINT = {
-  dating: "Свидания и отношения",
-  sex: "Без обязательств, только 18+",
-  friends: "Друзья, компания, совместные планы",
-};
 
 const state = {
   config: null,
   me: null,
-  feed: localStorage.getItem("feed") || "dating",
   unread: 0,
   openChat: null, // id открытого чата
   shownMatches: new Set(),
 };
-if (!FEED_KEYS.includes(state.feed)) state.feed = "dating";
-document.body.dataset.feed = state.feed;
 
 // ---------------- Запуск и маршрутизация ----------------
 
@@ -32,7 +22,7 @@ async function boot() {
   try {
     state.config = await api.get("/api/config");
   } catch {
-    state.config = { feeds: FEED_SHORT, ice_servers: [] };
+    state.config = { app_name: "COFI", survey: [], genders: {}, looking_for: {}, min_interests: 3, ice_servers: [] };
   }
   try {
     state.me = await api.get("/api/auth/me");
@@ -62,10 +52,10 @@ function go(hash) {
 }
 
 function onboardingStep(me) {
-  if (!me.name || !me.age) return "about";
+  if (!me.name || !me.age || !me.gender || !me.looking_for) return "about";
+  if (!me.survey_done) return "survey";
   if (!me.photo_url) return "photo";
   if (!me.photo_verified) return "scan";
-  if (!Object.values(me.feeds).some((f) => f.enabled)) return "feeds";
   if (!me.has_location) return "location";
   return null;
 }
@@ -79,7 +69,7 @@ function route() {
   switch (name) {
     case "chats": return renderChats();
     case "chat": return renderChats().then(() => openChat(Number(arg)));
-    case "settings": return renderSettings();
+    case "settings": return arg === "interests" ? renderSurvey({ editing: true }) : renderSettings();
     default: return renderFeed();
   }
 }
@@ -95,7 +85,7 @@ function navBar() {
   const item = (key, label, icon) =>
     `<a href="#/${key}" class="${cur === key || (key === "chats" && cur === "chat") ? "on" : ""}">${icon}<span>${label}</span>${
       key === "chats" && state.unread ? `<b class="badge">${state.unread}</b>` : ""}</a>`;
-  return h(`<nav class="nav" aria-label="Разделы">${item("feed", "Лента", icons.flame)}${item("chats", "Чаты", icons.chat)}${item("settings", "Профиль", icons.user)}</nav>`);
+  return h(`<nav class="nav" aria-label="Разделы">${item("feed", "Пары", icons.flame)}${item("chats", "Чаты", icons.chat)}${item("settings", "Профиль", icons.user)}</nav>`);
 }
 
 function updateNavBadge() {
@@ -122,11 +112,11 @@ function renderAuth(mode = "login") {
   const tg = state.config.telegram_bot_username;
   const root = screen(`
     <section class="auth-hero">
-      <div class="wordmark">${esc(state.config.app_name || "Spark")}</div>
-      <p>Один профиль — три ленты. Выбирайте, где вас видят: свидания, 18+ или компания на выходные.</p>
-      <div class="feed-chips"><span class="feed-chip dating">Знакомства</span><span class="feed-chip sex">18+</span><span class="feed-chip friends">Дружба</span></div>
+      ${wordmark("COFI")}
+      <h1>Знакомства, где общее находится сразу</h1>
+      <p class="lead">Отметьте, что любите, и мы покажем людей рядом с похожими интересами.</p>
     </section>
-    <div class="stack">
+    <div class="panel stack">
       <div class="tabs" role="tablist">
         <button role="tab" data-mode="login" class="${mode === "login" ? "on" : ""}">Вход</button>
         <button role="tab" data-mode="register" class="${mode === "register" ? "on" : ""}">Регистрация</button>
@@ -141,7 +131,7 @@ function renderAuth(mode = "login") {
         ${mode === "login" ? `<button type="button" class="link" id="forgot" style="align-self:flex-start">Забыли пароль?</button>` : ""}
       </form>
       ${tg ? `<div class="divider">или</div><div id="tg-login" style="display:flex;justify-content:center;min-height:48px"></div>
-        <p class="hint" style="text-align:center">Через Telegram почта и пароль не нужны — только подтверждение фото.</p>` : ""}
+        <p class="hint" style="text-align:center">Через Telegram почта и пароль не нужны, только подтверждение фото.</p>` : ""}
     </div>`, { nav: false });
 
   $$("[data-mode]", root).forEach((b) => (b.onclick = () => renderAuth(b.dataset.mode)));
@@ -236,7 +226,7 @@ function renderCode(email, devCode) {
     <div class="stack" style="margin-top:24px">
       <h1>Проверьте почту</h1>
       <p class="muted">Мы отправили 6-значный код на <b style="color:var(--text)">${esc(email)}</b>. На эту почту будут приходить новости о метчах и обновлениях.</p>
-      ${devCode ? `<p class="hint">Режим разработки: SMTP не настроен, код — <b>${esc(devCode)}</b></p>` : ""}
+      ${devCode ? `<p class="hint">Режим разработки, почта не настроена. Код: <b>${esc(devCode)}</b></p>` : ""}
       ${codeBoxesHtml}
       <p class="error-text" id="code-error" hidden></p>
       <button class="btn ghost" id="resend">Отправить код ещё раз</button>
@@ -305,7 +295,7 @@ function renderForgot(prefill = "") {
 
 // ---------------- Онбординг ----------------
 
-const STEP_ORDER = ["about", "photo", "scan", "feeds", "location"];
+const STEP_ORDER = ["about", "survey", "photo", "scan", "location"];
 
 function stepsBar(step) {
   const i = STEP_ORDER.indexOf(step);
@@ -318,28 +308,95 @@ async function nextStep() {
 }
 
 function renderOnboarding(step) {
-  ({ about: stepAbout, photo: stepPhoto, scan: stepScan, feeds: stepFeeds, location: stepLocation })[step]();
+  ({ about: stepAbout, survey: () => renderSurvey(), photo: stepPhoto, scan: stepScan, location: stepLocation })[step]();
+}
+
+function choiceGroup(name, options, value) {
+  return `<div class="choice-grid" style="grid-template-columns:repeat(${Object.keys(options).length},1fr)" role="radiogroup">${Object.entries(options).map(([k, label]) =>
+    `<button type="button" class="chip" data-name="${name}" data-value="${k}" aria-pressed="${k === value}">${esc(label)}</button>`).join("")}</div>`;
+}
+
+function bindChoice(root, name, onPick) {
+  $$(`[data-name="${name}"]`, root).forEach((b) => (b.onclick = () => {
+    $$(`[data-name="${name}"]`, root).forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    onPick(b.dataset.value);
+  }));
 }
 
 function stepAbout() {
   const me = state.me;
+  const pick = { gender: me.gender, looking_for: me.looking_for };
   const root = screen(`${stepsBar("about")}
     <form class="stack">
-      <h1>Расскажите о себе</h1>
-      <p class="muted">Это общий профиль для всех лент. Позже можно задать отдельное описание для каждой.</p>
-      <label class="field"><span>Имя</span><input class="input" name="name" maxlength="64" value="${esc(me.name)}" required></label>
+      <h1>Знакомимся</h1>
+      <label class="field"><span>Имя</span><input class="input" name="name" maxlength="64" value="${esc(me.name)}" autocomplete="given-name" required></label>
       <label class="field"><span>Возраст</span><input class="input" name="age" type="number" min="18" max="100" value="${me.age ?? ""}" required></label>
-      <label class="field"><span>Коротко о себе</span><textarea class="input" name="bio" maxlength="500" placeholder="Чем увлекаетесь, что ищете, какой идеальный вечер">${esc(me.bio)}</textarea></label>
+      <div class="field"><span>Я</span>${choiceGroup("gender", state.config.genders, me.gender)}</div>
+      <div class="field"><span>Кого ищу</span>${choiceGroup("looking_for", state.config.looking_for, me.looking_for)}</div>
+      <label class="field"><span>Коротко о себе</span><textarea class="input" name="bio" maxlength="500" placeholder="Например: варю фильтр-кофе, по субботам бегаю в парке">${esc(me.bio)}</textarea></label>
+      <p class="error-text" hidden></p>
       <button class="btn block">Дальше</button>
     </form>`, { nav: false });
+  bindChoice(root, "gender", (v) => (pick.gender = v));
+  bindChoice(root, "looking_for", (v) => (pick.looking_for = v));
   $("form", root).onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target;
+    const err = $(".error-text", root);
+    if (!pick.gender || !pick.looking_for) { err.textContent = "Выберите пол и кого ищете"; err.hidden = false; return; }
     try {
-      await api.put("/api/profile", { name: f.name.value, age: Number(f.age.value), bio: f.bio.value });
+      await api.put("/api/profile", { name: f.name.value, age: Number(f.age.value), bio: f.bio.value, ...pick });
       nextStep();
-    } catch (ex) { toast(ex.message, { error: true }); }
+    } catch (ex) { err.textContent = ex.message; err.hidden = false; }
   };
+}
+
+/** Опрос: по вопросу на экран, можно выбирать несколько вариантов. */
+function renderSurvey({ editing = false } = {}) {
+  const survey = state.config.survey;
+  const answers = { goals: new Set(state.me.goals), interests: new Set(state.me.interests) };
+  let i = 0;
+
+  const draw = () => {
+    const q = survey[i];
+    const set = q.key === "goals" ? answers.goals : answers.interests;
+    const last = i === survey.length - 1;
+    const root = screen(`${editing ? "" : stepsBar("survey")}
+      <div class="stack" style="gap:18px">
+        <div class="survey-head"><span class="muted small">${editing ? "Интересы" : "Пара вопросов о вас"}</span><span class="survey-count">${i + 1}/${survey.length}</span></div>
+        <h1>${esc(q.title)}</h1>
+        ${q.hint ? `<p class="muted">${esc(q.hint)}</p>` : ""}
+        <div class="chips">${q.options.map((o) => `<button type="button" class="chip" aria-pressed="${set.has(o)}">${esc(o)}</button>`).join("")}</div>
+        <p class="error-text" hidden></p>
+        <div class="row" style="margin-top:8px">
+          ${i > 0 ? `<button class="btn ghost" data-back>Назад</button>` : editing ? `<a class="btn ghost" href="#/settings">Отмена</a>` : ""}
+          <button class="btn" data-next style="flex:1">${last ? "Готово" : "Дальше"}</button>
+        </div>
+        ${!last && q.key !== "goals" ? `<button class="link" data-skip style="align-self:center">Пропустить вопрос</button>` : ""}
+      </div>`, { nav: false });
+    $$(".chips .chip", root).forEach((b) => (b.onclick = () => {
+      const v = b.textContent;
+      set.has(v) ? set.delete(v) : set.add(v);
+      b.setAttribute("aria-pressed", String(set.has(v)));
+    }));
+    const err = $(".error-text", root);
+    const fail = (m) => { err.textContent = m; err.hidden = false; };
+    $("[data-back]", root)?.addEventListener("click", () => { i--; draw(); });
+    $("[data-skip]", root)?.addEventListener("click", () => { i++; draw(); });
+    $("[data-next]", root).onclick = async () => {
+      if (q.key === "goals" && !answers.goals.size) return fail("Выберите хотя бы один вариант");
+      if (!last) { i++; return draw(); }
+      if (answers.interests.size < state.config.min_interests) {
+        return fail(`Отметьте ещё ${state.config.min_interests - answers.interests.size}, чтобы мы могли подбирать пары`);
+      }
+      try {
+        state.me = await api.put("/api/profile", { goals: [...answers.goals], interests: [...answers.interests] });
+        if (editing) { toast("Интересы сохранены"); go("#/settings"); } else nextStep();
+      } catch (ex) { fail(ex.message); }
+    };
+    window.scrollTo(0, 0);
+  };
+  draw();
 }
 
 function photoPicker(root, onUploaded) {
@@ -353,7 +410,7 @@ function photoPicker(root, onUploaded) {
     if (!file) return;
     drop.style.backgroundImage = `url(${URL.createObjectURL(file)})`;
     drop.classList.add("has");
-    drop.innerHTML = `<div class="spinner"></div>`;
+    drop.innerHTML = `<div class="skeleton"></div>`;
     err.hidden = true;
     const fd = new FormData();
     fd.append("file", file);
@@ -374,12 +431,11 @@ function stepPhoto() {
   const root = screen(`${stepsBar("photo")}
     <div class="stack">
       <h1>Ваше фото</h1>
-      <p class="muted">Нужно фото, где хорошо видно лицо — только ваше. Следующим шагом сверим его с камерой.</p>
-      <div class="photo-drop" role="button" tabindex="0">${icons.camera}<br>Выбрать фото</div>
+      <p class="muted">Нужно фото, где хорошо видно лицо, и только ваше. Следующим шагом сверим его с камерой.</p>
+      <div class="photo-drop" role="button" tabindex="0"><div>${icons.camera}Выбрать фото</div></div>
       <input type="file" accept="image/*" hidden>
       <p class="error-text" hidden></p>
     </div>`, { nav: false });
-  $(".photo-drop svg", root).style.cssText = "width:42px;height:42px;margin:0 auto 6px";
   photoPicker(root, nextStep);
 }
 
@@ -388,7 +444,7 @@ function stepScan() {
     <div class="stack">
       <h1>Проверка, что это вы</h1>
       <p class="muted">Камера покажет овал. Держите лицо в нём и следуйте подсказкам: смотрите прямо, затем поверните голову влево и вправо. Это защищает от чужих фото.</p>
-      <div class="profile-head"><img src="${esc(state.me.photo_url)}" alt="Ваше фото"><p class="small muted">Сверяем с этим фото</p></div>
+      <div class="profile-hero"><img src="${esc(state.me.photo_url)}" alt="Ваше фото"><p class="small muted">Сверяем с этим фото</p></div>
       <div id="scan-area"></div>
       <p class="error-text" id="scan-error" hidden></p>
       <button class="btn block" id="start">${icons.shield} Начать проверку</button>
@@ -400,7 +456,7 @@ function stepScan() {
   startBtn.onclick = async () => {
     startBtn.hidden = true;
     err.hidden = true;
-    $(".profile-head", root).hidden = true;
+    $(".profile-hero", root).hidden = true;
     const res = await runScanner($("#scan-area", root));
     if (res.ok) {
       toast("Фото подтверждено");
@@ -423,54 +479,6 @@ function stepScan() {
   };
 }
 
-function feedEditor(me) {
-  return `
-    <label class="switch"><input type="checkbox" name="common" ${me.use_common_bio ? "checked" : ""}>
-      <span class="label">Одно описание для всех лент<small>Выключите, чтобы написать о себе по-разному для каждой ленты</small></span></label>
-    ${FEED_KEYS.map((k) => `
-      <div class="feed-option" style="--c:var(--${k})">
-        <label class="switch"><input type="checkbox" name="feed-${k}" ${me.feeds[k].enabled ? "checked" : ""}>
-          <span class="label">Показывать меня в ленте «${FEED_SHORT[k]}»<small>${FEED_HINT[k]}</small></span></label>
-        <textarea class="input" name="bio-${k}" maxlength="500" placeholder="Описание для ленты «${FEED_SHORT[k]}». Пусто — возьмём общее." ${me.use_common_bio ? "hidden" : ""}>${esc(me.feeds[k].bio)}</textarea>
-      </div>`).join("")}`;
-}
-
-function bindFeedEditor(form) {
-  const sync = () => FEED_KEYS.forEach((k) => (form[`bio-${k}`].hidden = form.common.checked));
-  form.common.addEventListener("change", sync);
-  sync();
-}
-
-function readFeedEditor(form) {
-  return {
-    use_common_bio: form.common.checked,
-    feeds: Object.fromEntries(FEED_KEYS.map((k) => [k, { enabled: form[`feed-${k}`].checked, bio: form[`bio-${k}`].value }])),
-  };
-}
-
-function stepFeeds() {
-  const root = screen(`${stepsBar("feeds")}
-    <form class="stack">
-      <h1>Где вас показывать</h1>
-      <p class="muted">Можно выбрать одну ленту или сразу все. Изменить это можно в любой момент в профиле.</p>
-      ${feedEditor(state.me)}
-      <button class="btn block">Сохранить</button>
-    </form>`, { nav: false });
-  const form = $("form", root);
-  bindFeedEditor(form);
-  form.onsubmit = async (e) => {
-    e.preventDefault();
-    const data = readFeedEditor(form);
-    if (!Object.values(data.feeds).some((f) => f.enabled)) return toast("Выберите хотя бы одну ленту", { error: true });
-    try {
-      await api.put("/api/profile", data);
-      const first = FEED_KEYS.find((k) => data.feeds[k].enabled);
-      setFeed(first);
-      nextStep();
-    } catch (ex) { toast(ex.message, { error: true }); }
-  };
-}
-
 function getPosition() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error("Браузер не поддерживает геопозицию"));
@@ -488,7 +496,7 @@ function stepLocation() {
   const root = screen(`${stepsBar("location")}
     <div class="stack">
       <h1>Люди рядом</h1>
-      <p class="muted">Ленты показывают анкеты от ближайших к дальним, поэтому нужна ваша геопозиция. Другие видят только расстояние в километрах — точный адрес никто не узнает.</p>
+      <p class="muted">Мы показываем тех, кто недалеко от вас. Другие видят только расстояние в километрах, точный адрес никто не узнает.</p>
       <p class="error-text" hidden></p>
       <button class="btn block">${icons.pin} Разрешить геопозицию</button>
     </div>`, { nav: false });
@@ -514,36 +522,30 @@ async function refreshLocationSilently() {
   } catch { /* тихо */ }
 }
 
-// ---------------- Ленты ----------------
+// ---------------- Лента ----------------
 
-function setFeed(feed) {
-  state.feed = feed;
-  localStorage.setItem("feed", feed);
-  document.body.dataset.feed = feed;
+function distanceText(km) {
+  if (km == null) return ["", ""];
+  return km < 1 ? ["<1", "км от вас"] : [String(Math.round(km)), "км от вас"];
 }
 
 async function renderFeed() {
   const root = screen(`
-    <div class="feed-head"><h1 class="feed-title">${esc(state.config.feeds[state.feed] || FEED_SHORT[state.feed])}</h1></div>
-    <div class="feed-switch" role="tablist">${FEED_KEYS.map((k) =>
-      `<button role="tab" data-feed="${k}" class="${k === state.feed ? "on" : ""}" aria-selected="${k === state.feed}">${FEED_SHORT[k]}</button>`).join("")}</div>
-    <div class="deck" aria-live="polite"><div class="spinner"></div></div>
+    <div class="topbar"><span class="logo-small">COFI</span><span class="muted small">Сначала самые похожие</span></div>
+    <div class="deck" aria-live="polite"><div class="skeleton"></div></div>
     <div class="swipe-actions" hidden>
-      <button class="nope" aria-label="Не нравится">${icons.x}</button>
+      <button class="nope" aria-label="Пропустить">${icons.x}</button>
       <button class="like" aria-label="Нравится">${icons.heart}</button>
     </div>`);
-  $$(".feed-switch button", root).forEach((b) => (b.onclick = () => { setFeed(b.dataset.feed); renderFeed(); }));
-
   const deck = $(".deck", root);
   const actions = $(".swipe-actions", root);
   let cards = [];
   let busy = false;
   let loading = false;
-  const feed = state.feed;
 
   const empty = (title, text, btnLabel, fn) => {
     actions.hidden = true;
-    deck.replaceChildren(h(`<div class="empty"><h2>${title}</h2><p class="muted">${text}</p>${btnLabel ? `<button class="btn">${btnLabel}</button>` : ""}</div>`));
+    deck.replaceChildren(h(`<div class="empty"><h1>${title}</h1><p class="lead">${text}</p>${btnLabel ? `<button class="btn">${btnLabel}</button>` : ""}</div>`));
     if (fn) $(".btn", deck).onclick = fn;
   };
 
@@ -551,29 +553,22 @@ async function renderFeed() {
     if (loading) return;
     loading = true;
     try {
-      const res = await api.get(`/api/feed/${feed}?limit=10`);
-      if (state.feed !== feed) return;
+      const res = await api.get("/api/feed?limit=10");
       const known = new Set(cards.map((c) => c.id));
       cards.push(...res.cards.filter((c) => !known.has(c.id)));
       draw();
     } catch (ex) {
-      if (ex.code === "feed_disabled") {
-        empty("Вы не показываетесь в этой ленте", "Чтобы смотреть анкеты здесь, включите показ своей анкеты в этой ленте.", "Показывать меня здесь", async () => {
-          await api.put("/api/profile", { feeds: { [feed]: { enabled: true } } });
-          await reloadMe();
-          renderFeed();
-        });
-      } else if (ex.code === "need_location") {
+      if (ex.code === "need_location") {
         empty("Нужна геопозиция", "Без неё не получится найти людей рядом.", "Разрешить", async () => {
           try { await api.post("/api/profile/location", await getPosition()); renderFeed(); } catch (e) { toast(e.message, { error: true }); }
         });
-      } else empty("Не удалось загрузить ленту", ex.message, "Повторить", renderFeed);
+      } else empty("Лента не загрузилась", ex.message, "Повторить", renderFeed);
     } finally { loading = false; }
   }
 
   function draw() {
     if (!cards.length) {
-      return empty("Рядом пока никого", `В радиусе ${state.me.max_distance_km} км новых анкет нет. Увеличьте радиус или загляните позже.`, "Изменить радиус", () => go("#/settings"));
+      return empty("Рядом пока никого", `В радиусе ${state.me.max_distance_km} км новых анкет нет. Увеличьте радиус или добавьте интересов.`, "Открыть профиль", () => go("#/settings"));
     }
     actions.hidden = false;
     deck.replaceChildren(...cards.slice(0, 2).reverse().map((c, i, arr) => cardEl(c, i === arr.length - 1)));
@@ -581,15 +576,22 @@ async function renderFeed() {
   }
 
   function cardEl(c, top) {
-    return h(`<article class="card ${top ? "top" : ""}" style="background-image:url('${esc(c.photo_url)}')" aria-label="${esc(c.name)}, ${c.age}">
-      <div class="shade"></div>
-      <div class="stamp yes">ДА</div><div class="stamp no">НЕТ</div>
-      <div class="info">
+    const [dist, distLabel] = distanceText(c.distance_km);
+    const rest = c.interests.filter((x) => !c.common.includes(x)).slice(0, Math.max(0, 4 - c.common.length));
+    return h(`<article class="card ${top ? "top" : ""}" aria-label="${esc(c.name)}, ${c.age}">
+      <div class="photo" style="background-image:url('${esc(c.photo_url)}')">
+        ${c.verified ? `<span class="verified">${icons.check} Фото подтверждено</span>` : ""}
+        <div class="stamp yes">Да</div><div class="stamp no">Нет</div>
         <div class="name">${esc(c.name)} <span>${c.age ?? ""}</span></div>
-        <div class="meta">
-          ${c.verified ? `<span class="verified">${icons.check} Фото подтверждено</span>` : ""}
-          ${c.distance_km != null ? `<span>${c.distance_km < 1 ? "меньше 1 км" : `${Math.round(c.distance_km)} км от вас`}</span>` : ""}
+      </div>
+      <div class="info">
+        <div class="stats">
+          <div class="hot"><b>${c.match}%</b><span>совпадение интересов</span></div>
+          <div><b>${c.common.length}</b><span>общих увлечений</span></div>
+          <div><b>${dist}</b><span>${distLabel}</span></div>
         </div>
+        <div class="chips common">${c.common.slice(0, 5).map((x) => `<span class="chip static hot">${esc(x)}</span>`).join("")}${
+          rest.map((x) => `<span class="chip static">${esc(x)}</span>`).join("")}</div>
         ${c.bio ? `<p class="bio">${esc(c.bio)}</p>` : ""}
       </div></article>`);
   }
@@ -620,7 +622,7 @@ async function renderFeed() {
         el.classList.add("anim");
         el.style.transform = "";
         yes.style.opacity = no.style.opacity = 0;
-        setTimeout(() => el.classList.remove("anim"), 400);
+        setTimeout(() => el.classList.remove("anim"), 450);
       }
     };
     el.addEventListener("pointerup", end);
@@ -637,8 +639,8 @@ async function renderFeed() {
     el.style.transform = `translate(${like ? 140 : -140}%, 30px) rotate(${like ? 24 : -24}deg)`;
     el.style.opacity = 0;
     try {
-      const res = await api.post(`/api/feed/${feed}/swipe`, { user_id: card.id, like });
-      if (res.match) showMatch({ conversation_id: res.conversation_id, feed, user: res.user });
+      const res = await api.post("/api/feed/swipe", { user_id: card.id, like });
+      if (res.match) showMatch({ conversation_id: res.conversation_id, user: res.user, common: res.user.common });
     } catch (ex) {
       toast(ex.message, { error: true });
     }
@@ -661,16 +663,16 @@ async function renderFeed() {
   load();
 }
 
-function showMatch({ conversation_id, feed, user }) {
-  const key = `${conversation_id}:${feed}`;
-  if (state.shownMatches.has(key)) return;
-  state.shownMatches.add(key);
-  const el = h(`<div class="overlay" role="dialog" aria-label="Взаимная симпатия">
+function showMatch({ conversation_id, user, common = [] }) {
+  if (state.shownMatches.has(conversation_id)) return;
+  state.shownMatches.add(conversation_id);
+  const el = h(`<div class="overlay match" role="dialog" aria-label="Взаимная симпатия">
     <div class="match-modal">
-      <div class="word">Взаимно!</div>
+      ${wordmark("Взаимно", 860, "cream", 30)}
       <div class="pair"><img src="${esc(state.me.photo_url)}" alt="Вы"><img src="${esc(user.photo_url)}" alt="${esc(user.name)}"></div>
-      <p class="muted">Вы и ${esc(user.name)} понравились друг другу в ленте «${FEED_SHORT[feed] || feed}». Теперь можно написать.</p>
-      <button class="btn block" data-chat>Написать сообщение</button>
+      <p>Вы и ${esc(user.name)} понравились друг другу.${common.length ? " У вас общее:" : ""}</p>
+      ${common.length ? `<div class="chips">${common.slice(0, 6).map((x) => `<span class="chip static">${esc(x)}</span>`).join("")}</div>` : ""}
+      <button class="btn dark block" data-chat>Написать сообщение</button>
       <button class="btn ghost block" data-close>Смотреть дальше</button>
     </div></div>`);
   $("[data-chat]", el).onclick = () => { el.remove(); go(`#/chat/${conversation_id}`); };
@@ -681,26 +683,25 @@ function showMatch({ conversation_id, feed, user }) {
 // ---------------- Чаты ----------------
 
 function previewText(m, meId) {
-  if (!m) return "Новая пара — напишите первым";
+  if (!m) return "Новая пара, напишите первым";
   const mine = m.sender_id === meId ? "Вы: " : "";
   const map = { image: "Фото", video: "Видео", voice: "Голосовое", circle: "Видеосообщение", sticker: m.text, call: m.text === "video" ? "Видеозвонок" : "Звонок" };
   return mine + (m.kind === "text" ? m.text : map[m.kind] || "");
 }
 
 async function renderChats() {
-  const root = screen(`<h1>Чаты</h1><div id="chats"><div class="spinner"></div></div>`);
+  const root = screen(`<h1>Чаты</h1><div id="chats"></div>`);
   let chats = [];
   try { chats = await api.get("/api/chats"); } catch (ex) { toast(ex.message, { error: true }); }
   state.unread = chats.reduce((s, c) => s + c.unread, 0);
   updateNavBadge();
   const box = $("#chats", root);
   if (!chats.length) {
-    box.replaceChildren(h(`<div class="empty"><h2>Пока без пар</h2><p class="muted">Когда симпатия окажется взаимной, здесь появится чат.</p><a class="btn" href="#/feed">Открыть ленту</a></div>`));
+    box.replaceChildren(h(`<div class="empty"><h2>Пока без пар</h2><p class="muted">Когда симпатия окажется взаимной, здесь появится чат.</p><a class="btn" href="#/feed">Смотреть анкеты</a></div>`));
     return;
   }
   const fresh = chats.filter((c) => !c.last_message);
   const talks = chats.filter((c) => c.last_message);
-  const dots = (feeds) => `<span class="feed-dots">${feeds.map((f) => `<i class="${f}" title="${FEED_SHORT[f]}"></i>`).join("")}</span>`;
   box.replaceChildren(h(`<div>
     ${fresh.length ? `<div class="new-matches" aria-label="Новые пары">${fresh.map((c) =>
       `<a href="#/chat/${c.id}"><img src="${esc(c.user.photo_url)}" alt="">${esc(c.user.name)}</a>`).join("")}</div>` : ""}
@@ -708,7 +709,7 @@ async function renderChats() {
       <a class="chat-item" href="#/chat/${c.id}">
         <span class="avatar-wrap"><img class="avatar" src="${esc(c.user.photo_url)}" alt="">${c.user.online ? '<i class="dot" title="В сети"></i>' : ""}</span>
         <span class="body">
-          <span class="top"><b>${esc(c.user.name)}</b>${dots(c.feeds)}<span class="time">${fmtShort(c.last_message.created_at)}</span></span>
+          <span class="top"><b>${esc(c.user.name)}</b><span class="time">${fmtShort(c.last_message.created_at)}</span></span>
           <span class="row" style="gap:8px"><span class="preview" style="flex:1">${esc(previewText(c.last_message, state.me.id))}</span>${c.unread ? `<span class="unread">${c.unread}</span>` : ""}</span>
         </span>
       </a>`).join("")}</div></div>`));
@@ -773,7 +774,7 @@ async function openChat(convId) {
   }
 
   if (!data.messages.length) {
-    list.append(h(`<div class="empty" style="text-align:center"><h3>Вы понравились друг другу</h3><p class="muted small">Начните со стикера или кружочка — это проще, чем «привет».</p></div>`));
+    list.append(h(`<div class="empty" style="text-align:center"><h3>Вы понравились друг другу</h3><p class="muted small">Начните с общего интереса или запишите кружочек.</p></div>`));
   }
   data.messages.forEach(append);
   requestAnimationFrame(scrollDown);
@@ -990,7 +991,7 @@ function circleEl(m, mine, time) {
   const el = h(`<div class="msg circle ${mine ? "mine" : ""}">
     <div class="circle-msg" role="button" tabindex="0" aria-label="Видеосообщение, нажмите для звука">
       <video src="${esc(m.media_url)}" muted loop playsinline autoplay preload="metadata"></video>
-      <svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="48" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-dasharray="${C}" stroke-dashoffset="${C}"/></svg>
+      <svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="48" fill="none" stroke="var(--orange)" stroke-width="2.5" stroke-dasharray="${C}" stroke-dashoffset="${C}"/></svg>
       <span class="dur">${fmtDur(m.duration)}</span>
     </div>${time}</div>`);
   const v = $("video", el), ring = $("circle", el);
@@ -1016,11 +1017,12 @@ function circleEl(m, mine, time) {
 function renderSettings() {
   const me = state.me;
   const step = onboardingStep(me);
+  const pick = { gender: me.gender, looking_for: me.looking_for };
   const root = screen(`
     <h1>Профиль</h1>
-    ${step ? `<p class="badge-warn" style="margin-top:10px">Анкета не завершена — <a href="#/feed">продолжить настройку</a></p>` : ""}
-    <div class="section profile-head">
-      ${me.photo_url ? `<img src="${esc(me.photo_url)}" alt="Ваше фото">` : ""}
+    ${step ? `<p class="badge-warn" style="margin-top:10px">Анкета не завершена. <a href="#/feed">Продолжить настройку</a></p>` : ""}
+    <div class="section profile-hero">
+      ${me.photo_url ? `<img src="${esc(me.photo_url)}" alt="Ваше фото">` : "<span></span>"}
       <div class="stack" style="gap:8px">
         ${me.photo_verified ? `<span class="badge-ok">${icons.check} Фото подтверждено</span>` : `<span class="badge-warn">Фото не подтверждено</span>`}
         <button class="btn quiet" id="change-photo">Заменить фото</button>
@@ -1029,32 +1031,39 @@ function renderSettings() {
       <input type="file" accept="image/*" hidden>
     </div>
 
+    <div class="section">
+      <h3>Интересы</h3>
+      <div class="chips" style="margin-bottom:12px">${[...me.goals, ...me.interests].map((x, i) =>
+        `<span class="chip static ${i < me.goals.length ? "hot" : ""}">${esc(x)}</span>`).join("")}</div>
+      <a class="btn ghost" href="#/settings/interests">Изменить интересы</a>
+    </div>
+
     <form class="section stack" id="profile-form">
       <h3>О себе</h3>
       <label class="field"><span>Имя</span><input class="input" name="name" maxlength="64" value="${esc(me.name)}"></label>
       <label class="field"><span>Возраст</span><input class="input" name="age" type="number" min="18" max="100" value="${me.age ?? ""}"></label>
-      <label class="field"><span>Общее описание</span><textarea class="input" name="bio" maxlength="500">${esc(me.bio)}</textarea></label>
-      <h3 style="margin-top:14px">Ленты</h3>
-      ${feedEditor(me)}
-      <h3 style="margin-top:14px">Поиск</h3>
-      <label class="field"><span>Радиус поиска: <b id="dist-val">${me.max_distance_km}</b> км</span>
+      <div class="field"><span>Я</span>${choiceGroup("gender", state.config.genders, me.gender)}</div>
+      <div class="field"><span>Кого ищу</span>${choiceGroup("looking_for", state.config.looking_for, me.looking_for)}</div>
+      <label class="field"><span>Описание</span><textarea class="input" name="bio" maxlength="500">${esc(me.bio)}</textarea></label>
+      <label class="field"><span>Искать в радиусе <b id="dist-val">${me.max_distance_km}</b> км</span>
         <input type="range" name="dist" min="1" max="300" value="${Math.min(me.max_distance_km, 300)}"></label>
       <button type="button" class="btn ghost" id="relocate">${icons.pin} Обновить геопозицию</button>
       ${me.email ? `<label class="switch"><input type="checkbox" name="notify" ${me.email_notifications ? "checked" : ""}>
-        <span class="label">Письма о метчах и обновлениях<small>${esc(me.email)}</small></span></label>` : ""}
+        <span class="label">Письма о парах и обновлениях<small>${esc(me.email)}</small></span></label>` : ""}
       <button class="btn block">Сохранить изменения</button>
     </form>
 
     <div class="section stack">
       <h3>Аккаунт</h3>
       <p class="muted small">${me.auth_provider === "telegram" ? `Вход через Telegram${me.telegram_username ? ` (@${esc(me.telegram_username)})` : ""}` : `Вход по почте ${esc(me.email)}`}</p>
-      ${me.is_admin ? `<a class="btn quiet" href="/admin">Открыть админ-панель</a>` : ""}
+      ${me.is_admin ? `<a class="btn quiet" href="/admin">Админ-панель</a>` : ""}
       <button class="btn ghost" id="logout">Выйти</button>
       <button class="btn danger" id="delete">Удалить анкету</button>
     </div>`);
 
+  bindChoice(root, "gender", (v) => (pick.gender = v));
+  bindChoice(root, "looking_for", (v) => (pick.looking_for = v));
   const form = $("#profile-form", root);
-  bindFeedEditor(form);
   form.dist.oninput = () => ($("#dist-val", root).textContent = form.dist.value);
   form.onsubmit = async (e) => {
     e.preventDefault();
@@ -1063,13 +1072,11 @@ function renderSettings() {
       age: Number(form.age.value) || undefined,
       bio: form.bio.value,
       max_distance_km: Number(form.dist.value),
-      ...readFeedEditor(form),
+      ...pick,
     };
     if (form.notify) data.email_notifications = form.notify.checked;
-    if (!Object.values(data.feeds).some((f) => f.enabled)) return toast("Оставьте хотя бы одну ленту", { error: true });
     try {
       state.me = await api.put("/api/profile", data);
-      if (!state.me.feeds[state.feed].enabled) setFeed(FEED_KEYS.find((k) => state.me.feeds[k].enabled));
       toast("Изменения сохранены");
     } catch (ex) { toast(ex.message, { error: true }); }
   };
@@ -1112,7 +1119,7 @@ function renderSettings() {
 
 on("match", (d) => {
   if (!state.me) return;
-  showMatch({ conversation_id: d.conversation_id, feed: d.feed, user: d.user });
+  showMatch({ conversation_id: d.conversation_id, user: d.user, common: d.common });
   notifyBrowser("Взаимная симпатия!", `Вы понравились ${d.user.name}`);
 });
 

@@ -13,22 +13,22 @@ from PIL import Image, ImageDraw
 from sqlalchemy import select
 
 from . import storage
-from .config import FEEDS
+from .interests import GOALS, SURVEY
 from .database import SessionLocal, init_db
 from .face_verify import download_models
-from .models import ProfileFeed, User, utcnow
+from .models import User, utcnow
 from .security import hash_password
 
 DEMO_NAMES = ["Алина", "Марк", "Соня", "Илья", "Вера", "Тимур", "Ника", "Глеб", "Лиза", "Артём", "Мира", "Даня"]
 DEMO_BIOS = [
     "Люблю ночные прогулки по набережной и плёночные фотоаппараты.",
-    "Кофе, скалодром, и иногда — стендап по пятницам.",
+    "Кофе, скалодром и стендап по пятницам.",
     "Ищу компанию на настолки и походы выходного дня.",
     "Готовлю лучшую пасту в районе. Проверишь?",
     "Работаю в IT, по вечерам играю на гитаре.",
-    "Путешествую налегке: 14 стран за последние два года.",
+    "Путешествую налегке, в этом году была в Грузии и Армении.",
 ]
-COLORS = ["#ff5c8a", "#7c5cff", "#2ee6a8", "#ffb347", "#4cc9f0", "#f72585"]
+COLORS = ["#ff5b1f", "#c9411a", "#e8763f", "#8a3214", "#ff8a4c", "#5a2410"]
 
 
 def make_admin(email: str) -> None:
@@ -74,8 +74,10 @@ def seed(lat: float, lon: float, count: int) -> None:
                 registration_ip="127.0.0.1",
             )
             u.registration_lat, u.registration_lon = u.lat, u.lon
-            for key in FEEDS:
-                u.feeds.append(ProfileFeed(feed=key, enabled=random.random() > 0.25, bio=""))
+            u.gender = "female" if i % 2 == 0 else "male"
+            u.looking_for = random.choice(["male", "female", "any"]) if i % 3 else "any"
+            u.goals = random.sample(sorted(GOALS), k=random.randint(1, 2))
+            u.interests = [opt for q in SURVEY[1:] for opt in random.sample(q["options"], k=random.randint(1, 3))]
             db.add(u)
         db.commit()
     print(f"Создано {count} демо-анкет (пароль у всех Demo12345)")

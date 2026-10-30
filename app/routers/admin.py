@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -8,10 +9,10 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .. import emailer
-from ..config import FEEDS
+from ..interests import GENDERS, INTERESTS, LOOKING_FOR
 from ..database import get_db
 from ..deps import admin_user
-from ..models import AuthSession, Conversation, Match, Message, ProfileFeed, Swipe, User, utcnow
+from ..models import AuthSession, Conversation, Message, Swipe, User, utcnow
 from ..realtime import manager
 from ..serializers import message_out, photo_url
 from .profile import delete_user_completely
@@ -35,7 +36,10 @@ def user_row(u: User) -> dict:
         "auth_provider": u.auth_provider,
         "photo_url": photo_url(u),
         "photo_verified": u.photo_verified,
-        "feeds": u.active_feeds,
+        "gender": GENDERS.get(u.gender or ""),
+        "looking_for": LOOKING_FOR.get(u.looking_for or ""),
+        "interests": u.interests,
+        "goals": u.goals,
         "created_at": _iso(u.created_at),
         "last_seen_at": _iso(u.last_seen_at),
         "online": manager.is_online(u.id),
@@ -59,25 +63,25 @@ class BroadcastIn(BaseModel):
 @router.get("/stats")
 def stats(_: User = Depends(admin_user), db: Session = Depends(get_db)):
     day_ago = utcnow() - timedelta(days=1)
-    per_feed = {
-        key: db.scalar(select(func.count(ProfileFeed.id)).where(ProfileFeed.feed == key, ProfileFeed.enabled.is_(True))) or 0
-        for key in FEEDS
-    }
+    counts: dict[str, int] = {}
+    for raw in db.scalars(select(User.interests_json)):
+        for item in json.loads(raw or "[]"):
+            counts[item] = counts.get(item, 0) + 1
+    top = sorted(counts.items(), key=lambda x: -x[1])[:10]
     return {
         "users": db.scalar(select(func.count(User.id))) or 0,
         "verified": db.scalar(select(func.count(User.id)).where(User.photo_verified.is_(True))) or 0,
         "new_24h": db.scalar(select(func.count(User.id)).where(User.created_at >= day_ago)) or 0,
         "banned": db.scalar(select(func.count(User.id)).where(User.is_banned.is_(True))) or 0,
         "online": len(manager.connections),
-        "matches": db.scalar(select(func.count(Match.id))) or 0,
+        "matches": db.scalar(select(func.count(Conversation.id))) or 0,
         "messages": db.scalar(select(func.count(Message.id))) or 0,
-        "per_feed": per_feed,
-        "feed_titles": FEEDS,
+        "top_interests": [{"name": k, "count": v} for k, v in top],
     }
 
 
 @router.get("/users")
-def users(q: str = "", feed: str = "", page: int = 1, per_page: int = 30, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+def users(q: str = "", interest: str = "", page: int = 1, per_page: int = 30, _: User = Depends(admin_user), db: Session = Depends(get_db)):
     query = select(User)
     if q:
         like = f"%{q.strip().lower()}%"
@@ -85,8 +89,8 @@ def users(q: str = "", feed: str = "", page: int = 1, per_page: int = 30, _: Use
         if q.strip().isdigit():
             conds.append(User.id == int(q.strip()))
         query = query.where(or_(*conds))
-    if feed in FEEDS:
-        query = query.join(ProfileFeed).where(ProfileFeed.feed == feed, ProfileFeed.enabled.is_(True))
+    if interest in INTERESTS:
+        query = query.where(User.interests_json.like(f'%"{interest}"%'))
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     per_page = max(1, min(per_page, 100))
     rows = db.scalars(query.order_by(User.id.desc()).offset((max(page, 1) - 1) * per_page).limit(per_page)).unique().all()
@@ -110,8 +114,6 @@ def user_detail(user_id: int, _: User = Depends(admin_user), db: Session = Depen
     return {
         **user_row(u),
         "bio": u.bio,
-        "use_common_bio": u.use_common_bio,
-        "feed_bios": {f.feed: {"enabled": f.enabled, "bio": f.bio} for f in u.feeds},
         "selfie_url": f"/media/{u.selfie_path}" if u.selfie_path else None,
         "face_score": u.face_score,
         "photo_verified_at": _iso(u.photo_verified_at),
@@ -130,7 +132,6 @@ def _conv_row(db: Session, c: Conversation) -> dict:
     return {
         "id": c.id,
         "active": c.active,
-        "feeds": sorted({m.feed for m in c.matches}),
         "users": [{"id": x.id, "name": x.name, "photo_url": photo_url(x)} for x in (c.user_a, c.user_b)],
         "messages": db.scalar(select(func.count(Message.id)).where(Message.conversation_id == c.id)) or 0,
         "last_message_at": _iso(c.last_message_at),

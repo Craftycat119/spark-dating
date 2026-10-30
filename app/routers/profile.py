@@ -9,10 +9,11 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from .. import face_verify, storage
-from ..config import FEEDS, settings
+from ..config import settings
 from ..database import get_db
 from ..deps import current_user
-from ..models import Conversation, Message, ProfileFeed, User, utcnow
+from ..interests import GENDERS, GOALS, INTERESTS, LOOKING_FOR, MIN_INTERESTS, clean
+from ..models import Conversation, Message, User, utcnow
 from ..serializers import own_profile
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
@@ -21,19 +22,16 @@ log = logging.getLogger("spark.profile")
 BIO_MAX = 500
 
 
-class FeedIn(BaseModel):
-    enabled: bool | None = None
-    bio: str | None = Field(None, max_length=BIO_MAX)
-
-
 class ProfileIn(BaseModel):
     name: str | None = Field(None, max_length=64)
     age: int | None = None
     bio: str | None = Field(None, max_length=BIO_MAX)
-    use_common_bio: bool | None = None
+    gender: str | None = None
+    looking_for: str | None = None
+    interests: list[str] | None = None
+    goals: list[str] | None = None
     email_notifications: bool | None = None
     max_distance_km: int | None = None
-    feeds: dict[str, FeedIn] | None = None
 
 
 class FramesIn(BaseModel):
@@ -63,25 +61,28 @@ def update_profile(data: ProfileIn, user: User = Depends(current_user), db: Sess
         user.age = data.age
     if data.bio is not None:
         user.bio = data.bio.strip()
-    if data.use_common_bio is not None:
-        user.use_common_bio = data.use_common_bio
+    if data.gender is not None:
+        if data.gender not in GENDERS:
+            raise HTTPException(422, "Укажите пол")
+        user.gender = data.gender
+    if data.looking_for is not None:
+        if data.looking_for not in LOOKING_FOR:
+            raise HTTPException(422, "Укажите, кого ищете")
+        user.looking_for = data.looking_for
+    if data.interests is not None:
+        interests = clean(data.interests, INTERESTS)
+        if len(interests) < MIN_INTERESTS:
+            raise HTTPException(422, f"Выберите хотя бы {MIN_INTERESTS} интереса")
+        user.interests = interests
+    if data.goals is not None:
+        goals = clean(data.goals, GOALS)
+        if not goals:
+            raise HTTPException(422, "Выберите, что вы ищете")
+        user.goals = goals
     if data.email_notifications is not None:
         user.email_notifications = data.email_notifications
     if data.max_distance_km is not None:
         user.max_distance_km = max(1, min(data.max_distance_km, 20000))
-
-    if data.feeds:
-        for key, f in data.feeds.items():
-            if key not in FEEDS:
-                raise HTTPException(422, f"Неизвестная лента: {key}")
-            row = user.feed(key)
-            if row is None:
-                row = ProfileFeed(feed=key, enabled=False, bio="")
-                user.feeds.append(row)
-            if f.enabled is not None:
-                row.enabled = f.enabled
-            if f.bio is not None:
-                row.bio = f.bio.strip()
 
     db.commit()
     db.refresh(user)

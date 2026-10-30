@@ -11,7 +11,7 @@ def cookie(client):
 def test_feed_requires_complete_profile():
     c = new_client()
     register(c, "x@x.io")
-    r = c.get("/api/feed/dating")
+    r = c.get("/api/feed")
     assert r.status_code == 409
     assert r.json()["detail"]["code"] == "profile_incomplete"
 
@@ -22,42 +22,46 @@ def test_underage_rejected():
     assert c.put("/api/profile", json={"age": 16}).status_code == 422
 
 
-def test_feeds_sorted_by_distance_and_radius():
-    me = make_user("me@x.io", lat=55.75, lon=37.61)
-    make_user("far@x.io", name="Далеко", lat=55.95, lon=37.61)      # ~22 км
-    make_user("near@x.io", name="Рядом", lat=55.76, lon=37.61)      # ~1 км
-    make_user("moon@x.io", name="Питер", lat=59.93, lon=30.33)      # ~630 км
-    make_user("friends@x.io", name="Друг", lat=55.75, lon=37.62, feeds=("friends",))
+def test_feed_ranks_by_common_interests_then_distance():
+    me = make_user("me@x.io", interests=("Кофейни", "Бег", "Техно", "Аниме"))
+    make_user("far@x.io", name="Далеко", lat=55.95, interests=("Кофейни", "Бег", "Техно"))   # ~22 км, 100%
+    make_user("near@x.io", name="Рядом", lat=55.76, interests=("Кофейни", "Джаз", "Театр"))  # ~1 км, мало общего
+    make_user("same@x.io", name="Тоже", lat=55.80, interests=("Бег", "Техно", "Кофейни"))    # ~6 км, 100%
+    make_user("spb@x.io", name="Питер", lat=59.93, lon=30.33)                                 # ~630 км
 
-    cards = me.get("/api/feed/dating").json()["cards"]
-    assert [c["name"] for c in cards] == ["Рядом", "Далеко"]
-    assert cards[0]["distance_km"] < 2
+    cards = me.get("/api/feed").json()["cards"]
+    assert [c["name"] for c in cards] == ["Тоже", "Далеко", "Рядом"]
+    assert cards[0]["match"] == 100 and set(cards[0]["common"]) == {"Бег", "Техно", "Кофейни"}
+    assert cards[2]["common"] == ["Кофейни"] and cards[2]["match"] < 50
 
-    me.put("/api/profile", json={"max_distance_km": 5})
-    assert [c["name"] for c in me.get("/api/feed/dating").json()["cards"]] == ["Рядом"]
-
-    # В ленту дружбы нельзя без включения показа себя в ней
-    assert me.get("/api/feed/friends").status_code == 409
-    me.put("/api/profile", json={"feeds": {"friends": {"enabled": True}}})
-    assert [c["name"] for c in me.get("/api/feed/friends").json()["cards"]] == ["Друг"]
+    me.put("/api/profile", json={"max_distance_km": 10})
+    assert [c["name"] for c in me.get("/api/feed").json()["cards"]] == ["Тоже", "Рядом"]
 
 
-def test_per_feed_bio():
-    me = make_user("me@x.io", feeds=("dating", "friends"))
-    other = make_user("o@x.io", feeds=("dating", "friends"), bio="Общее")
-    other.put("/api/profile", json={"use_common_bio": False, "feeds": {"friends": {"bio": "Ищу на футбол"}}})
-    assert me.get("/api/feed/friends").json()["cards"][0]["bio"] == "Ищу на футбол"
-    # Для ленты без своего описания берётся общее
-    assert me.get("/api/feed/dating").json()["cards"][0]["bio"] == "Общее"
-    other.put("/api/profile", json={"use_common_bio": True})
-    assert me.get("/api/feed/friends").json()["cards"][0]["bio"] == "Общее"
+def test_gender_preferences_are_mutual():
+    me = make_user("me@x.io", gender="male", looking_for="female")
+    make_user("w1@x.io", name="Ищет мужчин", gender="female", looking_for="male")
+    make_user("w2@x.io", name="Ищет женщин", gender="female", looking_for="female")
+    make_user("m1@x.io", name="Мужчина", gender="male", looking_for="any")
+    assert [c["name"] for c in me.get("/api/feed").json()["cards"]] == ["Ищет мужчин"]
+
+
+def test_survey_validation():
+    c = new_client()
+    register(c, "s@x.io")
+    assert c.put("/api/profile", json={"interests": ["Кофейни", "Бег"]}).status_code == 422
+    assert c.put("/api/profile", json={"interests": ["Кофейни", "Бег", "Выдумка"]}).status_code == 422
+    assert c.put("/api/profile", json={"goals": []}).status_code == 422
+    r = c.put("/api/profile", json={"interests": ["Кофейни", "Бег", "Йога", "Бег"], "goals": ["Дружба"]})
+    assert r.json()["interests"] == ["Кофейни", "Бег", "Йога"] and r.json()["survey_done"]
+    assert c.put("/api/profile", json={"gender": "robot"}).status_code == 422
 
 
 def test_new_photo_requires_reverification():
     me = make_user("me@x.io")
     r = me.post("/api/profile/photo", files={"file": ("b.jpg", jpeg_bytes("blue"), "image/jpeg")})
     assert r.json()["photo_verified"] is False
-    assert me.get("/api/feed/dating").status_code == 409
+    assert me.get("/api/feed").status_code == 409
 
 
 def test_match_chat_and_privacy():
@@ -65,17 +69,18 @@ def test_match_chat_and_privacy():
     b = make_user("b@x.io", name="Боря")
     stranger = make_user("s@x.io", name="Чужой")
 
-    r = a.post("/api/feed/dating/swipe", json={"user_id": b.user_id, "like": True})
+    r = a.post("/api/feed/swipe", json={"user_id": b.user_id, "like": True})
     assert r.json() == {"match": False}
     # До метча чатов нет
     assert a.get("/api/chats").json() == []
 
     with b.websocket_connect("/ws") as ws:
-        r = b.post("/api/feed/dating/swipe", json={"user_id": a.user_id, "like": True})
+        r = b.post("/api/feed/swipe", json={"user_id": a.user_id, "like": True})
         assert r.json()["match"] is True
         conv_id = r.json()["conversation_id"]
         event = ws.receive_json()
         assert event["type"] == "match" and event["user"]["name"] == "Аня"
+        assert set(event["common"]) == {"Кофейни", "Бег", "Техно"}
 
         r = a.post(f"/api/chats/{conv_id}/messages", json={"text": "Привет!"})
         assert r.status_code == 200
@@ -83,7 +88,7 @@ def test_match_chat_and_privacy():
         assert event["type"] == "message" and event["message"]["text"] == "Привет!"
 
     # Свайпнутые анкеты больше не показываются
-    assert all(c["id"] != b.user_id for c in a.get("/api/feed/dating").json()["cards"])
+    assert all(c["id"] != b.user_id for c in a.get("/api/feed").json()["cards"])
 
     r = a.post(f"/api/chats/{conv_id}/media", data={"kind": "image"},
                files={"file": ("p.jpg", jpeg_bytes(), "image/jpeg")})
@@ -102,7 +107,7 @@ def test_match_chat_and_privacy():
 
     assert b.post(f"/api/chats/{conv_id}/messages", json={"kind": "sticker", "text": "love:heart"}).status_code == 200
     chats = b.get("/api/chats").json()
-    assert chats[0]["unread"] == 2 and chats[0]["feeds"] == ["dating"]
+    assert chats[0]["unread"] == 2
     b.post(f"/api/chats/{conv_id}/read")
     assert b.get("/api/chats").json()[0]["unread"] == 0
 
@@ -114,8 +119,8 @@ def test_match_chat_and_privacy():
 def test_call_signaling_relay():
     a = make_user("a@x.io")
     b = make_user("b@x.io")
-    a.post("/api/feed/dating/swipe", json={"user_id": b.user_id, "like": True})
-    conv_id = b.post("/api/feed/dating/swipe", json={"user_id": a.user_id, "like": True}).json()["conversation_id"]
+    a.post("/api/feed/swipe", json={"user_id": b.user_id, "like": True})
+    conv_id = b.post("/api/feed/swipe", json={"user_id": a.user_id, "like": True}).json()["conversation_id"]
     # Один общий event loop для обоих сокетов — как на настоящем сервере
     with TestClient(app) as hub, hub.websocket_connect("/ws", headers=cookie(a)) as wa, \
             hub.websocket_connect("/ws", headers=cookie(b)) as wb:
@@ -134,8 +139,8 @@ def test_call_signaling_relay():
 def test_unmatch_hides_chat():
     a = make_user("a@x.io")
     b = make_user("b@x.io")
-    a.post("/api/feed/dating/swipe", json={"user_id": b.user_id, "like": True})
-    conv_id = b.post("/api/feed/dating/swipe", json={"user_id": a.user_id, "like": True}).json()["conversation_id"]
+    a.post("/api/feed/swipe", json={"user_id": b.user_id, "like": True})
+    conv_id = b.post("/api/feed/swipe", json={"user_id": a.user_id, "like": True}).json()["conversation_id"]
     assert a.delete(f"/api/chats/{conv_id}").status_code == 200
     assert b.get("/api/chats").json() == []
 
@@ -144,8 +149,8 @@ def test_admin_panel():
     boss = make_user("boss@example.com", name="Админ")
     a = make_user("a@x.io", name="Аня")
     b = make_user("b@x.io", name="Боря")
-    a.post("/api/feed/dating/swipe", json={"user_id": b.user_id, "like": True})
-    conv_id = b.post("/api/feed/dating/swipe", json={"user_id": a.user_id, "like": True}).json()["conversation_id"]
+    a.post("/api/feed/swipe", json={"user_id": b.user_id, "like": True})
+    conv_id = b.post("/api/feed/swipe", json={"user_id": a.user_id, "like": True}).json()["conversation_id"]
     a.post(f"/api/chats/{conv_id}/messages", json={"text": "секрет"})
 
     assert a.get("/api/admin/users").status_code == 403

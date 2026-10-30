@@ -92,7 +92,7 @@ def test_telegram_login_creates_user_without_email(monkeypatch):
     assert me["auth_provider"] == "telegram" and me["email"] is None
     assert me["name"] == "Котик"
     assert not me["photo_verified"]  # фото всё равно нужно подтвердить
-    assert c.get("/api/feed/dating").status_code == 409
+    assert c.get("/api/feed").status_code == 409
 
 
 def test_admin_email_auto_promoted():

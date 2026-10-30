@@ -10,7 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import face_verify
-from .config import BASE_DIR, FEEDS, settings
+from .config import BASE_DIR, settings
+from .interests import GENDERS, LOOKING_FOR, MIN_INTERESTS, SURVEY
 from .database import get_db, init_db
 from .deps import current_user
 from .models import Conversation, User
@@ -46,7 +47,10 @@ app.include_router(admin.router)
 def public_config():
     return {
         "app_name": settings.app_name,
-        "feeds": FEEDS,
+        "survey": SURVEY,
+        "genders": GENDERS,
+        "looking_for": LOOKING_FOR,
+        "min_interests": MIN_INTERESTS,
         "telegram_bot_username": settings.telegram_bot_username if settings.telegram_bot_token else None,
         "ice_servers": settings.ice_servers,
         "face_dev_mode": face_verify.is_dev_mode(),

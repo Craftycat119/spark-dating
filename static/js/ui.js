@@ -61,3 +61,9 @@ export function pickMime(candidates) {
   if (!window.MediaRecorder) return null;
   return candidates.find((m) => MediaRecorder.isTypeSupported(m)) || "";
 }
+
+/** Объёмный оранжевый логотип/надпись (фильтр #puff в index.html). */
+export function wordmark(text = "COFI", width = 360, tone = "orange", spacing = 6) {
+  return `<svg class="wordmark" viewBox="0 0 ${width} 170" role="img" aria-label="${esc(text)}">
+    <text x="${width / 2}" y="122" text-anchor="middle" letter-spacing="${spacing}" fill="#ff5b1f" filter="url(#${tone === "cream" ? "puff-cream" : "puff"})">${esc(text)}</text></svg>`;
+}

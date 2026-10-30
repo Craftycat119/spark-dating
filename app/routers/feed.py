@@ -8,11 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import emailer
-from ..config import FEEDS
 from ..database import get_db
 from ..deps import current_user
 from ..geo import bounding_box, haversine_km
-from ..models import Conversation, Match, Notification, ProfileFeed, Swipe, User, utcnow
+from ..interests import compatible, match_score
+from ..models import Conversation, Notification, Swipe, User
 from ..realtime import notify
 from ..serializers import photo_url, public_card
 
@@ -25,41 +25,32 @@ class SwipeIn(BaseModel):
     like: bool
 
 
-def _require_feed_access(user: User, feed: str) -> None:
-    if feed not in FEEDS:
-        raise HTTPException(404, "Такой ленты нет")
+def _require_access(user: User) -> None:
     if not user.is_complete:
         raise HTTPException(409, {"code": "profile_incomplete", "message": "Заполните анкету и подтвердите фото"})
-    row = user.feed(feed)
-    if not row or not row.enabled:
-        raise HTTPException(409, {"code": "feed_disabled", "message": "Включите показ анкеты в этой ленте"})
     if user.lat is None:
         raise HTTPException(409, {"code": "need_location", "message": "Разрешите доступ к геопозиции"})
 
 
-def _visible_in_feed(feed: str):
-    return (
-        select(User)
-        .join(ProfileFeed, ProfileFeed.user_id == User.id)
-        .where(
-            ProfileFeed.feed == feed,
-            ProfileFeed.enabled.is_(True),
-            User.photo_verified.is_(True),
-            User.is_banned.is_(False),
-            User.lat.is_not(None),
-            User.age.is_not(None),
-            User.name != "",
-        )
+def _visible():
+    return select(User).where(
+        User.photo_verified.is_(True),
+        User.is_banned.is_(False),
+        User.lat.is_not(None),
+        User.age.is_not(None),
+        User.gender.is_not(None),
+        User.name != "",
     )
 
 
-@router.get("/{feed}")
-def get_feed(feed: str, limit: int = 10, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    _require_feed_access(user, feed)
+@router.get("")
+def get_feed(limit: int = 10, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Анкеты рядом, сначала с наибольшим совпадением интересов, при равенстве — ближайшие."""
+    _require_access(user)
     limit = max(1, min(limit, 30))
 
-    swiped = select(Swipe.to_user_id).where(Swipe.from_user_id == user.id, Swipe.feed == feed)
-    q = _visible_in_feed(feed).where(User.id != user.id, User.id.not_in(swiped))
+    swiped = select(Swipe.to_user_id).where(Swipe.from_user_id == user.id)
+    q = _visible().where(User.id != user.id, User.id.not_in(swiped))
     radius = user.max_distance_km
     if radius < 20000:
         lat_min, lat_max, lon_min, lon_max = bounding_box(user.lat, user.lon, radius)
@@ -67,75 +58,76 @@ def get_feed(feed: str, limit: int = 10, user: User = Depends(current_user), db:
         if lon_min >= -180 and lon_max <= 180:
             q = q.where(User.lon.between(lon_min, lon_max))
 
+    my_interests, my_goals = user.interests, user.goals
     scored = []
-    for other in db.scalars(q).unique():
+    for other in db.scalars(q):
+        if not other.survey_done:
+            continue
+        if not compatible(user.gender, user.looking_for, other.gender, other.looking_for):
+            continue
         d = haversine_km(user.lat, user.lon, other.lat, other.lon)
-        if d <= radius:
-            scored.append((d, other))
-    scored.sort(key=lambda x: x[0])
-    return {"feed": feed, "cards": [public_card(o, feed, d) for d, o in scored[:limit]]}
+        if d > radius:
+            continue
+        score, common = match_score(my_interests, my_goals, other.interests, other.goals)
+        scored.append((score, d, common, other))
+    # Группы по 10% совпадения, внутри группы — по расстоянию
+    scored.sort(key=lambda x: (-(x[0] // 10), x[1]))
+    return {"cards": [public_card(o, s, c, d) for s, d, c, o in scored[:limit]]}
 
 
-def _notify_match(db: Session, conv: Conversation, feed: str, background: BackgroundTasks) -> None:
+def _notify_match(db: Session, conv: Conversation, background: BackgroundTasks) -> None:
     for me, other in ((conv.user_a, conv.user_b), (conv.user_b, conv.user_a)):
+        _, common = match_score(me.interests, me.goals, other.interests, other.goals)
         payload = {
             "conversation_id": conv.id,
-            "feed": feed,
-            "feed_title": FEEDS[feed],
+            "common": common,
             "user": {"id": other.id, "name": other.name, "photo_url": photo_url(other)},
         }
         db.add(Notification(user_id=me.id, kind="match", payload=json.dumps(payload, ensure_ascii=False)))
         notify(me.id, {"type": "match", **payload})
         if me.email and me.email_verified and me.email_notifications:
-            background.add_task(emailer.send_match_email, me.email, other.name, FEEDS[feed])
+            background.add_task(emailer.send_match_email, me.email, other.name, common)
     db.commit()
 
 
-@router.post("/{feed}/swipe")
-def swipe(feed: str, data: SwipeIn, background: BackgroundTasks, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    _require_feed_access(user, feed)
+@router.post("/swipe")
+def swipe(data: SwipeIn, background: BackgroundTasks, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    _require_access(user)
     if data.user_id == user.id:
         raise HTTPException(400, "Нельзя лайкнуть себя")
-    target = db.scalar(_visible_in_feed(feed).where(User.id == data.user_id))
+    target = db.scalar(_visible().where(User.id == data.user_id))
     if not target:
         raise HTTPException(404, "Анкета больше не доступна")
 
-    existing = db.scalar(
-        select(Swipe).where(Swipe.from_user_id == user.id, Swipe.to_user_id == target.id, Swipe.feed == feed)
-    )
+    existing = db.scalar(select(Swipe).where(Swipe.from_user_id == user.id, Swipe.to_user_id == target.id))
     if existing:
         existing.liked = data.like
-        existing.created_at = utcnow()
     else:
-        db.add(Swipe(from_user_id=user.id, to_user_id=target.id, feed=feed, liked=data.like))
+        db.add(Swipe(from_user_id=user.id, to_user_id=target.id, liked=data.like))
     db.commit()
 
     if not data.like:
         return {"match": False}
 
     reverse = db.scalar(
-        select(Swipe).where(
-            Swipe.from_user_id == target.id, Swipe.to_user_id == user.id, Swipe.feed == feed, Swipe.liked.is_(True)
-        )
+        select(Swipe).where(Swipe.from_user_id == target.id, Swipe.to_user_id == user.id, Swipe.liked.is_(True))
     )
     if not reverse:
         return {"match": False}
 
     a, b = sorted((user.id, target.id))
     conv = db.scalar(select(Conversation).where(Conversation.user_a_id == a, Conversation.user_b_id == b))
-    if not conv:
+    is_new = conv is None or not conv.active
+    if conv is None:
         conv = Conversation(user_a_id=a, user_b_id=b)
         db.add(conv)
-        db.flush()
     conv.active = True
-    is_new = not any(m.feed == feed for m in conv.matches)
-    if is_new:
-        conv.matches.append(Match(feed=feed))
     db.commit()
     db.refresh(conv)
     if is_new:
-        _notify_match(db, conv, feed, background)
-    return {"match": True, "conversation_id": conv.id, "user": public_card(target, feed)}
+        _notify_match(db, conv, background)
+    score, common = match_score(user.interests, user.goals, target.interests, target.goals)
+    return {"match": True, "conversation_id": conv.id, "user": public_card(target, score, common)}
 
 
 @notifications_router.get("")

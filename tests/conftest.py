@@ -42,11 +42,15 @@ def register(client, email, password="Secret123"):
     return r.json()
 
 
-def make_user(email, name="Тест", lat=55.75, lon=37.61, feeds=("dating",), age=25, bio="Привет"):
+DEFAULT_INTERESTS = ("Кофейни", "Бег", "Техно")
+
+
+def make_user(email, name="Тест", lat=55.75, lon=37.61, age=25, bio="Привет", gender="female",
+              looking_for="any", interests=DEFAULT_INTERESTS, goals=("Свидания",)):
     c = new_client()
     register(c, email)
-    r = c.put("/api/profile", json={"name": name, "age": age, "bio": bio,
-                                    "feeds": {f: {"enabled": True} for f in feeds}})
+    r = c.put("/api/profile", json={"name": name, "age": age, "bio": bio, "gender": gender,
+                                    "looking_for": looking_for, "interests": list(interests), "goals": list(goals)})
     assert r.status_code == 200, r.text
     r = c.post("/api/profile/photo", files={"file": ("a.jpg", jpeg_bytes(), "image/jpeg")})
     assert r.status_code == 200, r.text

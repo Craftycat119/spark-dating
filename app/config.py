@@ -38,7 +38,7 @@ def _list(name: str) -> list[str]:
 
 @dataclass
 class Settings:
-    app_name: str = os.environ.get("APP_NAME", "Spark")
+    app_name: str = os.environ.get("APP_NAME", "COFI")
     base_url: str = os.environ.get("BASE_URL", "http://localhost:8000")
     secret_key: str = os.environ.get("SECRET_KEY", "dev-secret-change-me")
     dev_mode: bool = _bool("DEV_MODE", True)
@@ -93,9 +93,3 @@ class Settings:
 settings = Settings()
 settings.data_dir.mkdir(parents=True, exist_ok=True)
 settings.media_dir.mkdir(parents=True, exist_ok=True)
-
-FEEDS: dict[str, str] = {
-    "dating": "Знакомства",
-    "sex": "18+",
-    "friends": "Дружба и компания",
-}
