@@ -386,7 +386,39 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
 
-/* ---------- Вход ---------- */
-.auth-hero { padding: 4px 0 22px; }
-.auth-hero .wordmark { margin: -6px -12px 4px; }
-.auth-hero .lead { margin-top: 12px; }
+/* ---------- Вход: 3D-сцена с вязаным узлом ---------- */
+.hero3d { position: relative; margin: -20px -16px 0; height: min(66dvh, 600px); min-height: 460px; overflow: hidden; isolation: isolate; }
+.hero3d .stage { position: absolute; inset: 0; z-index: -1; display: grid; place-items: center; }
+.hero3d .stage canvas { width: 100% !important; height: 100% !important; display: block; opacity: 0; animation: reveal 1.4s var(--ease) .1s forwards; }
+.hero3d .stage .wordmark { width: 92%; }
+.hero3d::after { /* затемнение снизу, чтобы текст читался поверх объекта */
+  content: ""; position: absolute; inset: 35% 0 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(to bottom, transparent, rgba(18, 17, 16, .55) 40%, var(--bg) 92%);
+}
+.hero3d .brand { position: absolute; top: calc(18px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); font-weight: 500; font-size: 17px; letter-spacing: -0.02em; color: var(--text); }
+.hero3d .brand sup { color: var(--orange); font-size: 13px; }
+.hero-copy { position: absolute; left: 16px; right: 16px; bottom: 64px; text-align: center; }
+.hero-copy h1 { font-size: clamp(34px, 9.6vw, 46px); font-weight: 500; letter-spacing: -0.045em; line-height: 1; text-shadow: 0 2px 30px rgba(18, 17, 16, .7); }
+.hero-copy p { margin: 14px auto 0; max-width: 30ch; color: #d6cec5; font-size: 16px; text-shadow: 0 1px 14px rgba(18, 17, 16, .9); }
+.sheet { position: relative; margin-top: -36px; box-shadow: 0 -20px 50px -20px rgba(0, 0, 0, .7); animation: rise .8s var(--ease) .15s both; }
+@keyframes reveal { from { opacity: 0; transform: scale(1.06); } to { opacity: 1; transform: none; } }
+@keyframes rise { from { opacity: 0; transform: translateY(30px); } }
+
+/* ---------- Метч: вязаное сердце ---------- */
+.heart-stage { width: min(78vw, 300px); aspect-ratio: 1; margin: -30px auto -18px; display: grid; place-items: center; }
+.heart-stage canvas { width: 100% !important; height: 100% !important; animation: reveal 1s var(--ease) both; }
+.match-title { font-size: clamp(54px, 16vw, 76px); font-weight: 600; letter-spacing: -0.06em; color: #fff7f1; text-shadow: 0 6px 30px rgba(90, 20, 0, .5); }
+.overlay.match .pair img { width: 104px; height: 132px; }
+
+/* ---------- Переходы и микродвижение ---------- */
+::view-transition-old(root) { animation: vt-out .22s ease-in both; }
+::view-transition-new(root) { animation: vt-in .38s var(--ease) both; }
+@keyframes vt-out { to { opacity: 0; transform: scale(.985); } }
+@keyframes vt-in { from { opacity: 0; transform: translateY(14px); } }
+.chips .chip { animation: chip-in .5s var(--ease) both; animation-delay: calc(var(--i, 0) * 22ms); }
+@keyframes chip-in { from { opacity: 0; transform: translateY(8px) scale(.96); } }
+.screen::before { /* тёплое свечение сверху экрана, как на референсах */
+  content: ""; position: fixed; z-index: -1; left: 50%; top: -30vh; width: 140vw; height: 60vh; transform: translateX(-50%);
+  background: radial-gradient(closest-side, rgba(255, 91, 31, .16), transparent); pointer-events: none;
+}
+.nav a.on { box-shadow: var(--puff), 0 8px 26px -6px rgba(255, 91, 31, .7); }

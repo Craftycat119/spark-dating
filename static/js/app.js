@@ -16,6 +16,20 @@ const state = {
   shownMatches: new Set(),
 };
 
+// ---------------- 3D ----------------
+
+/** Подгружает three.js только когда нужен объёмный объект; без WebGL остаётся SVG-логотип. */
+function mount3d(el, shape) {
+  if (!el) return;
+  import("./puff3d.js")
+    .then(({ mountPuff }) => {
+      if (!el.isConnected) return;
+      const fallback = el.querySelector(".wordmark");
+      if (mountPuff(el, { shape }) && fallback) fallback.remove();
+    })
+    .catch(() => { /* без 3D всё работает */ });
+}
+
 // ---------------- Запуск и маршрутизация ----------------
 
 async function boot() {
@@ -74,10 +88,17 @@ function route() {
   }
 }
 
-function screen(html, { nav = true } = {}) {
-  app.replaceChildren(h(`<main class="screen ${nav ? "" : "no-nav"}">${html}</main>`));
-  if (nav) app.append(navBar());
-  return app.firstElementChild;
+function screen(html, { nav = true, cls = "" } = {}) {
+  const main = h(`<main class="screen ${nav ? "" : "no-nav"} ${cls}">${html}</main>`);
+  const swap = () => {
+    app.replaceChildren(main);
+    if (nav) app.append(navBar());
+  };
+  // Плавная смена экранов там, где браузер умеет View Transitions
+  if (document.startViewTransition && !matchMedia("(prefers-reduced-motion: reduce)").matches && app.firstElementChild) {
+    document.startViewTransition(swap);
+  } else swap();
+  return main;
 }
 
 function navBar() {
@@ -110,13 +131,8 @@ async function reloadMe() {
 
 function renderAuth(mode = "login") {
   const tg = state.config.telegram_bot_username;
-  const root = screen(`
-    <section class="auth-hero">
-      ${wordmark("COFI")}
-      <h1>Знакомства, где общее находится сразу</h1>
-      <p class="lead">Отметьте, что любите, и мы покажем людей рядом с похожими интересами.</p>
-    </section>
-    <div class="panel stack">
+  const sheet = `
+    <div class="panel stack sheet">
       <div class="tabs" role="tablist">
         <button role="tab" data-mode="login" class="${mode === "login" ? "on" : ""}">Вход</button>
         <button role="tab" data-mode="register" class="${mode === "register" ? "on" : ""}">Регистрация</button>
@@ -132,8 +148,26 @@ function renderAuth(mode = "login") {
       </form>
       ${tg ? `<div class="divider">или</div><div id="tg-login" style="display:flex;justify-content:center;min-height:48px"></div>
         <p class="hint" style="text-align:center">Через Telegram почта и пароль не нужны, только подтверждение фото.</p>` : ""}
-    </div>`, { nav: false });
-
+    </div>`;
+  // Повторный вызов (переключение вкладок) меняет только панель, 3D-сцена остаётся
+  let root = $(".screen.auth");
+  if (root) {
+    const fresh = h(sheet);
+    fresh.style.animation = "none";
+    $(".sheet", root).replaceWith(fresh);
+  } else {
+    root = screen(`
+    <section class="hero3d">
+      <div class="stage" aria-hidden="true">${wordmark("COFI")}</div>
+      <span class="brand">cofi<sup>°</sup></span>
+      <div class="hero-copy">
+        <h1>Знакомства, где общее находится сразу</h1>
+        <p>Отметьте, что любите, и мы покажем людей рядом с похожими интересами.</p>
+      </div>
+    </section>
+${sheet}`, { nav: false, cls: "auth" });
+    mount3d($(".stage", root), "knot");
+  }
   $$("[data-mode]", root).forEach((b) => (b.onclick = () => renderAuth(b.dataset.mode)));
   const form = $("form", root);
   const err = $("#auth-error", root);
@@ -366,7 +400,7 @@ function renderSurvey({ editing = false } = {}) {
         <div class="survey-head"><span class="muted small">${editing ? "Интересы" : "Пара вопросов о вас"}</span><span class="survey-count">${i + 1}/${survey.length}</span></div>
         <h1>${esc(q.title)}</h1>
         ${q.hint ? `<p class="muted">${esc(q.hint)}</p>` : ""}
-        <div class="chips">${q.options.map((o) => `<button type="button" class="chip" aria-pressed="${set.has(o)}">${esc(o)}</button>`).join("")}</div>
+        <div class="chips">${q.options.map((o, k) => `<button type="button" class="chip" style="--i:${k}" aria-pressed="${set.has(o)}">${esc(o)}</button>`).join("")}</div>
         <p class="error-text" hidden></p>
         <div class="row" style="margin-top:8px">
           ${i > 0 ? `<button class="btn ghost" data-back>Назад</button>` : editing ? `<a class="btn ghost" href="#/settings">Отмена</a>` : ""}
@@ -640,6 +674,7 @@ async function renderFeed() {
     el.style.opacity = 0;
     try {
       const res = await api.post("/api/feed/swipe", { user_id: card.id, like });
+      navigator.vibrate?.(like ? 12 : 6);
       if (res.match) showMatch({ conversation_id: res.conversation_id, user: res.user, common: res.user.common });
     } catch (ex) {
       toast(ex.message, { error: true });
@@ -668,16 +703,19 @@ function showMatch({ conversation_id, user, common = [] }) {
   state.shownMatches.add(conversation_id);
   const el = h(`<div class="overlay match" role="dialog" aria-label="Взаимная симпатия">
     <div class="match-modal">
-      ${wordmark("Взаимно", 860, "cream", 30)}
+      <div class="heart-stage" aria-hidden="true"></div>
+      <h1 class="match-title">Взаимно</h1>
       <div class="pair"><img src="${esc(state.me.photo_url)}" alt="Вы"><img src="${esc(user.photo_url)}" alt="${esc(user.name)}"></div>
       <p>Вы и ${esc(user.name)} понравились друг другу.${common.length ? " У вас общее:" : ""}</p>
       ${common.length ? `<div class="chips">${common.slice(0, 6).map((x) => `<span class="chip static">${esc(x)}</span>`).join("")}</div>` : ""}
       <button class="btn dark block" data-chat>Написать сообщение</button>
       <button class="btn ghost block" data-close>Смотреть дальше</button>
     </div></div>`);
+  document.body.append(el);
+  mount3d($(".heart-stage", el), "heart");
+  navigator.vibrate?.([20, 60, 30]);
   $("[data-chat]", el).onclick = () => { el.remove(); go(`#/chat/${conversation_id}`); };
   $("[data-close]", el).onclick = () => el.remove();
-  document.body.append(el);
 }
 
 // ---------------- Чаты ----------------
