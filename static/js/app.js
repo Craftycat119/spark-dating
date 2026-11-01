@@ -6,6 +6,7 @@ import { runScanner } from "./scanner.js";
 import { PACKS } from "./stickers.js";
 import { mountThread } from "./threads.js";
 import { renderGuide } from "./guide.js";
+import { currentHash, navigate, onRoute } from "./router.js";
 import { getThemePref, resolvedTheme, setTheme } from "./theme.js";
 import { $, $$, confirmDialog, esc, fmtDay, fmtDur, fmtShort, fmtTime, h, toast, wordmark } from "./ui.js";
 
@@ -47,7 +48,7 @@ async function boot() {
     state.me = null;
   }
   if (state.me) afterLogin();
-  window.addEventListener("hashchange", route);
+  onRoute(route);
   route();
 }
 
@@ -63,10 +64,7 @@ function afterLogin() {
   refreshUnread();
 }
 
-function go(hash) {
-  if (location.hash === hash) route();
-  else location.hash = hash;
-}
+const go = navigate;
 
 function onboardingStep(me) {
   if (!me.name || !me.age || !me.gender || !me.looking_for) return "about";
@@ -80,11 +78,11 @@ function onboardingStep(me) {
 function route() {
   closeChat();
   $(".profile-view")?.remove();
-  const page = location.hash.split("/")[1];
+  const page = currentHash().split("/")[1];
   if (page === "guide") return showGuide();
   if (!state.me) return renderAuth();
   const step = onboardingStep(state.me);
-  const [, name, arg] = location.hash.split("/");
+  const [, name, arg] = currentHash().split("/");
   if (step && name !== "settings") return renderOnboarding(step);
   switch (name) {
     case "chats": return renderChats();
@@ -108,7 +106,7 @@ function screen(html, { nav = true, cls = "" } = {}) {
 }
 
 function navBar() {
-  const cur = location.hash.split("/")[1] || "feed";
+  const cur = currentHash().split("/")[1] || "feed";
   const item = (key, label, icon) =>
     `<a href="#/${key}" class="${cur === key || (key === "chats" && cur === "chat") ? "on" : ""}">${icon}<span>${label}</span>${
       key === "chats" && state.unread ? `<b class="badge">${state.unread}</b>` : ""}</a>`;
@@ -1301,7 +1299,7 @@ on("message", (d) => {
   const m = d.message;
   if (!state.me || m.sender_id === state.me.id || state.openChat === m.conversation_id) return;
   refreshUnread();
-  if (location.hash.startsWith("#/chats")) renderChats();
+  if (currentHash().startsWith("#/chats")) renderChats();
   api.get(`/api/chats/${m.conversation_id}?limit=1`).then((c) => {
     const text = previewText(m, state.me.id);
     toast(`${c.user.name}: ${text}`, { image: c.user.photo_url, onClick: () => go(`#/chat/${m.conversation_id}`) });
