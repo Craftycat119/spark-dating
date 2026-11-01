@@ -15,7 +15,7 @@ from .interests import GENDERS, LOOKING_FOR, MIN_INTERESTS, SURVEY
 from .database import get_db, init_db
 from .deps import current_user
 from .models import Conversation, User
-from .routers import admin, auth, chat, feed, profile
+from .routers import admin, auth, chat, feed, profile, users
 from .storage import resolve
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -40,6 +40,7 @@ app.include_router(feed.router)
 app.include_router(feed.notifications_router)
 app.include_router(chat.router)
 app.include_router(chat.ws_router)
+app.include_router(users.router)
 app.include_router(admin.router)
 
 
@@ -64,7 +65,7 @@ def media(rel: str, user: User = Depends(current_user), db: Session = Depends(ge
     if not path:
         raise HTTPException(404)
     parts = rel.split("/")
-    if parts[0] == "photos":
+    if parts[0] in ("photos", "gallery"):
         pass
     elif parts[0] == "selfies":
         if not user.is_admin and user.selfie_path != rel:

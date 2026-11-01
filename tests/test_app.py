@@ -182,3 +182,41 @@ def test_delete_own_account():
     a = make_user("a@x.io")
     assert a.delete("/api/profile").status_code == 200
     assert a.get("/api/auth/me").status_code == 401
+
+
+def test_gallery_photos():
+    me = make_user("me@x.io")
+    other = make_user("o@x.io")
+    for i in range(6):
+        r = me.post("/api/profile/photos", files={"file": (f"{i}.jpg", jpeg_bytes(), "image/jpeg")})
+        assert r.status_code == 200
+    assert me.post("/api/profile/photos", files={"file": ("7.jpg", jpeg_bytes(), "image/jpeg")}).status_code == 400
+    photos = me.get("/api/profile").json()["photos"]
+    assert len(photos) == 6
+    assert other.get(photos[0]["url"]).status_code == 200  # фото анкеты видят другие
+    assert me.get("/api/feed").status_code == 200
+    card = other.get("/api/feed").json()["cards"][0]
+    assert card["photos_count"] == 6
+    r = me.delete(f"/api/profile/photos/{photos[0]['id']}")
+    assert len(r.json()["photos"]) == 5
+    assert other.delete(f"/api/profile/photos/{photos[1]['id']}").status_code == 404  # чужое не удалить
+
+
+def test_profile_details_and_messaging_only_after_match():
+    me = make_user("me@x.io", gender="male", looking_for="female")
+    her = make_user("her@x.io", name="Ника", gender="female", looking_for="male",
+                    interests=("Кофейни", "Бег", "Йога"))
+    him = make_user("him@x.io", name="Глеб", gender="male", looking_for="female")
+    her.post("/api/profile/photos", files={"file": ("g.jpg", jpeg_bytes(), "image/jpeg")})
+
+    p = me.get(f"/api/users/{her.user_id}").json()
+    assert p["name"] == "Ника" and len(p["photos"]) == 2
+    assert set(p["common"]) == {"Кофейни", "Бег"} and p["conversation_id"] is None
+    assert me.get(f"/api/users/{him.user_id}").status_code == 404  # не подходит по предпочтениям
+
+    me.post("/api/feed/swipe", json={"user_id": her.user_id, "like": True})
+    assert me.get(f"/api/users/{her.user_id}").json()["liked"] is True
+    assert me.get("/api/chats").json() == []  # без пары писать некуда
+
+    conv = her.post("/api/feed/swipe", json={"user_id": me.user_id, "like": True}).json()["conversation_id"]
+    assert me.get(f"/api/users/{her.user_id}").json()["conversation_id"] == conv

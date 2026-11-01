@@ -32,7 +32,7 @@ def _require_access(user: User) -> None:
         raise HTTPException(409, {"code": "need_location", "message": "Разрешите доступ к геопозиции"})
 
 
-def _visible():
+def visible_users():
     return select(User).where(
         User.photo_verified.is_(True),
         User.is_banned.is_(False),
@@ -50,7 +50,7 @@ def get_feed(limit: int = 10, user: User = Depends(current_user), db: Session = 
     limit = max(1, min(limit, 30))
 
     swiped = select(Swipe.to_user_id).where(Swipe.from_user_id == user.id)
-    q = _visible().where(User.id != user.id, User.id.not_in(swiped))
+    q = visible_users().where(User.id != user.id, User.id.not_in(swiped))
     radius = user.max_distance_km
     if radius < 20000:
         lat_min, lat_max, lon_min, lon_max = bounding_box(user.lat, user.lon, radius)
@@ -72,7 +72,7 @@ def get_feed(limit: int = 10, user: User = Depends(current_user), db: Session = 
         scored.append((score, d, common, other))
     # Группы по 10% совпадения, внутри группы — по расстоянию
     scored.sort(key=lambda x: (-(x[0] // 10), x[1]))
-    return {"cards": [public_card(o, s, c, d) for s, d, c, o in scored[:limit]]}
+    return {"total": len(scored), "cards": [public_card(o, s, c, d) for s, d, c, o in scored[:limit]]}
 
 
 def _notify_match(db: Session, conv: Conversation, background: BackgroundTasks) -> None:
@@ -95,7 +95,7 @@ def swipe(data: SwipeIn, background: BackgroundTasks, user: User = Depends(curre
     _require_access(user)
     if data.user_id == user.id:
         raise HTTPException(400, "Нельзя лайкнуть себя")
-    target = db.scalar(_visible().where(User.id == data.user_id))
+    target = db.scalar(visible_users().where(User.id == data.user_id))
     if not target:
         raise HTTPException(404, "Анкета больше не доступна")
 

@@ -108,6 +108,7 @@ async function openUser(id) {
       <figure><img src="${esc(u.photo_url || "")}" alt=""><figcaption>Фото анкеты</figcaption></figure>
       <figure><img src="${esc(u.selfie_url || "")}" alt=""><figcaption>Кадр со сканера${u.face_score != null ? `, сходство ${u.face_score.toFixed(2)}` : ""}</figcaption></figure>
     </div>
+    ${u.gallery.length ? `<div class="photos" style="grid-template-columns:repeat(3,1fr)">${u.gallery.map((g) => `<figure><a href="${esc(g)}" target="_blank"><img src="${esc(g)}" alt=""></a></figure>`).join("")}</div>` : ""}
     <div class="actions">
       <button class="btn quiet" data-ban>${u.is_banned ? "Разблокировать" : "Заблокировать"}</button>
       <button class="btn quiet" data-reverify>Сбросить проверку фото</button>

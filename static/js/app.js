@@ -4,6 +4,7 @@ import { icons } from "./icons.js";
 import { recordCircle, VoiceRecorder } from "./recorder.js";
 import { runScanner } from "./scanner.js";
 import { PACKS } from "./stickers.js";
+import { mountThread } from "./threads.js";
 import { $, $$, confirmDialog, esc, fmtDay, fmtDur, fmtShort, fmtTime, h, toast, wordmark } from "./ui.js";
 
 const app = document.getElementById("app");
@@ -556,29 +557,35 @@ async function refreshLocationSilently() {
   } catch { /* тихо */ }
 }
 
-// ---------------- Лента ----------------
+// ---------------- Лента «Нити» ----------------
 
-function distanceText(km) {
-  if (km == null) return ["", ""];
-  return km < 1 ? ["<1", "км от вас"] : [String(Math.round(km)), "км от вас"];
+function plural(n, one, few, many) {
+  const a = n % 10, b = n % 100;
+  if (a === 1 && b !== 11) return one;
+  if (a >= 2 && a <= 4 && (b < 12 || b > 14)) return few;
+  return many;
 }
+
+const kmText = (km) => (km == null ? "" : km < 1 ? "меньше 1 км от вас" : `${Math.round(km)} км от вас`);
 
 async function renderFeed() {
   const root = screen(`
-    <div class="topbar"><span class="logo-small">COFI</span><span class="muted small">Сначала самые похожие</span></div>
-    <div class="deck" aria-live="polite"><div class="skeleton"></div></div>
-    <div class="swipe-actions" hidden>
-      <button class="nope" aria-label="Пропустить">${icons.x}</button>
-      <button class="like" aria-label="Нравится">${icons.heart}</button>
-    </div>`);
+    <div class="topbar"><span class="logo">cofi<span>°</span></span><span class="counter"></span></div>
+    <div class="deck" aria-live="polite"><div class="skeleton" style="position:relative;height:420px"></div></div>
+    <div class="btns" hidden>
+      <div class="bw"><button class="skip" aria-label="Дальше">${icons.x}</button><span>Дальше</span></div>
+      <div class="bw"><button class="like" aria-label="Нравится">${icons.heart}</button><span>Нравится</span></div>
+    </div>
+    <p class="swipe-hint" hidden>Свайп вниз: нравится, вверх: дальше. Нажмите на фото, чтобы открыть анкету</p>`, { cls: "feed" });
   const deck = $(".deck", root);
-  const actions = $(".swipe-actions", root);
-  let cards = [];
-  let busy = false;
-  let loading = false;
+  const btns = $(".btns", root);
+  const hint = $(".swipe-hint", root);
+  const counter = $(".counter", root);
+  let cards = [], total = 0, seen = 0, busy = false, loading = false, thread = null;
 
   const empty = (title, text, btnLabel, fn) => {
-    actions.hidden = true;
+    btns.hidden = hint.hidden = true;
+    counter.textContent = "";
     deck.replaceChildren(h(`<div class="empty"><h1>${title}</h1><p class="lead">${text}</p>${btnLabel ? `<button class="btn">${btnLabel}</button>` : ""}</div>`));
     if (fn) $(".btn", deck).onclick = fn;
   };
@@ -588,9 +595,10 @@ async function renderFeed() {
     loading = true;
     try {
       const res = await api.get("/api/feed?limit=10");
+      total = seen + res.total;
       const known = new Set(cards.map((c) => c.id));
       cards.push(...res.cards.filter((c) => !known.has(c.id)));
-      draw();
+      if (!thread) draw();
     } catch (ex) {
       if (ex.code === "need_location") {
         empty("Нужна геопозиция", "Без неё не получится найти людей рядом.", "Разрешить", async () => {
@@ -601,101 +609,140 @@ async function renderFeed() {
   }
 
   function draw() {
-    if (!cards.length) {
+    const c = cards[0];
+    if (!c) {
+      thread = null;
       return empty("Рядом пока никого", `В радиусе ${state.me.max_distance_km} км новых анкет нет. Увеличьте радиус или добавьте интересов.`, "Открыть профиль", () => go("#/settings"));
     }
-    actions.hidden = false;
-    deck.replaceChildren(...cards.slice(0, 2).reverse().map((c, i, arr) => cardEl(c, i === arr.length - 1)));
-    bindDrag($(".card.top", deck));
-  }
-
-  function cardEl(c, top) {
-    const [dist, distLabel] = distanceText(c.distance_km);
-    const rest = c.interests.filter((x) => !c.common.includes(x)).slice(0, Math.max(0, 4 - c.common.length));
-    return h(`<article class="card ${top ? "top" : ""}" aria-label="${esc(c.name)}, ${c.age}">
-      <div class="photo" style="background-image:url('${esc(c.photo_url)}')">
-        ${c.verified ? `<span class="verified">${icons.check} Фото подтверждено</span>` : ""}
-        <div class="stamp yes">Да</div><div class="stamp no">Нет</div>
-        <div class="name">${esc(c.name)} <span>${c.age ?? ""}</span></div>
-      </div>
-      <div class="info">
-        <div class="stats">
-          <div class="hot"><b>${c.match}%</b><span>совпадение интересов</span></div>
-          <div><b>${c.common.length}</b><span>общих увлечений</span></div>
-          <div><b>${dist}</b><span>${distLabel}</span></div>
-        </div>
-        <div class="chips common">${c.common.slice(0, 5).map((x) => `<span class="chip static hot">${esc(x)}</span>`).join("")}${
-          rest.map((x) => `<span class="chip static">${esc(x)}</span>`).join("")}</div>
-        ${c.bio ? `<p class="bio">${esc(c.bio)}</p>` : ""}
-      </div></article>`);
-  }
-
-  function bindDrag(el) {
-    if (!el) return;
-    let x0 = 0, y0 = 0, dx = 0, dy = 0, dragging = false;
-    const yes = $(".stamp.yes", el), no = $(".stamp.no", el);
-    el.addEventListener("pointerdown", (e) => {
-      if (busy) return;
-      dragging = true; x0 = e.clientX; y0 = e.clientY; dx = dy = 0;
-      el.setPointerCapture(e.pointerId);
-      el.classList.add("dragging");
-    });
-    el.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
-      dx = e.clientX - x0; dy = e.clientY - y0;
-      el.style.transform = `translate(${dx}px, ${dy * 0.4}px) rotate(${dx / 18}deg)`;
-      yes.style.opacity = Math.max(0, Math.min(1, dx / 100));
-      no.style.opacity = Math.max(0, Math.min(1, -dx / 100));
-    });
-    const end = () => {
-      if (!dragging) return;
-      dragging = false;
-      el.classList.remove("dragging");
-      if (Math.abs(dx) > 110) decide(dx > 0);
-      else {
-        el.classList.add("anim");
-        el.style.transform = "";
-        yes.style.opacity = no.style.opacity = 0;
-        setTimeout(() => el.classList.remove("anim"), 450);
-      }
-    };
-    el.addEventListener("pointerup", end);
-    el.addEventListener("pointercancel", end);
+    btns.hidden = hint.hidden = false;
+    counter.textContent = `${seen + 1} из ${Math.max(total, seen + 1)} рядом`;
+    const rest = c.interests.filter((x) => !c.common.includes(x));
+    deck.replaceChildren(h(`<div>
+      <article class="person enter">
+        <button class="ava" aria-label="Открыть анкету: ${esc(c.name)}">
+          ${c.photo_url ? `<img src="${esc(c.photo_url)}" alt="">` : esc(c.name.charAt(0))}
+          ${c.photos_count ? `<span class="more">+${c.photos_count} фото</span>` : ""}
+        </button>
+        <div class="pname">${esc(c.name)}<span>, ${c.age}</span></div>
+        <div class="meta">${[kmText(c.distance_km), c.verified ? "фото подтверждено" : ""].filter(Boolean).join(" · ")}</div>
+        ${c.bio ? `<p class="pbio">${esc(c.bio)}</p>` : ""}
+      </article>
+      <div class="shared-lbl">${c.common.length
+        ? `У вас общего: <b>${c.common.length} ${plural(c.common.length, "интерес", "интереса", "интересов")}</b> · совпадение ${c.match}%`
+        : "Общих интересов пока нет, но можно познакомиться"}</div>
+      <div class="thread"></div>
+      ${rest.length ? `<p class="rest">Ещё интересы: ${esc(rest.slice(0, 8).join(", "))}</p>` : ""}
+    </div>`));
+    $(".ava", deck).onclick = () => openProfile(c.id, { onDecide: decide });
+    thread = mountThread($(".thread", deck), c.common.slice(0, 6));
   }
 
   async function decide(like) {
-    const el = $(".card.top", deck);
-    const card = cards[0];
-    if (!el || !card || busy) return;
+    const c = cards[0];
+    if (!c || busy || !thread) return;
     busy = true;
-    $(like ? ".stamp.yes" : ".stamp.no", el).style.opacity = 1;
-    el.classList.add("anim");
-    el.style.transform = `translate(${like ? 140 : -140}%, 30px) rotate(${like ? 24 : -24}deg)`;
-    el.style.opacity = 0;
-    try {
-      const res = await api.post("/api/feed/swipe", { user_id: card.id, like });
-      navigator.vibrate?.(like ? 12 : 6);
-      if (res.match) showMatch({ conversation_id: res.conversation_id, user: res.user, common: res.user.common });
-    } catch (ex) {
-      toast(ex.message, { error: true });
-    }
-    await new Promise((r) => setTimeout(r, 250));
+    $$("button", btns).forEach((b) => (b.disabled = true));
+    navigator.vibrate?.(like ? 12 : 6);
+    const request = api.post("/api/feed/swipe", { user_id: c.id, like }).catch((ex) => { toast(ex.message, { error: true }); return {}; });
+    const [res] = await Promise.all([request, thread.play(like ? "like" : "skip")]);
+    if (res.match) showMatch({ conversation_id: res.conversation_id, user: res.user, common: res.user.common });
     cards.shift();
+    seen++;
     busy = false;
+    $$("button", btns).forEach((b) => (b.disabled = false));
+    thread = null;
     draw();
     if (cards.length < 3) load();
   }
 
-  $(".nope", actions).onclick = () => decide(false);
-  $(".like", actions).onclick = () => decide(true);
+  $(".skip", btns).onclick = () => decide(false);
+  $(".like", btns).onclick = () => decide(true);
+
+  // Свайп по вертикали: вниз — нравится, вверх — дальше (как в макете)
+  let y0 = null;
+  deck.addEventListener("pointerdown", (e) => { if (!e.target.closest(".ava")) y0 = e.clientY; });
+  deck.addEventListener("pointerup", (e) => {
+    if (y0 === null) return;
+    const dy = e.clientY - y0;
+    y0 = null;
+    if (dy > 80) decide(true);
+    else if (dy < -80) decide(false);
+  });
+  deck.addEventListener("pointercancel", () => (y0 = null));
   const keys = (e) => {
     if (!document.body.contains(deck)) return document.removeEventListener("keydown", keys);
-    if (e.target.closest("input, textarea")) return;
-    if (e.key === "ArrowRight") decide(true);
-    if (e.key === "ArrowLeft") decide(false);
+    if (e.target.closest("input, textarea") || $(".profile-view")) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") decide(true);
+    if (e.key === "ArrowUp" || e.key === "ArrowLeft") decide(false);
   };
   document.addEventListener("keydown", keys);
   load();
+}
+
+// ---------------- Подробная анкета ----------------
+
+async function openProfile(userId, { onDecide = null } = {}) {
+  let p;
+  try {
+    p = await api.get(`/api/users/${userId}`);
+  } catch (ex) {
+    return toast(ex.message, { error: true });
+  }
+  const goalsSet = new Set(p.common);
+  const el = h(`<section class="profile-view" role="dialog" aria-label="Анкета: ${esc(p.name)}">
+    <div class="gallery">
+      <div class="track">${p.photos.map((u, i) => `<img src="${esc(u)}" alt="Фото ${i + 1}" loading="${i ? "lazy" : "eager"}">`).join("")}</div>
+      ${p.photos.length > 1 ? `<div class="dots">${p.photos.map((_, i) => `<i class="${i ? "" : "on"}"></i>`).join("")}</div>` : ""}
+    </div>
+    <button class="icon-btn close" aria-label="Закрыть">${icons.back}</button>
+    <div class="profile-body">
+      <div class="pname">${esc(p.name)}<span>, ${p.age}</span></div>
+      <div class="meta muted small" style="margin-top:6px">${[kmText(p.distance_km), p.verified ? "фото подтверждено" : "", p.online ? "в сети" : ""].filter(Boolean).join(" · ")}</div>
+      <div class="match-strip">
+        <div><b>${p.match}%</b><span>совпадение</span></div>
+        <div><b>${p.common.length}</b><span>${plural(p.common.length, "общий интерес", "общих интереса", "общих интересов")}</span></div>
+        <div><b>${p.photos.length}</b><span>${plural(p.photos.length, "фото", "фото", "фото")}</span></div>
+      </div>
+      ${p.bio ? `<h3>О себе</h3><p style="font-size:16px;line-height:1.5">${esc(p.bio)}</p>` : ""}
+      ${p.goals.length ? `<h3>Ищет</h3><div class="chips">${p.goals.map((g) => `<span class="chip static ghost">${esc(g)}</span>`).join("")}</div>` : ""}
+      <h3>Интересы</h3>
+      <div class="chips">${p.interests.map((x) => `<span class="chip static ${goalsSet.has(x) ? "hot" : "ghost"}">${esc(x)}</span>`).join("")}</div>
+    </div>
+    <div class="profile-actions"></div>
+  </section>`);
+
+  const actions = $(".profile-actions", el);
+  const close = () => { el.remove(); document.removeEventListener("keydown", esc_); };
+  const esc_ = (e) => e.key === "Escape" && close();
+  if (p.conversation_id) {
+    actions.innerHTML = `<button class="btn block" data-write>${icons.chat} Написать сообщение</button>`;
+    $("[data-write]", actions).onclick = () => { close(); go(`#/chat/${p.conversation_id}`); };
+  } else if (onDecide) {
+    actions.innerHTML = `<div class="btns">
+      <div class="bw"><button class="skip" aria-label="Дальше">${icons.x}</button><span>Дальше</span></div>
+      <div class="bw"><button class="like" aria-label="Нравится">${icons.heart}</button><span>Нравится</span></div></div>
+      <p class="note">Написать можно после взаимной симпатии</p>`;
+    $(".skip", actions).onclick = () => { close(); onDecide(false); };
+    $(".like", actions).onclick = () => { close(); onDecide(true); };
+  } else {
+    actions.innerHTML = `<p class="note">${p.liked ? "Вы отметили симпатию. Чат откроется, когда она станет взаимной" : "Написать можно после взаимной симпатии"}</p>`;
+  }
+
+  const track = $(".track", el);
+  const dots = $$(".dots i", el);
+  track.addEventListener("scroll", () => {
+    const i = Math.round(track.scrollLeft / track.clientWidth);
+    dots.forEach((d, k) => d.classList.toggle("on", k === i));
+  }, { passive: true });
+  // тап по левой/правой половине фото листает, как в сторис
+  track.addEventListener("click", (e) => {
+    const right = e.clientX > track.getBoundingClientRect().left + track.clientWidth / 2;
+    track.scrollBy({ left: right ? track.clientWidth : -track.clientWidth, behavior: "smooth" });
+  });
+  $(".close", el).onclick = close;
+  document.addEventListener("keydown", esc_);
+  document.body.append(el);
+  $(".close", el).focus();
 }
 
 function showMatch({ conversation_id, user, common = [] }) {
@@ -774,8 +821,10 @@ async function openChat(convId) {
   const el = h(`<section class="chat-screen" aria-label="Чат с ${esc(other.name)}">
     <header class="chat-header">
       <a class="icon-btn" href="#/chats" aria-label="Назад">${icons.back}</a>
-      <img class="avatar" src="${esc(other.photo_url)}" alt="">
-      <div class="who"><b>${esc(other.name)}${other.age ? `, ${other.age}` : ""}</b><small class="status">${other.online ? "в сети" : "не в сети"}</small></div>
+      <button class="who-link" data-profile aria-label="Открыть анкету">
+        <img class="avatar" src="${esc(other.photo_url)}" alt="">
+        <span class="who"><b>${esc(other.name)}${other.age ? `, ${other.age}` : ""}</b><small class="status">${other.online ? "в сети" : "не в сети"}</small></span>
+      </button>
       <button class="icon-btn" data-call="audio" aria-label="Аудиозвонок">${icons.phone}</button>
       <button class="icon-btn" data-call="video" aria-label="Видеозвонок">${icons.video}</button>
       <button class="icon-btn" data-menu aria-label="Ещё">${icons.more}</button>
@@ -843,6 +892,7 @@ async function openChat(convId) {
   chatCleanup = () => { offs.forEach((f) => f()); voice?.cancel(); el.remove(); };
 
   $$("[data-call]", el).forEach((b) => (b.onclick = () => startCall(convId, other, b.dataset.call === "video")));
+  $("[data-profile]", el).onclick = () => openProfile(other.id);
   $("[data-menu]", el).onclick = async () => {
     if (await confirmDialog(`Удалить пару с ${other.name}? Чат исчезнет у вас обоих.`, "Удалить пару")) {
       await api.del(`/api/chats/${convId}`);
@@ -1070,6 +1120,14 @@ function renderSettings() {
     </div>
 
     <div class="section">
+      <h3>Ещё фото</h3>
+      <p class="hint" style="margin:-4px 0 12px">До 6 фото: хобби, поездки, друзья. Их видно в подробной анкете.</p>
+      <div class="gallery-edit">${me.photos.map((p) => `<div class="ph-cell"><img src="${esc(p.url)}" alt=""><button class="del" data-del="${p.id}" aria-label="Удалить фото">${icons.x}</button></div>`).join("")}${
+        me.photos.length < 6 ? `<button class="ph-cell add" data-add aria-label="Добавить фото">${icons.plus}</button>` : ""}</div>
+      <input type="file" accept="image/*" multiple hidden id="gallery-input">
+    </div>
+
+    <div class="section">
       <h3>Интересы</h3>
       <div class="chips" style="margin-bottom:12px">${[...me.goals, ...me.interests].map((x, i) =>
         `<span class="chip static ${i < me.goals.length ? "hot" : ""}">${esc(x)}</span>`).join("")}</div>
@@ -1126,7 +1184,21 @@ function renderSettings() {
     } catch (ex) { toast(ex.message, { error: true }); }
   };
 
-  const input = $("input[type=file]", root);
+  const galleryInput = $("#gallery-input", root);
+  $("[data-add]", root)?.addEventListener("click", () => galleryInput.click());
+  galleryInput.onchange = async () => {
+    for (const f of [...galleryInput.files].slice(0, 6 - state.me.photos.length)) {
+      const fd = new FormData();
+      fd.append("file", f);
+      try { state.me = await api.post("/api/profile/photos", fd); } catch (ex) { toast(ex.message, { error: true }); break; }
+    }
+    renderSettings();
+  };
+  $$("[data-del]", root).forEach((b) => (b.onclick = async () => {
+    try { state.me = await api.del(`/api/profile/photos/${b.dataset.del}`); renderSettings(); } catch (ex) { toast(ex.message, { error: true }); }
+  }));
+
+  const input = $(".profile-hero input[type=file]", root);
   $("#change-photo", root).onclick = () => input.click();
   input.onchange = async () => {
     const fd = new FormData();

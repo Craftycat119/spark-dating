@@ -28,4 +28,5 @@ export const icons = {
   flip: i("camera-rotate"),
   arrow: i("arrow-right"),
   sparkle: i("sparkle", true),
+  plus: i("plus"),
 };

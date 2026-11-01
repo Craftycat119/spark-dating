@@ -13,13 +13,14 @@ from ..config import settings
 from ..database import get_db
 from ..deps import current_user
 from ..interests import GENDERS, GOALS, INTERESTS, LOOKING_FOR, MIN_INTERESTS, clean
-from ..models import Conversation, Message, User, utcnow
+from ..models import Conversation, Message, User, UserPhoto, utcnow
 from ..serializers import own_profile
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
 log = logging.getLogger("spark.profile")
 
 BIO_MAX = 500
+MAX_GALLERY = 6
 
 
 class ProfileIn(BaseModel):
@@ -112,6 +113,29 @@ def upload_photo(file: UploadFile = File(...), user: User = Depends(current_user
     return own_profile(user)
 
 
+@router.post("/photos")
+def add_photo(file: UploadFile = File(...), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if len(user.photos) >= MAX_GALLERY:
+        raise HTTPException(400, f"Можно добавить не больше {MAX_GALLERY} фото")
+    rel = storage.save_image(storage.read_limited(file, settings.max_image_mb), "gallery")
+    user.photos.append(UserPhoto(path=rel))
+    db.commit()
+    db.refresh(user)
+    return own_profile(user)
+
+
+@router.delete("/photos/{photo_id}")
+def delete_photo(photo_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    photo = next((p for p in user.photos if p.id == photo_id), None)
+    if not photo:
+        raise HTTPException(404, "Фото не найдено")
+    storage.delete_file(photo.path)
+    user.photos.remove(photo)
+    db.commit()
+    db.refresh(user)
+    return own_profile(user)
+
+
 @router.post("/verify-face")
 def verify_face(data: FramesIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
     if not user.photo_path:
@@ -172,6 +196,8 @@ def delete_user_completely(db: Session, user: User) -> None:
         db.delete(c)
     storage.delete_file(user.photo_path)
     storage.delete_file(user.selfie_path)
+    for p in user.photos:
+        storage.delete_file(p.path)
     db.delete(user)
     db.commit()
 

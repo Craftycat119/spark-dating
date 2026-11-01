@@ -16,7 +16,7 @@ from . import storage
 from .interests import GOALS, SURVEY
 from .database import SessionLocal, init_db
 from .face_verify import download_models
-from .models import User, utcnow
+from .models import User, UserPhoto, utcnow
 from .security import hash_password
 
 DEMO_NAMES = ["Алина", "Марк", "Соня", "Илья", "Вера", "Тимур", "Ника", "Глеб", "Лиза", "Артём", "Мира", "Даня"]
@@ -74,6 +74,8 @@ def seed(lat: float, lon: float, count: int) -> None:
                 registration_ip="127.0.0.1",
             )
             u.registration_lat, u.registration_lon = u.lat, u.lon
+            for k in range(random.randint(1, 3)):
+                u.photos.append(UserPhoto(path=_avatar(f"{name} {k + 2}", COLORS[(i + k + 2) % len(COLORS)])))
             u.gender = "female" if i % 2 == 0 else "male"
             u.looking_for = random.choice(["male", "female", "any"]) if i % 3 else "any"
             u.goals = random.sample(sorted(GOALS), k=random.randint(1, 2))

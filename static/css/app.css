@@ -1,15 +1,18 @@
 /* COFI: почти чёрный фон, сочный оранжевый, «надутые» объёмные формы.
    Скругления: интерактивное (кнопки, чипы) — пилюля, контейнеры — 28px, поля ввода — 16px. */
 :root {
-  --bg: #121110;
-  --surface: #1d1b19;
-  --surface-2: #2a2724;
-  --line: #3a3531;
-  --text: #f2ede6;
-  --muted: #a39b92;
-  --orange: #ff5b1f;
-  --orange-deep: #c63c0b;
-  --on-orange: #1c0c04;
+  /* палитра из макета «Нити» */
+  --bg: #120c09;
+  --surface: #1f1510;
+  --surface-2: #2c1e17;
+  --line: #4a3329;
+  --text: #f3e9df;
+  --muted: #b39b8c;
+  --dim: #8f7869;
+  --orange: #f2621f;
+  --orange-deep: #9e3409;
+  --orange-hi: #ffb07a;
+  --on-orange: #1a0f0b;
   --cream: #efe9e1;
   --ink: #191613;
   --ink-muted: #6e665e;
@@ -17,6 +20,7 @@
   --ok: #7fdc9a;
 
   --sans: "Onest", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --display: "Unbounded", "Arial Black", sans-serif;
   --pixel: "Pixelify Sans", "Onest", monospace;
 
   --r-box: 28px;
@@ -422,3 +426,74 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
   background: radial-gradient(closest-side, rgba(255, 91, 31, .16), transparent); pointer-events: none;
 }
 .nav a.on { box-shadow: var(--puff), 0 8px 26px -6px rgba(255, 91, 31, .7); }
+
+/* ---------- Лента «Нити»: человек + общие интересы бусинами на нитке ---------- */
+.feed { padding-top: 8px; }
+.feed .topbar { height: 48px; margin: 0 4px; }
+.logo { font: 700 20px var(--display); letter-spacing: -0.5px; }
+.logo span { color: var(--orange); }
+.counter { font-size: 13px; color: var(--muted); }
+.feed .deck { min-height: 0; flex: 1; display: flex; flex-direction: column; touch-action: none; user-select: none; }
+.person { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 6px; }
+.person.enter { animation: person-in .5s var(--ease) both; }
+@keyframes person-in { from { opacity: 0; transform: translateY(18px); } }
+.ava { position: relative; width: 176px; height: 176px; border-radius: 50%; padding: 0; background: repeating-linear-gradient(135deg, #c9461a 0 8px, #a9380f 8px 11px); color: var(--text); font: 700 64px var(--display); display: grid; place-items: center; transition: transform .25s var(--ease); }
+.ava img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.ava:active { transform: scale(.97); }
+.ava::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 1.5px solid rgba(242, 98, 31, .45); }
+.ava .more { position: absolute; right: 4px; bottom: 8px; padding: 5px 10px; border-radius: 999px; background: var(--orange); color: var(--on-orange); font: 600 12px var(--sans); box-shadow: 0 6px 16px rgba(0, 0, 0, .35); }
+.pname { margin-top: 18px; font: 600 28px var(--display); letter-spacing: -0.8px; line-height: 1.1; }
+.pname span { color: var(--muted); }
+.person .meta { margin-top: 6px; font-size: 13px; color: var(--muted); }
+.pbio { margin-top: 12px; max-width: 320px; font-size: 15px; line-height: 1.45; color: #d8c8bc; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.shared-lbl { margin-top: 20px; text-align: center; font-size: 13px; color: var(--muted); }
+.shared-lbl b { font: 700 15px var(--display); color: var(--orange-hi); }
+.thread { position: relative; height: 150px; margin: 0 -16px; overflow: visible; }
+.thread svg.yarn { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.bead { position: absolute; transform: translate(-50%, -50%); padding: 10px 16px; border-radius: 999px; background: var(--orange); color: var(--on-orange); font: 600 15px/1 var(--sans); white-space: nowrap; box-shadow: 0 6px 18px rgba(0, 0, 0, .35); }
+.yarn-heart { position: absolute; left: 50%; top: 50%; width: 72px; height: 72px; border-radius: 50%; background: var(--orange); color: var(--on-orange); display: grid; place-items: center; opacity: 0; box-shadow: 0 10px 40px rgba(242, 98, 31, .5); }
+.rest { margin: 4px auto 0; max-width: 350px; text-align: center; font-size: 13px; line-height: 1.5; color: var(--dim); }
+.btns { display: flex; justify-content: center; gap: 40px; margin-top: 14px; }
+.bw { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.btns button { width: 68px; height: 68px; border-radius: 50%; display: grid; place-items: center; transition: transform .2s var(--ease); }
+.btns button:active { transform: scale(.92); }
+.btns button:disabled { opacity: .6; cursor: default; }
+.btns .skip { border: 1px solid var(--line); background: var(--surface); color: #d8c8bc; }
+.btns .like { background: var(--orange); color: var(--on-orange); box-shadow: 0 8px 28px rgba(242, 98, 31, .35); }
+.btns .ph, .btns .ph-fill { font-size: 26px; }
+.swipe-hint { margin-top: 10px; text-align: center; font-size: 12px; color: var(--dim); }
+
+/* ---------- Подробная анкета ---------- */
+.profile-view { position: fixed; inset: 0; z-index: 50; background: var(--bg); overflow-y: auto; max-width: 460px; margin: 0 auto; animation: sheet-up .45s var(--ease) both; overscroll-behavior: contain; }
+@keyframes sheet-up { from { transform: translateY(40px); opacity: 0; } }
+.gallery { position: relative; }
+.gallery .track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; aspect-ratio: 4 / 5; max-height: 68dvh; }
+.gallery .track::-webkit-scrollbar { display: none; }
+.gallery img { flex: none; width: 100%; height: 100%; object-fit: cover; scroll-snap-align: center; }
+.gallery .dots { position: absolute; left: 0; right: 0; top: calc(12px + env(safe-area-inset-top)); display: flex; gap: 4px; padding: 0 16px; }
+.gallery .dots i { flex: 1; height: 3px; border-radius: 3px; background: rgba(255, 255, 255, .35); transition: background .2s; }
+.gallery .dots i.on { background: #fff; }
+.gallery::after { content: ""; position: absolute; inset: auto 0 0; height: 30%; background: linear-gradient(transparent, var(--bg)); pointer-events: none; }
+.profile-view .close { position: absolute; z-index: 2; top: calc(26px + env(safe-area-inset-top)); left: 12px; background: rgba(18, 12, 9, .55); backdrop-filter: blur(10px); }
+.profile-body { position: relative; margin-top: -54px; padding: 0 16px 140px; }
+.profile-body .pname { margin-top: 0; font-size: 34px; }
+.profile-body h3 { margin: 26px 0 10px; font-size: 15px; color: var(--muted); font-weight: 500; letter-spacing: 0; }
+.chips .chip.static.ghost { background: transparent; box-shadow: inset 0 0 0 1.5px var(--line); color: var(--text); }
+.match-strip { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 18px; border-radius: 22px; background: var(--surface); }
+.match-strip > div { padding: 14px 14px 12px; }
+.match-strip > div + div { border-left: 1px solid var(--line); }
+.match-strip b { display: block; font: 700 22px var(--display); letter-spacing: -0.5px; color: var(--orange-hi); }
+.match-strip span { font-size: 12px; color: var(--muted); }
+.profile-actions { position: fixed; z-index: 51; left: 50%; bottom: 0; transform: translateX(-50%); width: min(460px, 100%); padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, var(--bg) 35%); display: flex; flex-direction: column; gap: 8px; }
+.profile-actions .btns { margin: 0; }
+.profile-actions .note { text-align: center; font-size: 13px; color: var(--muted); }
+
+/* галерея в настройках */
+.gallery-edit { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.gallery-edit .ph-cell { position: relative; aspect-ratio: 3 / 4; border-radius: 18px; overflow: hidden; background: var(--surface); }
+.gallery-edit img { width: 100%; height: 100%; object-fit: cover; }
+.gallery-edit .del { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border-radius: 50%; background: rgba(18, 12, 9, .7); display: grid; place-items: center; }
+.gallery-edit .del .ph { font-size: 16px; }
+.gallery-edit .add { display: grid; place-items: center; color: var(--orange); border: 1.5px dashed var(--line); background: transparent; }
+.gallery-edit .add .ph { font-size: 28px; }
+.chat-header .who-link { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; text-align: left; }

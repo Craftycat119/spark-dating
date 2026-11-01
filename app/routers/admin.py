@@ -115,6 +115,7 @@ def user_detail(user_id: int, _: User = Depends(admin_user), db: Session = Depen
         **user_row(u),
         "bio": u.bio,
         "selfie_url": f"/media/{u.selfie_path}" if u.selfie_path else None,
+        "gallery": [f"/media/{p.path}" for p in u.photos],
         "face_score": u.face_score,
         "photo_verified_at": _iso(u.photo_verified_at),
         "registration_user_agent": u.registration_user_agent,

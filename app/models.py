@@ -73,6 +73,10 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    photos: Mapped[list[UserPhoto]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", order_by="UserPhoto.id"
+    )
+
     @property
     def interests(self) -> list[str]:
         return json.loads(self.interests_json or "[]")
@@ -177,6 +181,17 @@ class Message(Base):
     duration: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
     read_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class UserPhoto(Base):
+    """Дополнительные фото в анкете (основное фото проверено сканером, эти нет)."""
+
+    __tablename__ = "user_photos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    path: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Notification(Base):
