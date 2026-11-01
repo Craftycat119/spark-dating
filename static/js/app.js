@@ -674,7 +674,7 @@ async function renderFeed() {
       ${rest.length ? `<p class="rest">Ещё интересы: ${esc(rest.slice(0, 8).join(", "))}</p>` : ""}
     </div>`));
     $(".ava", deck).onclick = () => openProfile(c.id, { onDecide: decide });
-    thread = mountThread($(".thread", deck), c.common.slice(0, 6));
+    thread = mountThread($(".thread", deck), c.common.slice(0, 5));
   }
 
   async function decide(like) {

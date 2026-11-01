@@ -53,8 +53,10 @@ function player(root) {
   let paused = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const fit = () => {
-    const k = $(".phone-screen", root).clientWidth / 390;
+    const ps = $(".phone-screen", root);
+    const k = ps.clientWidth / 390;
     screen.style.transform = `scale(${k})`;
+    screen.style.height = `${ps.clientHeight / k}px`; // мини-экран точно по высоте телефона
   };
   new ResizeObserver(fit).observe($(".phone-screen", root));
 

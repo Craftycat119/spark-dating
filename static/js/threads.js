@@ -5,19 +5,25 @@ import { esc } from "./ui.js";
 const NS = "http://www.w3.org/2000/svg";
 const r1 = (v) => Math.round(v * 10) / 10;
 
-function layout(n, W, CY) {
+function layout(n, W, CY, widths) {
   const pts = [], top = n > 2 ? Math.ceil(n / 2) : n;
   const rows = n > 2 ? [[], []] : [[]];
   for (let i = 0; i < n; i++) (n > 2 ? rows[i < top ? 0 : 1] : rows[0]).push(i);
+  let fits = true;
   rows.forEach((r, ri) => {
     const y = n > 2 ? (ri === 0 ? CY - 27 : CY + 28) : CY;
-    r.forEach((ix, j) => (pts[ix] = { x: (W * (j + 1)) / (r.length + 1) + (n > 2 ? (ri === 0 ? -18 : 18) : 0), y }));
+    // раскладываем по реальной ширине бусин, чтобы длинные названия не наезжали
+    const gap = Math.max(8, (W - r.reduce((s, ix) => s + widths[ix], 0)) / (r.length + 1));
+    const total = r.reduce((s, ix) => s + widths[ix], 0) + gap * (r.length - 1);
+    if (total > W - 12) fits = false;
+    let x = (W - total) / 2 + (n > 2 ? (ri === 0 ? -10 : 10) : 0);
+    r.forEach((ix) => { pts[ix] = { x: x + widths[ix] / 2, y }; x += widths[ix] + gap; });
   });
   // бусины идут по нитке зигзагом: верх0, низ0, верх1, низ1…
   const order = [];
   if (n > 2) for (let i = 0; i < top; i++) { order.push(i); if (top + i < n) order.push(top + i); }
   else for (let i = 0; i < n; i++) order.push(i);
-  return { pts, order };
+  return { pts, order, fits };
 }
 
 // Плавная кривая через точки (Catmull-Rom → кубические Безье)
@@ -61,7 +67,13 @@ export function mountThread(box, labels) {
   const measure = () => {
     W = box.clientWidth; H = box.clientHeight; CY = H / 2;
     svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-    L = layout(labels.length, W, CY);
+    const widths = () => beadEls.map((el) => el.offsetWidth);
+    box.classList.remove("compact");
+    L = layout(labels.length, W, CY, widths());
+    if (!L.fits) {
+      box.classList.add("compact");
+      L = layout(labels.length, W, CY, widths());
+    }
   };
   measure();
   const ro = new ResizeObserver(measure);
