@@ -1,4 +1,5 @@
 import { api } from "./api.js";
+import "./theme.js";
 import { icons } from "./icons.js";
 import { $, $$, confirmDialog, esc, h, toast } from "./ui.js";
 

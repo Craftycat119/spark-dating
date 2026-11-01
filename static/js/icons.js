@@ -29,4 +29,6 @@ export const icons = {
   arrow: i("arrow-right"),
   sparkle: i("sparkle", true),
   plus: i("plus"),
+  sun: i("sun"),
+  moon: i("moon"),
 };

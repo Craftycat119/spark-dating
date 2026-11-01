@@ -5,6 +5,8 @@ import { recordCircle, VoiceRecorder } from "./recorder.js";
 import { runScanner } from "./scanner.js";
 import { PACKS } from "./stickers.js";
 import { mountThread } from "./threads.js";
+import { renderGuide } from "./guide.js";
+import { getThemePref, resolvedTheme, setTheme } from "./theme.js";
 import { $, $$, confirmDialog, esc, fmtDay, fmtDur, fmtShort, fmtTime, h, toast, wordmark } from "./ui.js";
 
 const app = document.getElementById("app");
@@ -77,6 +79,9 @@ function onboardingStep(me) {
 
 function route() {
   closeChat();
+  $(".profile-view")?.remove();
+  const page = location.hash.split("/")[1];
+  if (page === "guide") return showGuide();
   if (!state.me) return renderAuth();
   const step = onboardingStep(state.me);
   const [, name, arg] = location.hash.split("/");
@@ -128,6 +133,31 @@ async function reloadMe() {
   return state.me;
 }
 
+// ---------------- Инструкция и демо ----------------
+
+let stopGuide = null;
+
+function showGuide() {
+  stopGuide?.();
+  const main = screen("", { nav: false, cls: "guide" });
+  stopGuide = renderGuide(main, { loggedIn: !!state.me, onDemo: startDemo });
+}
+
+async function startDemo() {
+  try {
+    state.me = await api.post("/api/auth/demo");
+  } catch (ex) {
+    return toast(ex.message, { error: true });
+  }
+  afterLogin();
+  go("#/feed");
+  toast("Это демо: свайп вниз, чтобы лайкнуть. Трое из ботов уже лайкнули вас", { timeout: 6000 });
+}
+
+function themeIcon() {
+  return resolvedTheme() === "light" ? icons.moon : icons.sun;
+}
+
 // ---------------- Вход и регистрация ----------------
 
 function renderAuth(mode = "login") {
@@ -161,13 +191,23 @@ function renderAuth(mode = "login") {
     <section class="hero3d">
       <div class="stage" aria-hidden="true">${wordmark("COFI")}</div>
       <span class="brand">cofi<sup>°</sup></span>
+      <button class="icon-btn theme-toggle" aria-label="Сменить тему">${themeIcon()}</button>
       <div class="hero-copy">
         <h1>Знакомства, где общее находится сразу</h1>
         <p>Отметьте, что любите, и мы покажем людей рядом с похожими интересами.</p>
+        <div class="hero-links">
+          <button class="chip hot" data-demo>Демо без регистрации</button>
+          <a class="chip" href="#/guide">Как это работает</a>
+        </div>
       </div>
     </section>
 ${sheet}`, { nav: false, cls: "auth" });
     mount3d($(".stage", root), "knot");
+    $("[data-demo]", root).onclick = startDemo;
+    $(".theme-toggle", root).onclick = (e) => {
+      setTheme(resolvedTheme() === "light" ? "dark" : "light");
+      e.currentTarget.innerHTML = themeIcon();
+    };
   }
   $$("[data-mode]", root).forEach((b) => (b.onclick = () => renderAuth(b.dataset.mode)));
   const form = $("form", root);
@@ -570,7 +610,7 @@ const kmText = (km) => (km == null ? "" : km < 1 ? "меньше 1 км от в�
 
 async function renderFeed() {
   const root = screen(`
-    <div class="topbar"><span class="logo">cofi<span>°</span></span><span class="counter"></span></div>
+    <div class="topbar"><span class="row" style="gap:8px"><span class="logo">cofi<span>°</span></span>${state.me.is_demo ? '<span class="demo-pill">демо</span>' : ""}</span><span class="counter"></span></div>
     <div class="deck" aria-live="polite"><div class="skeleton" style="position:relative;height:420px"></div></div>
     <div class="btns" hidden>
       <div class="bw"><button class="skip" aria-label="Дальше">${icons.x}</button><span>Дальше</span></div>
@@ -1108,6 +1148,7 @@ function renderSettings() {
   const pick = { gender: me.gender, looking_for: me.looking_for };
   const root = screen(`
     <h1>Профиль</h1>
+    ${me.is_demo ? `<div class="demo-banner" style="margin-top:14px">${icons.sparkle}<span>Вы в демо-режиме. Боты отвечают в чате, данные удалятся через сутки.</span></div>` : ""}
     ${step ? `<p class="badge-warn" style="margin-top:10px">Анкета не завершена. <a href="#/feed">Продолжить настройку</a></p>` : ""}
     <div class="section profile-hero">
       ${me.photo_url ? `<img src="${esc(me.photo_url)}" alt="Ваше фото">` : "<span></span>"}
@@ -1149,16 +1190,33 @@ function renderSettings() {
       <button class="btn block">Сохранить изменения</button>
     </form>
 
+    <div class="section">
+      <h3>Оформление</h3>
+      <div class="choice-grid" style="grid-template-columns:repeat(3,1fr)" role="radiogroup" aria-label="Тема">
+        ${[["dark", "Тёмная"], ["light", "Светлая"], ["system", "Как в системе"]].map(([k, l]) =>
+          `<button type="button" class="chip" data-theme-pick="${k}" aria-pressed="${getThemePref() === k}">${l}</button>`).join("")}
+      </div>
+    </div>
+
+    <div class="section stack">
+      <a class="row-link" href="#/guide"><span><b>Как пользоваться</b><br><span class="muted small">Жесты, пары, чат и звонки</span></span>${icons.arrow}</a>
+    </div>
+
     <div class="section stack">
       <h3>Аккаунт</h3>
-      <p class="muted small">${me.auth_provider === "telegram" ? `Вход через Telegram${me.telegram_username ? ` (@${esc(me.telegram_username)})` : ""}` : `Вход по почте ${esc(me.email)}`}</p>
+      <p class="muted small">${me.is_demo ? "Демо-аккаунт без регистрации" : me.auth_provider === "telegram" ? `Вход через Telegram${me.telegram_username ? ` (@${esc(me.telegram_username)})` : ""}` : `Вход по почте ${esc(me.email)}`}</p>
       ${me.is_admin ? `<a class="btn quiet" href="/admin">Админ-панель</a>` : ""}
+      ${me.is_demo ? `<button class="btn" id="leave-demo">Зарегистрироваться</button>` : ""}
       <button class="btn ghost" id="logout">Выйти</button>
       <button class="btn danger" id="delete">Удалить анкету</button>
     </div>`);
 
   bindChoice(root, "gender", (v) => (pick.gender = v));
   bindChoice(root, "looking_for", (v) => (pick.looking_for = v));
+  $$("[data-theme-pick]", root).forEach((b) => (b.onclick = () => {
+    setTheme(b.dataset.themePick);
+    $$("[data-theme-pick]", root).forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  }));
   const form = $("#profile-form", root);
   form.dist.oninput = () => ($("#dist-val", root).textContent = form.dist.value);
   form.onsubmit = async (e) => {
@@ -1210,6 +1268,12 @@ function renderSettings() {
     } catch (ex) { toast(ex.message, { error: true }); }
   };
 
+  $("#leave-demo", root)?.addEventListener("click", async () => {
+    await api.del("/api/profile");
+    disconnectSocket();
+    state.me = null;
+    go("#/");
+  });
   $("#logout", root).onclick = async () => {
     await api.post("/api/auth/logout");
     disconnectSocket();
@@ -1262,5 +1326,15 @@ window.addEventListener("unhandledrejection", (e) => {
     go("#/");
   }
 });
+
+// Если внешнее фото не загрузилось (нет сети), показываем фирменную заглушку
+const PLACEHOLDER = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="50"><defs><pattern id="p" width="11" height="11" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="11" height="11" fill="#c9461a"/><rect width="3" height="11" fill="#a9380f"/></pattern></defs><rect width="40" height="50" fill="url(#p)"/></svg>');
+document.addEventListener("error", (e) => {
+  const img = e.target;
+  if (img.tagName === "IMG" && !img.dataset.fallback) {
+    img.dataset.fallback = "1";
+    img.src = PLACEHOLDER;
+  }
+}, true);
 
 boot();

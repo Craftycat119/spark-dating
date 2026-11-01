@@ -16,7 +16,8 @@ export function initCalls(config, peerLookup) {
   on("call:end", (d) => current?.id === d.call_id && current.close("Звонок завершён"));
   on("call:reject", (d) => current?.id === d.call_id && current.close("Собеседник отклонил звонок"));
   on("call:busy", (d) => current?.id === d.call_id && current.close("Собеседник уже разговаривает"));
-  on("call:unavailable", (d) => current?.id === d.call_id && current.close("Собеседник сейчас не в сети"));
+  on("call:unavailable", (d) => current?.id === d.call_id && current.close(
+    d.reason === "bot" ? "В демо боты не отвечают на звонки. Позвонить можно реальному человеку" : "Собеседник сейчас не в сети"));
 }
 
 export function startCall(conversationId, peer, video) {

@@ -173,6 +173,8 @@ def verify_face(data: FramesIn, user: User = Depends(current_user), db: Session 
 
 @router.post("/location")
 def update_location(data: LocationIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if user.is_demo:
+        return {"status": "ok"}  # демо всегда «в Москве», рядом с ботами
     user.lat, user.lon = data.lat, data.lon
     user.location_updated_at = utcnow()
     if user.registration_lat is None:
