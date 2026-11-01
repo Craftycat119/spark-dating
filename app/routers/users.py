@@ -11,8 +11,8 @@ from ..geo import haversine_km
 from ..interests import compatible, match_score
 from ..models import Conversation, Swipe, User
 from ..realtime import manager
-from ..serializers import photo_url
-from .feed import visible_users
+from ..serializers import media_url, photo_url
+from .feed import audience, visible_users
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -27,7 +27,7 @@ def user_profile(user_id: int, me: User = Depends(current_user), db: Session = D
     conv = db.scalar(
         select(Conversation).where(Conversation.user_a_id == a, Conversation.user_b_id == b, Conversation.active.is_(True))
     )
-    other = db.scalar(visible_users().where(User.id == user_id))
+    other = db.scalar(audience(visible_users(), me).where(User.id == user_id))
     if conv is None:
         if not other or not me.is_complete or not compatible(me.gender, me.looking_for, other.gender, other.looking_for):
             raise HTTPException(404, "Анкета не найдена")
@@ -49,7 +49,7 @@ def user_profile(user_id: int, me: User = Depends(current_user), db: Session = D
         "age": other.age,
         "bio": other.bio,
         "verified": other.photo_verified,
-        "photos": [u for u in [photo_url(other)] if u] + [f"/media/{p.path}" for p in other.photos],
+        "photos": [u for u in [photo_url(other)] if u] + [media_url(p.path) for p in other.photos],
         "interests": other.interests,
         "goals": other.goals,
         "common": common,

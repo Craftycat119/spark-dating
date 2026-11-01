@@ -14,7 +14,7 @@ from ..database import get_db
 from ..deps import admin_user
 from ..models import AuthSession, Conversation, Message, Swipe, User, utcnow
 from ..realtime import manager
-from ..serializers import message_out, photo_url
+from ..serializers import media_url, message_out, photo_url
 from .profile import delete_user_completely
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -48,6 +48,8 @@ def user_row(u: User) -> dict:
         "registration_lon": u.registration_lon,
         "is_admin": u.is_admin,
         "is_banned": u.is_banned,
+        "is_demo": u.is_demo,
+        "is_bot": u.is_bot,
     }
 
 
@@ -115,7 +117,7 @@ def user_detail(user_id: int, _: User = Depends(admin_user), db: Session = Depen
         **user_row(u),
         "bio": u.bio,
         "selfie_url": f"/media/{u.selfie_path}" if u.selfie_path else None,
-        "gallery": [f"/media/{p.path}" for p in u.photos],
+        "gallery": [media_url(p.path) for p in u.photos],
         "face_score": u.face_score,
         "photo_verified_at": _iso(u.photo_verified_at),
         "registration_user_agent": u.registration_user_agent,

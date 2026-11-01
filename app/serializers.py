@@ -3,8 +3,15 @@ from __future__ import annotations
 from .models import Conversation, Message, User
 
 
+def media_url(path: str | None) -> str | None:
+    """Файлы лежат у нас, а фото демо-ботов — по внешним ссылкам."""
+    if not path:
+        return None
+    return path if path.startswith(("http://", "https://")) else f"/media/{path}"
+
+
 def photo_url(user: User) -> str | None:
-    return f"/media/{user.photo_path}" if user.photo_path else None
+    return media_url(user.photo_path)
 
 
 def own_profile(user: User) -> dict:
@@ -24,7 +31,8 @@ def own_profile(user: User) -> dict:
         "goals": user.goals,
         "survey_done": user.survey_done,
         "photo_url": photo_url(user),
-        "photos": [{"id": p.id, "url": f"/media/{p.path}"} for p in user.photos],
+        "photos": [{"id": p.id, "url": media_url(p.path)} for p in user.photos],
+        "is_demo": user.is_demo,
         "photo_verified": user.photo_verified,
         "has_location": user.lat is not None,
         "max_distance_km": user.max_distance_km,

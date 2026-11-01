@@ -26,6 +26,13 @@ STATIC_DIR = BASE_DIR / "static"
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
+    from .database import SessionLocal
+    from .demo import cleanup
+
+    with SessionLocal() as db:
+        removed = cleanup(db)
+        if removed:
+            log.info("Удалено устаревших демо-аккаунтов: %s", removed)
     if settings.secret_key == "dev-secret-change-me" and not settings.dev_mode:
         log.error("SECRET_KEY не задан! Установите его в .env перед запуском в продакшене.")
     if face_verify.is_dev_mode():

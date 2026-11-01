@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import emailer
+from .. import demo, emailer
 from ..database import get_db
 from ..deps import current_user
 from ..geo import bounding_box, haversine_km
@@ -43,6 +43,13 @@ def visible_users():
     )
 
 
+def audience(q, user: User):
+    """Демо-гости видят только ботов; реальные пользователи не видят ни ботов, ни гостей."""
+    if user.is_demo:
+        return q.where(User.is_bot.is_(True))
+    return q.where(User.is_bot.is_(False), User.is_demo.is_(False))
+
+
 @router.get("")
 def get_feed(limit: int = 10, user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Анкеты рядом, сначала с наибольшим совпадением интересов, при равенстве — ближайшие."""
@@ -50,7 +57,7 @@ def get_feed(limit: int = 10, user: User = Depends(current_user), db: Session = 
     limit = max(1, min(limit, 30))
 
     swiped = select(Swipe.to_user_id).where(Swipe.from_user_id == user.id)
-    q = visible_users().where(User.id != user.id, User.id.not_in(swiped))
+    q = audience(visible_users(), user).where(User.id != user.id, User.id.not_in(swiped))
     radius = user.max_distance_km
     if radius < 20000:
         lat_min, lat_max, lon_min, lon_max = bounding_box(user.lat, user.lon, radius)
@@ -95,7 +102,7 @@ def swipe(data: SwipeIn, background: BackgroundTasks, user: User = Depends(curre
     _require_access(user)
     if data.user_id == user.id:
         raise HTTPException(400, "Нельзя лайкнуть себя")
-    target = db.scalar(visible_users().where(User.id == data.user_id))
+    target = db.scalar(audience(visible_users(), user).where(User.id == data.user_id))
     if not target:
         raise HTTPException(404, "Анкета больше не доступна")
 
@@ -126,6 +133,8 @@ def swipe(data: SwipeIn, background: BackgroundTasks, user: User = Depends(curre
     db.refresh(conv)
     if is_new:
         _notify_match(db, conv, background)
+        if target.is_bot:
+            background.add_task(demo.bot_reply, conv.id, target.id, True)
     score, common = match_score(user.interests, user.goals, target.interests, target.goals)
     return {"match": True, "conversation_id": conv.id, "user": public_card(target, score, common)}
 

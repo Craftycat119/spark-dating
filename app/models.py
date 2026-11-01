@@ -72,6 +72,8 @@ class User(Base):
 
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, index=True)  # гость демо-режима
+    is_bot: Mapped[bool] = mapped_column(Boolean, default=False, index=True)  # анкета-бот для демо
 
     photos: Mapped[list[UserPhoto]] = relationship(
         cascade="all, delete-orphan", lazy="selectin", order_by="UserPhoto.id"

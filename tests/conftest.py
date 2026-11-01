@@ -8,6 +8,7 @@ os.environ["FACE_MODE"] = "dev"
 os.environ["DEV_MODE"] = "1"
 os.environ["SMTP_HOST"] = ""
 os.environ["ADMIN_EMAILS"] = "boss@example.com"
+os.environ["DEMO_REPLY_DELAY"] = "0"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
