@@ -20,7 +20,7 @@ async function request(method, url, body) {
   try {
     res = await fetch(url, opts);
   } catch {
-    throw new ApiError(0, "Нет соединения с сервером — проверьте интернет");
+    throw new ApiError(0, "Нет соединения с сервером. Проверьте интернет");
   }
   const data = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
   if (!res.ok) {

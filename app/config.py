@@ -38,7 +38,7 @@ def _list(name: str) -> list[str]:
 
 @dataclass
 class Settings:
-    app_name: str = os.environ.get("APP_NAME", "Spark")
+    app_name: str = os.environ.get("APP_NAME", "COFI")
     base_url: str = os.environ.get("BASE_URL", "http://localhost:8000")
     secret_key: str = os.environ.get("SECRET_KEY", "dev-secret-change-me")
     dev_mode: bool = _bool("DEV_MODE", True)
@@ -78,6 +78,9 @@ class Settings:
         )
     )
 
+    # Пауза перед ответом бота в демо, секунды
+    demo_reply_delay: float = float(os.environ.get("DEMO_REPLY_DELAY", "2.5"))
+
     max_image_mb: int = 10
     max_video_mb: int = 60
 
@@ -93,9 +96,3 @@ class Settings:
 settings = Settings()
 settings.data_dir.mkdir(parents=True, exist_ok=True)
 settings.media_dir.mkdir(parents=True, exist_ok=True)
-
-FEEDS: dict[str, str] = {
-    "dating": "Знакомства",
-    "sex": "18+",
-    "friends": "Дружба и компания",
-}

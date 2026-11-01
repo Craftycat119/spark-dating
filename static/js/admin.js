@@ -1,20 +1,22 @@
 import { api } from "./api.js";
+import "./theme.js";
 import { icons } from "./icons.js";
 import { $, $$, confirmDialog, esc, h, toast } from "./ui.js";
 
 const view = $("#view");
 const drawer = $("#drawer");
-const FEED_SHORT = { dating: "Знакомства", sex: "18+", friends: "Дружба" };
-const usersState = { q: "", feed: "", page: 1 };
+const usersState = { q: "", interest: "", page: 1 };
+let catalog = [];
 
 const dt = (iso) => (iso ? new Date(iso).toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" }) : "—");
-const tags = (feeds) => feeds.map((f) => `<span class="tag ${f}">${FEED_SHORT[f]}</span>`).join("");
+const tags = (items, cls = "") => items.map((f) => `<span class="tag ${cls}">${esc(f)}</span>`).join("");
 const mapLink = (lat, lon) => (lat == null ? "—" : `<a href="https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=12/${lat}/${lon}" target="_blank" rel="noopener">${lat.toFixed(4)}, ${lon.toFixed(4)}</a>`);
 
 async function boot() {
   try {
     const me = await api.get("/api/auth/me");
     if (!me.is_admin) throw new Error();
+    catalog = (await api.get("/api/config")).survey.slice(1).flatMap((q) => q.options);
   } catch {
     view.innerHTML = `<h1>Нет доступа</h1><p class="muted">Войдите в приложение под аккаунтом администратора.</p><p style="margin-top:16px"><a class="btn" href="/">Войти</a></p>`;
     $(".rail nav").hidden = true;
@@ -34,9 +36,9 @@ function route() {
 // ---------- Обзор ----------
 async function overview() {
   const s = await api.get("/api/admin/stats");
-  const max = Math.max(1, ...Object.values(s.per_feed));
+  const max = Math.max(1, ...s.top_interests.map((x) => x.count));
   view.innerHTML = `<h1>Обзор</h1>
-    <div class="stats">
+    <div class="kpis">
       <div><b>${s.users}</b><span>Всего анкет</span></div>
       <div><b>${s.new_24h}</b><span>Новых за сутки</span></div>
       <div><b>${s.verified}</b><span>С подтверждённым фото</span></div>
@@ -45,9 +47,9 @@ async function overview() {
       <div><b>${s.messages}</b><span>Сообщений</span></div>
       <div><b>${s.banned}</b><span>Заблокировано</span></div>
     </div>
-    <h3 style="margin-top:32px">Показываются в лентах</h3>
-    <div class="feed-bars">${Object.entries(s.per_feed).map(([k, v]) => `
-      <div class="r"><span>${esc(s.feed_titles[k])}</span><div class="track"><div class="fill" style="width:${(v / max) * 100}%;background:var(--${k})"></div></div><b>${v}</b></div>`).join("")}
+    <h3 style="margin-top:32px">Популярные интересы</h3>
+    <div class="feed-bars">${s.top_interests.map((x) => `
+      <div class="r"><span>${esc(x.name)}</span><div class="track"><div class="fill" style="width:${(x.count / max) * 100}%"></div></div><b>${x.count}</b></div>`).join("") || '<p class="muted">Пока нет данных</p>'}
     </div>`;
 }
 
@@ -56,18 +58,18 @@ async function users() {
   view.innerHTML = `<h1>Анкеты</h1>
     <div class="toolbar">
       <input class="input" type="search" placeholder="Имя, почта, @telegram или ID" value="${esc(usersState.q)}">
-      <select class="input"><option value="">Все ленты</option>${Object.entries(FEED_SHORT).map(([k, v]) => `<option value="${k}" ${usersState.feed === k ? "selected" : ""}>${v}</option>`).join("")}</select>
+      <select class="input"><option value="">Любые интересы</option>${catalog.map((k) => `<option ${usersState.interest === k ? "selected" : ""}>${esc(k)}</option>`).join("")}</select>
     </div>
     <div id="table"><div class="spinner"></div></div>`;
   const search = $("input", view);
   let t;
   search.oninput = () => { clearTimeout(t); t = setTimeout(() => { usersState.q = search.value; usersState.page = 1; loadUsers(); }, 300); };
-  $("select", view).onchange = (e) => { usersState.feed = e.target.value; usersState.page = 1; loadUsers(); };
+  $("select", view).onchange = (e) => { usersState.interest = e.target.value; usersState.page = 1; loadUsers(); };
   loadUsers();
 }
 
 async function loadUsers() {
-  const p = new URLSearchParams({ q: usersState.q, feed: usersState.feed, page: usersState.page, per_page: 30 });
+  const p = new URLSearchParams({ q: usersState.q, interest: usersState.interest, page: usersState.page, per_page: 30 });
   const res = await api.get(`/api/admin/users?${p}`);
   const box = $("#table");
   if (!box) return;
@@ -77,14 +79,14 @@ async function loadUsers() {
   }
   const pages = Math.ceil(res.total / res.per_page);
   box.innerHTML = `<table class="grid"><thead><tr>
-      <th></th><th>Имя</th><th>Вход</th><th>Регистрация</th><th>IP</th><th>Ленты</th><th>Статус</th></tr></thead>
+      <th></th><th>Имя</th><th>Вход</th><th>Регистрация</th><th>IP</th><th>Ищет</th><th>Статус</th></tr></thead>
     <tbody>${res.items.map((u) => `<tr data-id="${u.id}">
       <td>${u.photo_url ? `<img src="${esc(u.photo_url)}" alt="">` : ""}</td>
       <td><b>${esc(u.name || "Без имени")}</b>${u.age ? `, ${u.age}` : ""}<br><span class="muted small">#${u.id}</span></td>
       <td>${u.email ? esc(u.email) : u.telegram_username ? `@${esc(u.telegram_username)}` : `Telegram ${u.telegram_id}`}</td>
       <td>${dt(u.created_at)}</td>
       <td>${esc(u.registration_ip || "—")}</td>
-      <td>${tags(u.feeds)}</td>
+      <td>${tags(u.goals)}</td>
       <td>${u.is_banned ? '<span class="tag warn">Заблокирован</span>' : ""}${u.photo_verified ? '<span class="tag ok">Фото ✓</span>' : '<span class="tag warn">Фото не проверено</span>'}${u.online ? '<span class="tag ok">В сети</span>' : ""}</td>
     </tr>`).join("")}</tbody></table>
     <div class="pager"><button data-p="-1" ${usersState.page <= 1 ? "disabled" : ""}>Назад</button>
@@ -107,6 +109,7 @@ async function openUser(id) {
       <figure><img src="${esc(u.photo_url || "")}" alt=""><figcaption>Фото анкеты</figcaption></figure>
       <figure><img src="${esc(u.selfie_url || "")}" alt=""><figcaption>Кадр со сканера${u.face_score != null ? `, сходство ${u.face_score.toFixed(2)}` : ""}</figcaption></figure>
     </div>
+    ${u.gallery.length ? `<div class="photos" style="grid-template-columns:repeat(3,1fr)">${u.gallery.map((g) => `<figure><a href="${esc(g)}" target="_blank"><img src="${esc(g)}" alt=""></a></figure>`).join("")}</div>` : ""}
     <div class="actions">
       <button class="btn quiet" data-ban>${u.is_banned ? "Разблокировать" : "Заблокировать"}</button>
       <button class="btn quiet" data-reverify>Сбросить проверку фото</button>
@@ -123,12 +126,15 @@ async function openUser(id) {
       <dt>Устройство</dt><dd class="small muted">${esc(u.registration_user_agent || "—")}</dd>
       <dt>Фото подтверждено</dt><dd>${u.photo_verified ? dt(u.photo_verified_at) : "нет"}</dd>
       <dt>Лайки</dt><dd>поставил(а) ${u.likes_given}, получил(а) ${u.likes_received}</dd>
-      <dt>Последние входы</dt><dd>${u.sessions.map((s) => `${esc(s.ip || "?")} — ${dt(s.created_at)}`).join("<br>") || "—"}</dd>
+      <dt>Последние входы</dt><dd>${u.sessions.map((s) => `${esc(s.ip || "?")}, ${dt(s.created_at)}`).join("<br>") || "—"}</dd>
     </dl>
-    <h3>Описания</h3>
+    <h3>Анкета</h3>
     <dl class="kv">
-      <dt>Общее${u.use_common_bio ? " (используется)" : ""}</dt><dd>${esc(u.bio || "—")}</dd>
-      ${Object.entries(u.feed_bios).map(([k, f]) => `<dt>${FEED_SHORT[k]} ${f.enabled ? '<span class="tag ok">вкл</span>' : '<span class="tag warn">выкл</span>'}</dt><dd>${esc(f.bio || "—")}</dd>`).join("")}
+      <dt>Пол</dt><dd>${esc(u.gender || "—")}</dd>
+      <dt>Кого ищет</dt><dd>${esc(u.looking_for || "—")}</dd>
+      <dt>Цель</dt><dd>${tags(u.goals, "hot") || "—"}</dd>
+      <dt>Интересы</dt><dd>${tags(u.interests) || "—"}</dd>
+      <dt>О себе</dt><dd>${esc(u.bio || "—")}</dd>
     </dl>
     <h3>Переписки (${u.conversations.length})</h3>
     <div>${u.conversations.map((c) => convRow(c)).join("") || '<p class="muted small">Пар пока нет</p>'}</div>`;
@@ -143,7 +149,7 @@ async function openUser(id) {
   };
   $("[data-reverify]", drawer).onclick = async () => {
     await api.post(`/api/admin/users/${id}/reset-verification`);
-    toast("Проверка сброшена — анкета скрыта до повторного сканирования");
+    toast("Проверка сброшена. Анкета скрыта до повторного сканирования");
     openUser(id); loadUsers();
   };
   $("[data-delete]", drawer).onclick = async () => {
@@ -159,7 +165,7 @@ async function openUser(id) {
 function convRow(c) {
   return `<div class="conv-row" data-id="${c.id}">
     ${c.users.map((x) => `<img src="${esc(x.photo_url || "")}" alt="">`).join("")}
-    <span style="flex:1">${c.users.map((x) => esc(x.name)).join(" и ")}<br><span class="muted">${c.messages} сообщ. · ${tags(c.feeds)}${c.active ? "" : '<span class="tag warn">пара удалена</span>'}</span></span>
+    <span style="flex:1">${c.users.map((x) => esc(x.name)).join(" и ")}<br><span class="muted">${c.messages} сообщ.</span> ${c.active ? "" : '<span class="tag warn">пара удалена</span>'}</span>
     <span class="muted">${dt(c.last_message_at || c.created_at)}</span></div>`;
 }
 
@@ -190,7 +196,7 @@ async function openConversation(id) {
   drawer.hidden = false;
   drawer.innerHTML = `<button class="icon-btn close" aria-label="Закрыть">${icons.x}</button>
     <h2>${c.users.map((u) => esc(u.name)).join(" и ")}</h2>
-    <p class="muted small">Пара с ${dt(c.created_at)} · ${tags(c.feeds)}</p>
+    <p class="muted small">Пара с ${dt(c.created_at)}</p>
     <div class="transcript">${c.items.map((m) => `<div class="msg ${m.sender_id === a.id ? "" : "mine"}">
       <div class="who">${esc(names[m.sender_id] || "?")} · ${dt(m.created_at)}</div>${body(m)}</div>`).join("") || '<p class="muted">Сообщений нет</p>'}</div>`;
   $(".close", drawer).onclick = closeDrawer;
@@ -201,7 +207,7 @@ function mail() {
   view.innerHTML = `<h1>Рассылка</h1>
     <form class="stack" style="max-width:560px">
       <p class="muted">Письмо уйдёт всем с подтверждённой почтой, кто не отключил рассылку в настройках. Пользователи Telegram без почты его не получат.</p>
-      <label class="field"><span>Тема</span><input class="input" name="subject" maxlength="200" required placeholder="Например: в Spark появились кружочки"></label>
+      <label class="field"><span>Тема</span><input class="input" name="subject" maxlength="200" required placeholder="Например: в COFI появились кружочки"></label>
       <label class="field"><span>Текст</span><textarea class="input" name="body" rows="10" required></textarea></label>
       <button class="btn">Отправить рассылку</button>
     </form>`;

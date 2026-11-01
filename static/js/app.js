@@ -4,27 +4,34 @@ import { icons } from "./icons.js";
 import { recordCircle, VoiceRecorder } from "./recorder.js";
 import { runScanner } from "./scanner.js";
 import { PACKS } from "./stickers.js";
-import { $, $$, confirmDialog, esc, fmtDay, fmtDur, fmtShort, fmtTime, h, toast } from "./ui.js";
+import { mountThread } from "./threads.js";
+import { renderGuide } from "./guide.js";
+import { getThemePref, resolvedTheme, setTheme } from "./theme.js";
+import { $, $$, confirmDialog, esc, fmtDay, fmtDur, fmtShort, fmtTime, h, toast, wordmark } from "./ui.js";
 
 const app = document.getElementById("app");
-const FEED_KEYS = ["dating", "sex", "friends"];
-const FEED_SHORT = { dating: "Знакомства", sex: "18+", friends: "Дружба" };
-const FEED_HINT = {
-  dating: "Свидания и отношения",
-  sex: "Без обязательств, только 18+",
-  friends: "Друзья, компания, совместные планы",
-};
 
 const state = {
   config: null,
   me: null,
-  feed: localStorage.getItem("feed") || "dating",
   unread: 0,
   openChat: null, // id открытого чата
   shownMatches: new Set(),
 };
-if (!FEED_KEYS.includes(state.feed)) state.feed = "dating";
-document.body.dataset.feed = state.feed;
+
+// ---------------- 3D ----------------
+
+/** Подгружает three.js только когда нужен объёмный объект; без WebGL остаётся SVG-логотип. */
+function mount3d(el, shape) {
+  if (!el) return;
+  import("./puff3d.js")
+    .then(({ mountPuff }) => {
+      if (!el.isConnected) return;
+      const fallback = el.querySelector(".wordmark");
+      if (mountPuff(el, { shape }) && fallback) fallback.remove();
+    })
+    .catch(() => { /* без 3D всё работает */ });
+}
 
 // ---------------- Запуск и маршрутизация ----------------
 
@@ -32,7 +39,7 @@ async function boot() {
   try {
     state.config = await api.get("/api/config");
   } catch {
-    state.config = { feeds: FEED_SHORT, ice_servers: [] };
+    state.config = { app_name: "COFI", survey: [], genders: {}, looking_for: {}, min_interests: 3, ice_servers: [] };
   }
   try {
     state.me = await api.get("/api/auth/me");
@@ -62,16 +69,19 @@ function go(hash) {
 }
 
 function onboardingStep(me) {
-  if (!me.name || !me.age) return "about";
+  if (!me.name || !me.age || !me.gender || !me.looking_for) return "about";
+  if (!me.survey_done) return "survey";
   if (!me.photo_url) return "photo";
   if (!me.photo_verified) return "scan";
-  if (!Object.values(me.feeds).some((f) => f.enabled)) return "feeds";
   if (!me.has_location) return "location";
   return null;
 }
 
 function route() {
   closeChat();
+  $(".profile-view")?.remove();
+  const page = location.hash.split("/")[1];
+  if (page === "guide") return showGuide();
   if (!state.me) return renderAuth();
   const step = onboardingStep(state.me);
   const [, name, arg] = location.hash.split("/");
@@ -79,15 +89,22 @@ function route() {
   switch (name) {
     case "chats": return renderChats();
     case "chat": return renderChats().then(() => openChat(Number(arg)));
-    case "settings": return renderSettings();
+    case "settings": return arg === "interests" ? renderSurvey({ editing: true }) : renderSettings();
     default: return renderFeed();
   }
 }
 
-function screen(html, { nav = true } = {}) {
-  app.replaceChildren(h(`<main class="screen ${nav ? "" : "no-nav"}">${html}</main>`));
-  if (nav) app.append(navBar());
-  return app.firstElementChild;
+function screen(html, { nav = true, cls = "" } = {}) {
+  const main = h(`<main class="screen ${nav ? "" : "no-nav"} ${cls}">${html}</main>`);
+  const swap = () => {
+    app.replaceChildren(main);
+    if (nav) app.append(navBar());
+  };
+  // Плавная смена экранов там, где браузер умеет View Transitions
+  if (document.startViewTransition && !matchMedia("(prefers-reduced-motion: reduce)").matches && app.firstElementChild) {
+    document.startViewTransition(swap);
+  } else swap();
+  return main;
 }
 
 function navBar() {
@@ -95,7 +112,7 @@ function navBar() {
   const item = (key, label, icon) =>
     `<a href="#/${key}" class="${cur === key || (key === "chats" && cur === "chat") ? "on" : ""}">${icon}<span>${label}</span>${
       key === "chats" && state.unread ? `<b class="badge">${state.unread}</b>` : ""}</a>`;
-  return h(`<nav class="nav" aria-label="Разделы">${item("feed", "Лента", icons.flame)}${item("chats", "Чаты", icons.chat)}${item("settings", "Профиль", icons.user)}</nav>`);
+  return h(`<nav class="nav" aria-label="Разделы">${item("feed", "Пары", icons.flame)}${item("chats", "Чаты", icons.chat)}${item("settings", "Профиль", icons.user)}</nav>`);
 }
 
 function updateNavBadge() {
@@ -116,17 +133,37 @@ async function reloadMe() {
   return state.me;
 }
 
+// ---------------- Инструкция и демо ----------------
+
+let stopGuide = null;
+
+function showGuide() {
+  stopGuide?.();
+  const main = screen("", { nav: false, cls: "guide" });
+  stopGuide = renderGuide(main, { loggedIn: !!state.me, onDemo: startDemo });
+}
+
+async function startDemo() {
+  try {
+    state.me = await api.post("/api/auth/demo");
+  } catch (ex) {
+    return toast(ex.message, { error: true });
+  }
+  afterLogin();
+  go("#/feed");
+  toast("Это демо: свайп вниз, чтобы лайкнуть. Трое из ботов уже лайкнули вас", { timeout: 6000 });
+}
+
+function themeIcon() {
+  return resolvedTheme() === "light" ? icons.moon : icons.sun;
+}
+
 // ---------------- Вход и регистрация ----------------
 
 function renderAuth(mode = "login") {
   const tg = state.config.telegram_bot_username;
-  const root = screen(`
-    <section class="auth-hero">
-      <div class="wordmark">${esc(state.config.app_name || "Spark")}</div>
-      <p>Один профиль — три ленты. Выбирайте, где вас видят: свидания, 18+ или компания на выходные.</p>
-      <div class="feed-chips"><span class="feed-chip dating">Знакомства</span><span class="feed-chip sex">18+</span><span class="feed-chip friends">Дружба</span></div>
-    </section>
-    <div class="stack">
+  const sheet = `
+    <div class="panel stack sheet">
       <div class="tabs" role="tablist">
         <button role="tab" data-mode="login" class="${mode === "login" ? "on" : ""}">Вход</button>
         <button role="tab" data-mode="register" class="${mode === "register" ? "on" : ""}">Регистрация</button>
@@ -141,9 +178,37 @@ function renderAuth(mode = "login") {
         ${mode === "login" ? `<button type="button" class="link" id="forgot" style="align-self:flex-start">Забыли пароль?</button>` : ""}
       </form>
       ${tg ? `<div class="divider">или</div><div id="tg-login" style="display:flex;justify-content:center;min-height:48px"></div>
-        <p class="hint" style="text-align:center">Через Telegram почта и пароль не нужны — только подтверждение фото.</p>` : ""}
-    </div>`, { nav: false });
-
+        <p class="hint" style="text-align:center">Через Telegram почта и пароль не нужны, только подтверждение фото.</p>` : ""}
+    </div>`;
+  // Повторный вызов (переключение вкладок) меняет только панель, 3D-сцена остаётся
+  let root = $(".screen.auth");
+  if (root) {
+    const fresh = h(sheet);
+    fresh.style.animation = "none";
+    $(".sheet", root).replaceWith(fresh);
+  } else {
+    root = screen(`
+    <section class="hero3d">
+      <div class="stage" aria-hidden="true">${wordmark("COFI")}</div>
+      <span class="brand">cofi<sup>°</sup></span>
+      <button class="icon-btn theme-toggle" aria-label="Сменить тему">${themeIcon()}</button>
+      <div class="hero-copy">
+        <h1>Знакомства, где общее находится сразу</h1>
+        <p>Отметьте, что любите, и мы покажем людей рядом с похожими интересами.</p>
+        <div class="hero-links">
+          <button class="chip hot" data-demo>Демо без регистрации</button>
+          <a class="chip" href="#/guide">Как это работает</a>
+        </div>
+      </div>
+    </section>
+${sheet}`, { nav: false, cls: "auth" });
+    mount3d($(".stage", root), "knot");
+    $("[data-demo]", root).onclick = startDemo;
+    $(".theme-toggle", root).onclick = (e) => {
+      setTheme(resolvedTheme() === "light" ? "dark" : "light");
+      e.currentTarget.innerHTML = themeIcon();
+    };
+  }
   $$("[data-mode]", root).forEach((b) => (b.onclick = () => renderAuth(b.dataset.mode)));
   const form = $("form", root);
   const err = $("#auth-error", root);
@@ -236,7 +301,7 @@ function renderCode(email, devCode) {
     <div class="stack" style="margin-top:24px">
       <h1>Проверьте почту</h1>
       <p class="muted">Мы отправили 6-значный код на <b style="color:var(--text)">${esc(email)}</b>. На эту почту будут приходить новости о метчах и обновлениях.</p>
-      ${devCode ? `<p class="hint">Режим разработки: SMTP не настроен, код — <b>${esc(devCode)}</b></p>` : ""}
+      ${devCode ? `<p class="hint">Режим разработки, почта не настроена. Код: <b>${esc(devCode)}</b></p>` : ""}
       ${codeBoxesHtml}
       <p class="error-text" id="code-error" hidden></p>
       <button class="btn ghost" id="resend">Отправить код ещё раз</button>
@@ -305,7 +370,7 @@ function renderForgot(prefill = "") {
 
 // ---------------- Онбординг ----------------
 
-const STEP_ORDER = ["about", "photo", "scan", "feeds", "location"];
+const STEP_ORDER = ["about", "survey", "photo", "scan", "location"];
 
 function stepsBar(step) {
   const i = STEP_ORDER.indexOf(step);
@@ -318,28 +383,95 @@ async function nextStep() {
 }
 
 function renderOnboarding(step) {
-  ({ about: stepAbout, photo: stepPhoto, scan: stepScan, feeds: stepFeeds, location: stepLocation })[step]();
+  ({ about: stepAbout, survey: () => renderSurvey(), photo: stepPhoto, scan: stepScan, location: stepLocation })[step]();
+}
+
+function choiceGroup(name, options, value) {
+  return `<div class="choice-grid" style="grid-template-columns:repeat(${Object.keys(options).length},1fr)" role="radiogroup">${Object.entries(options).map(([k, label]) =>
+    `<button type="button" class="chip" data-name="${name}" data-value="${k}" aria-pressed="${k === value}">${esc(label)}</button>`).join("")}</div>`;
+}
+
+function bindChoice(root, name, onPick) {
+  $$(`[data-name="${name}"]`, root).forEach((b) => (b.onclick = () => {
+    $$(`[data-name="${name}"]`, root).forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    onPick(b.dataset.value);
+  }));
 }
 
 function stepAbout() {
   const me = state.me;
+  const pick = { gender: me.gender, looking_for: me.looking_for };
   const root = screen(`${stepsBar("about")}
     <form class="stack">
-      <h1>Расскажите о себе</h1>
-      <p class="muted">Это общий профиль для всех лент. Позже можно задать отдельное описание для каждой.</p>
-      <label class="field"><span>Имя</span><input class="input" name="name" maxlength="64" value="${esc(me.name)}" required></label>
+      <h1>Знакомимся</h1>
+      <label class="field"><span>Имя</span><input class="input" name="name" maxlength="64" value="${esc(me.name)}" autocomplete="given-name" required></label>
       <label class="field"><span>Возраст</span><input class="input" name="age" type="number" min="18" max="100" value="${me.age ?? ""}" required></label>
-      <label class="field"><span>Коротко о себе</span><textarea class="input" name="bio" maxlength="500" placeholder="Чем увлекаетесь, что ищете, какой идеальный вечер">${esc(me.bio)}</textarea></label>
+      <div class="field"><span>Я</span>${choiceGroup("gender", state.config.genders, me.gender)}</div>
+      <div class="field"><span>Кого ищу</span>${choiceGroup("looking_for", state.config.looking_for, me.looking_for)}</div>
+      <label class="field"><span>Коротко о себе</span><textarea class="input" name="bio" maxlength="500" placeholder="Например: варю фильтр-кофе, по субботам бегаю в парке">${esc(me.bio)}</textarea></label>
+      <p class="error-text" hidden></p>
       <button class="btn block">Дальше</button>
     </form>`, { nav: false });
+  bindChoice(root, "gender", (v) => (pick.gender = v));
+  bindChoice(root, "looking_for", (v) => (pick.looking_for = v));
   $("form", root).onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target;
+    const err = $(".error-text", root);
+    if (!pick.gender || !pick.looking_for) { err.textContent = "Выберите пол и кого ищете"; err.hidden = false; return; }
     try {
-      await api.put("/api/profile", { name: f.name.value, age: Number(f.age.value), bio: f.bio.value });
+      await api.put("/api/profile", { name: f.name.value, age: Number(f.age.value), bio: f.bio.value, ...pick });
       nextStep();
-    } catch (ex) { toast(ex.message, { error: true }); }
+    } catch (ex) { err.textContent = ex.message; err.hidden = false; }
   };
+}
+
+/** Опрос: по вопросу на экран, можно выбирать несколько вариантов. */
+function renderSurvey({ editing = false } = {}) {
+  const survey = state.config.survey;
+  const answers = { goals: new Set(state.me.goals), interests: new Set(state.me.interests) };
+  let i = 0;
+
+  const draw = () => {
+    const q = survey[i];
+    const set = q.key === "goals" ? answers.goals : answers.interests;
+    const last = i === survey.length - 1;
+    const root = screen(`${editing ? "" : stepsBar("survey")}
+      <div class="stack" style="gap:18px">
+        <div class="survey-head"><span class="muted small">${editing ? "Интересы" : "Пара вопросов о вас"}</span><span class="survey-count">${i + 1}/${survey.length}</span></div>
+        <h1>${esc(q.title)}</h1>
+        ${q.hint ? `<p class="muted">${esc(q.hint)}</p>` : ""}
+        <div class="chips">${q.options.map((o, k) => `<button type="button" class="chip" style="--i:${k}" aria-pressed="${set.has(o)}">${esc(o)}</button>`).join("")}</div>
+        <p class="error-text" hidden></p>
+        <div class="row" style="margin-top:8px">
+          ${i > 0 ? `<button class="btn ghost" data-back>Назад</button>` : editing ? `<a class="btn ghost" href="#/settings">Отмена</a>` : ""}
+          <button class="btn" data-next style="flex:1">${last ? "Готово" : "Дальше"}</button>
+        </div>
+        ${!last && q.key !== "goals" ? `<button class="link" data-skip style="align-self:center">Пропустить вопрос</button>` : ""}
+      </div>`, { nav: false });
+    $$(".chips .chip", root).forEach((b) => (b.onclick = () => {
+      const v = b.textContent;
+      set.has(v) ? set.delete(v) : set.add(v);
+      b.setAttribute("aria-pressed", String(set.has(v)));
+    }));
+    const err = $(".error-text", root);
+    const fail = (m) => { err.textContent = m; err.hidden = false; };
+    $("[data-back]", root)?.addEventListener("click", () => { i--; draw(); });
+    $("[data-skip]", root)?.addEventListener("click", () => { i++; draw(); });
+    $("[data-next]", root).onclick = async () => {
+      if (q.key === "goals" && !answers.goals.size) return fail("Выберите хотя бы один вариант");
+      if (!last) { i++; return draw(); }
+      if (answers.interests.size < state.config.min_interests) {
+        return fail(`Отметьте ещё ${state.config.min_interests - answers.interests.size}, чтобы мы могли подбирать пары`);
+      }
+      try {
+        state.me = await api.put("/api/profile", { goals: [...answers.goals], interests: [...answers.interests] });
+        if (editing) { toast("Интересы сохранены"); go("#/settings"); } else nextStep();
+      } catch (ex) { fail(ex.message); }
+    };
+    window.scrollTo(0, 0);
+  };
+  draw();
 }
 
 function photoPicker(root, onUploaded) {
@@ -353,7 +485,7 @@ function photoPicker(root, onUploaded) {
     if (!file) return;
     drop.style.backgroundImage = `url(${URL.createObjectURL(file)})`;
     drop.classList.add("has");
-    drop.innerHTML = `<div class="spinner"></div>`;
+    drop.innerHTML = `<div class="skeleton"></div>`;
     err.hidden = true;
     const fd = new FormData();
     fd.append("file", file);
@@ -374,12 +506,11 @@ function stepPhoto() {
   const root = screen(`${stepsBar("photo")}
     <div class="stack">
       <h1>Ваше фото</h1>
-      <p class="muted">Нужно фото, где хорошо видно лицо — только ваше. Следующим шагом сверим его с камерой.</p>
-      <div class="photo-drop" role="button" tabindex="0">${icons.camera}<br>Выбрать фото</div>
+      <p class="muted">Нужно фото, где хорошо видно лицо, и только ваше. Следующим шагом сверим его с камерой.</p>
+      <div class="photo-drop" role="button" tabindex="0"><div>${icons.camera}Выбрать фото</div></div>
       <input type="file" accept="image/*" hidden>
       <p class="error-text" hidden></p>
     </div>`, { nav: false });
-  $(".photo-drop svg", root).style.cssText = "width:42px;height:42px;margin:0 auto 6px";
   photoPicker(root, nextStep);
 }
 
@@ -388,7 +519,7 @@ function stepScan() {
     <div class="stack">
       <h1>Проверка, что это вы</h1>
       <p class="muted">Камера покажет овал. Держите лицо в нём и следуйте подсказкам: смотрите прямо, затем поверните голову влево и вправо. Это защищает от чужих фото.</p>
-      <div class="profile-head"><img src="${esc(state.me.photo_url)}" alt="Ваше фото"><p class="small muted">Сверяем с этим фото</p></div>
+      <div class="profile-hero"><img src="${esc(state.me.photo_url)}" alt="Ваше фото"><p class="small muted">Сверяем с этим фото</p></div>
       <div id="scan-area"></div>
       <p class="error-text" id="scan-error" hidden></p>
       <button class="btn block" id="start">${icons.shield} Начать проверку</button>
@@ -400,7 +531,7 @@ function stepScan() {
   startBtn.onclick = async () => {
     startBtn.hidden = true;
     err.hidden = true;
-    $(".profile-head", root).hidden = true;
+    $(".profile-hero", root).hidden = true;
     const res = await runScanner($("#scan-area", root));
     if (res.ok) {
       toast("Фото подтверждено");
@@ -423,54 +554,6 @@ function stepScan() {
   };
 }
 
-function feedEditor(me) {
-  return `
-    <label class="switch"><input type="checkbox" name="common" ${me.use_common_bio ? "checked" : ""}>
-      <span class="label">Одно описание для всех лент<small>Выключите, чтобы написать о себе по-разному для каждой ленты</small></span></label>
-    ${FEED_KEYS.map((k) => `
-      <div class="feed-option" style="--c:var(--${k})">
-        <label class="switch"><input type="checkbox" name="feed-${k}" ${me.feeds[k].enabled ? "checked" : ""}>
-          <span class="label">Показывать меня в ленте «${FEED_SHORT[k]}»<small>${FEED_HINT[k]}</small></span></label>
-        <textarea class="input" name="bio-${k}" maxlength="500" placeholder="Описание для ленты «${FEED_SHORT[k]}». Пусто — возьмём общее." ${me.use_common_bio ? "hidden" : ""}>${esc(me.feeds[k].bio)}</textarea>
-      </div>`).join("")}`;
-}
-
-function bindFeedEditor(form) {
-  const sync = () => FEED_KEYS.forEach((k) => (form[`bio-${k}`].hidden = form.common.checked));
-  form.common.addEventListener("change", sync);
-  sync();
-}
-
-function readFeedEditor(form) {
-  return {
-    use_common_bio: form.common.checked,
-    feeds: Object.fromEntries(FEED_KEYS.map((k) => [k, { enabled: form[`feed-${k}`].checked, bio: form[`bio-${k}`].value }])),
-  };
-}
-
-function stepFeeds() {
-  const root = screen(`${stepsBar("feeds")}
-    <form class="stack">
-      <h1>Где вас показывать</h1>
-      <p class="muted">Можно выбрать одну ленту или сразу все. Изменить это можно в любой момент в профиле.</p>
-      ${feedEditor(state.me)}
-      <button class="btn block">Сохранить</button>
-    </form>`, { nav: false });
-  const form = $("form", root);
-  bindFeedEditor(form);
-  form.onsubmit = async (e) => {
-    e.preventDefault();
-    const data = readFeedEditor(form);
-    if (!Object.values(data.feeds).some((f) => f.enabled)) return toast("Выберите хотя бы одну ленту", { error: true });
-    try {
-      await api.put("/api/profile", data);
-      const first = FEED_KEYS.find((k) => data.feeds[k].enabled);
-      setFeed(first);
-      nextStep();
-    } catch (ex) { toast(ex.message, { error: true }); }
-  };
-}
-
 function getPosition() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error("Браузер не поддерживает геопозицию"));
@@ -488,7 +571,7 @@ function stepLocation() {
   const root = screen(`${stepsBar("location")}
     <div class="stack">
       <h1>Люди рядом</h1>
-      <p class="muted">Ленты показывают анкеты от ближайших к дальним, поэтому нужна ваша геопозиция. Другие видят только расстояние в километрах — точный адрес никто не узнает.</p>
+      <p class="muted">Мы показываем тех, кто недалеко от вас. Другие видят только расстояние в километрах, точный адрес никто не узнает.</p>
       <p class="error-text" hidden></p>
       <button class="btn block">${icons.pin} Разрешить геопозицию</button>
     </div>`, { nav: false });
@@ -514,36 +597,36 @@ async function refreshLocationSilently() {
   } catch { /* тихо */ }
 }
 
-// ---------------- Ленты ----------------
+// ---------------- Лента «Нити» ----------------
 
-function setFeed(feed) {
-  state.feed = feed;
-  localStorage.setItem("feed", feed);
-  document.body.dataset.feed = feed;
+function plural(n, one, few, many) {
+  const a = n % 10, b = n % 100;
+  if (a === 1 && b !== 11) return one;
+  if (a >= 2 && a <= 4 && (b < 12 || b > 14)) return few;
+  return many;
 }
+
+const kmText = (km) => (km == null ? "" : km < 1 ? "меньше 1 км от вас" : `${Math.round(km)} км от вас`);
 
 async function renderFeed() {
   const root = screen(`
-    <div class="feed-head"><h1 class="feed-title">${esc(state.config.feeds[state.feed] || FEED_SHORT[state.feed])}</h1></div>
-    <div class="feed-switch" role="tablist">${FEED_KEYS.map((k) =>
-      `<button role="tab" data-feed="${k}" class="${k === state.feed ? "on" : ""}" aria-selected="${k === state.feed}">${FEED_SHORT[k]}</button>`).join("")}</div>
-    <div class="deck" aria-live="polite"><div class="spinner"></div></div>
-    <div class="swipe-actions" hidden>
-      <button class="nope" aria-label="Не нравится">${icons.x}</button>
-      <button class="like" aria-label="Нравится">${icons.heart}</button>
-    </div>`);
-  $$(".feed-switch button", root).forEach((b) => (b.onclick = () => { setFeed(b.dataset.feed); renderFeed(); }));
-
+    <div class="topbar"><span class="row" style="gap:8px"><span class="logo">cofi<span>°</span></span>${state.me.is_demo ? '<span class="demo-pill">демо</span>' : ""}</span><span class="counter"></span></div>
+    <div class="deck" aria-live="polite"><div class="skeleton" style="position:relative;height:420px"></div></div>
+    <div class="btns" hidden>
+      <div class="bw"><button class="skip" aria-label="Дальше">${icons.x}</button><span>Дальше</span></div>
+      <div class="bw"><button class="like" aria-label="Нравится">${icons.heart}</button><span>Нравится</span></div>
+    </div>
+    <p class="swipe-hint" hidden>Свайп вниз: нравится, вверх: дальше. Нажмите на фото, чтобы открыть анкету</p>`, { cls: "feed" });
   const deck = $(".deck", root);
-  const actions = $(".swipe-actions", root);
-  let cards = [];
-  let busy = false;
-  let loading = false;
-  const feed = state.feed;
+  const btns = $(".btns", root);
+  const hint = $(".swipe-hint", root);
+  const counter = $(".counter", root);
+  let cards = [], total = 0, seen = 0, busy = false, loading = false, thread = null;
 
   const empty = (title, text, btnLabel, fn) => {
-    actions.hidden = true;
-    deck.replaceChildren(h(`<div class="empty"><h2>${title}</h2><p class="muted">${text}</p>${btnLabel ? `<button class="btn">${btnLabel}</button>` : ""}</div>`));
+    btns.hidden = hint.hidden = true;
+    counter.textContent = "";
+    deck.replaceChildren(h(`<div class="empty"><h1>${title}</h1><p class="lead">${text}</p>${btnLabel ? `<button class="btn">${btnLabel}</button>` : ""}</div>`));
     if (fn) $(".btn", deck).onclick = fn;
   };
 
@@ -551,156 +634,199 @@ async function renderFeed() {
     if (loading) return;
     loading = true;
     try {
-      const res = await api.get(`/api/feed/${feed}?limit=10`);
-      if (state.feed !== feed) return;
+      const res = await api.get("/api/feed?limit=10");
+      total = seen + res.total;
       const known = new Set(cards.map((c) => c.id));
       cards.push(...res.cards.filter((c) => !known.has(c.id)));
-      draw();
+      if (!thread) draw();
     } catch (ex) {
-      if (ex.code === "feed_disabled") {
-        empty("Вы не показываетесь в этой ленте", "Чтобы смотреть анкеты здесь, включите показ своей анкеты в этой ленте.", "Показывать меня здесь", async () => {
-          await api.put("/api/profile", { feeds: { [feed]: { enabled: true } } });
-          await reloadMe();
-          renderFeed();
-        });
-      } else if (ex.code === "need_location") {
+      if (ex.code === "need_location") {
         empty("Нужна геопозиция", "Без неё не получится найти людей рядом.", "Разрешить", async () => {
           try { await api.post("/api/profile/location", await getPosition()); renderFeed(); } catch (e) { toast(e.message, { error: true }); }
         });
-      } else empty("Не удалось загрузить ленту", ex.message, "Повторить", renderFeed);
+      } else empty("Лента не загрузилась", ex.message, "Повторить", renderFeed);
     } finally { loading = false; }
   }
 
   function draw() {
-    if (!cards.length) {
-      return empty("Рядом пока никого", `В радиусе ${state.me.max_distance_km} км новых анкет нет. Увеличьте радиус или загляните позже.`, "Изменить радиус", () => go("#/settings"));
+    const c = cards[0];
+    if (!c) {
+      thread = null;
+      return empty("Рядом пока никого", `В радиусе ${state.me.max_distance_km} км новых анкет нет. Увеличьте радиус или добавьте интересов.`, "Открыть профиль", () => go("#/settings"));
     }
-    actions.hidden = false;
-    deck.replaceChildren(...cards.slice(0, 2).reverse().map((c, i, arr) => cardEl(c, i === arr.length - 1)));
-    bindDrag($(".card.top", deck));
-  }
-
-  function cardEl(c, top) {
-    return h(`<article class="card ${top ? "top" : ""}" style="background-image:url('${esc(c.photo_url)}')" aria-label="${esc(c.name)}, ${c.age}">
-      <div class="shade"></div>
-      <div class="stamp yes">ДА</div><div class="stamp no">НЕТ</div>
-      <div class="info">
-        <div class="name">${esc(c.name)} <span>${c.age ?? ""}</span></div>
-        <div class="meta">
-          ${c.verified ? `<span class="verified">${icons.check} Фото подтверждено</span>` : ""}
-          ${c.distance_km != null ? `<span>${c.distance_km < 1 ? "меньше 1 км" : `${Math.round(c.distance_km)} км от вас`}</span>` : ""}
-        </div>
-        ${c.bio ? `<p class="bio">${esc(c.bio)}</p>` : ""}
-      </div></article>`);
-  }
-
-  function bindDrag(el) {
-    if (!el) return;
-    let x0 = 0, y0 = 0, dx = 0, dy = 0, dragging = false;
-    const yes = $(".stamp.yes", el), no = $(".stamp.no", el);
-    el.addEventListener("pointerdown", (e) => {
-      if (busy) return;
-      dragging = true; x0 = e.clientX; y0 = e.clientY; dx = dy = 0;
-      el.setPointerCapture(e.pointerId);
-      el.classList.add("dragging");
-    });
-    el.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
-      dx = e.clientX - x0; dy = e.clientY - y0;
-      el.style.transform = `translate(${dx}px, ${dy * 0.4}px) rotate(${dx / 18}deg)`;
-      yes.style.opacity = Math.max(0, Math.min(1, dx / 100));
-      no.style.opacity = Math.max(0, Math.min(1, -dx / 100));
-    });
-    const end = () => {
-      if (!dragging) return;
-      dragging = false;
-      el.classList.remove("dragging");
-      if (Math.abs(dx) > 110) decide(dx > 0);
-      else {
-        el.classList.add("anim");
-        el.style.transform = "";
-        yes.style.opacity = no.style.opacity = 0;
-        setTimeout(() => el.classList.remove("anim"), 400);
-      }
-    };
-    el.addEventListener("pointerup", end);
-    el.addEventListener("pointercancel", end);
+    btns.hidden = hint.hidden = false;
+    counter.textContent = `${seen + 1} из ${Math.max(total, seen + 1)} рядом`;
+    const rest = c.interests.filter((x) => !c.common.includes(x));
+    deck.replaceChildren(h(`<div>
+      <article class="person enter">
+        <button class="ava" aria-label="Открыть анкету: ${esc(c.name)}">
+          ${c.photo_url ? `<img src="${esc(c.photo_url)}" alt="">` : esc(c.name.charAt(0))}
+          ${c.photos_count ? `<span class="more">+${c.photos_count} фото</span>` : ""}
+        </button>
+        <div class="pname">${esc(c.name)}<span>, ${c.age}</span></div>
+        <div class="meta">${[kmText(c.distance_km), c.verified ? "фото подтверждено" : ""].filter(Boolean).join(" · ")}</div>
+        ${c.bio ? `<p class="pbio">${esc(c.bio)}</p>` : ""}
+      </article>
+      <div class="shared-lbl">${c.common.length
+        ? `У вас общего: <b>${c.common.length} ${plural(c.common.length, "интерес", "интереса", "интересов")}</b> · совпадение ${c.match}%`
+        : "Общих интересов пока нет, но можно познакомиться"}</div>
+      <div class="thread"></div>
+      ${rest.length ? `<p class="rest">Ещё интересы: ${esc(rest.slice(0, 8).join(", "))}</p>` : ""}
+    </div>`));
+    $(".ava", deck).onclick = () => openProfile(c.id, { onDecide: decide });
+    thread = mountThread($(".thread", deck), c.common.slice(0, 5));
   }
 
   async function decide(like) {
-    const el = $(".card.top", deck);
-    const card = cards[0];
-    if (!el || !card || busy) return;
+    const c = cards[0];
+    if (!c || busy || !thread) return;
     busy = true;
-    $(like ? ".stamp.yes" : ".stamp.no", el).style.opacity = 1;
-    el.classList.add("anim");
-    el.style.transform = `translate(${like ? 140 : -140}%, 30px) rotate(${like ? 24 : -24}deg)`;
-    el.style.opacity = 0;
-    try {
-      const res = await api.post(`/api/feed/${feed}/swipe`, { user_id: card.id, like });
-      if (res.match) showMatch({ conversation_id: res.conversation_id, feed, user: res.user });
-    } catch (ex) {
-      toast(ex.message, { error: true });
-    }
-    await new Promise((r) => setTimeout(r, 250));
+    $$("button", btns).forEach((b) => (b.disabled = true));
+    navigator.vibrate?.(like ? 12 : 6);
+    const request = api.post("/api/feed/swipe", { user_id: c.id, like }).catch((ex) => { toast(ex.message, { error: true }); return {}; });
+    const [res] = await Promise.all([request, thread.play(like ? "like" : "skip")]);
+    if (res.match) showMatch({ conversation_id: res.conversation_id, user: res.user, common: res.user.common });
     cards.shift();
+    seen++;
     busy = false;
+    $$("button", btns).forEach((b) => (b.disabled = false));
+    thread = null;
     draw();
     if (cards.length < 3) load();
   }
 
-  $(".nope", actions).onclick = () => decide(false);
-  $(".like", actions).onclick = () => decide(true);
+  $(".skip", btns).onclick = () => decide(false);
+  $(".like", btns).onclick = () => decide(true);
+
+  // Свайп по вертикали: вниз — нравится, вверх — дальше (как в макете)
+  let y0 = null;
+  deck.addEventListener("pointerdown", (e) => { if (!e.target.closest(".ava")) y0 = e.clientY; });
+  deck.addEventListener("pointerup", (e) => {
+    if (y0 === null) return;
+    const dy = e.clientY - y0;
+    y0 = null;
+    if (dy > 80) decide(true);
+    else if (dy < -80) decide(false);
+  });
+  deck.addEventListener("pointercancel", () => (y0 = null));
   const keys = (e) => {
     if (!document.body.contains(deck)) return document.removeEventListener("keydown", keys);
-    if (e.target.closest("input, textarea")) return;
-    if (e.key === "ArrowRight") decide(true);
-    if (e.key === "ArrowLeft") decide(false);
+    if (e.target.closest("input, textarea") || $(".profile-view")) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") decide(true);
+    if (e.key === "ArrowUp" || e.key === "ArrowLeft") decide(false);
   };
   document.addEventListener("keydown", keys);
   load();
 }
 
-function showMatch({ conversation_id, feed, user }) {
-  const key = `${conversation_id}:${feed}`;
-  if (state.shownMatches.has(key)) return;
-  state.shownMatches.add(key);
-  const el = h(`<div class="overlay" role="dialog" aria-label="Взаимная симпатия">
+// ---------------- Подробная анкета ----------------
+
+async function openProfile(userId, { onDecide = null } = {}) {
+  let p;
+  try {
+    p = await api.get(`/api/users/${userId}`);
+  } catch (ex) {
+    return toast(ex.message, { error: true });
+  }
+  const goalsSet = new Set(p.common);
+  const el = h(`<section class="profile-view" role="dialog" aria-label="Анкета: ${esc(p.name)}">
+    <div class="gallery">
+      <div class="track">${p.photos.map((u, i) => `<img src="${esc(u)}" alt="Фото ${i + 1}" loading="${i ? "lazy" : "eager"}">`).join("")}</div>
+      ${p.photos.length > 1 ? `<div class="dots">${p.photos.map((_, i) => `<i class="${i ? "" : "on"}"></i>`).join("")}</div>` : ""}
+    </div>
+    <button class="icon-btn close" aria-label="Закрыть">${icons.back}</button>
+    <div class="profile-body">
+      <div class="pname">${esc(p.name)}<span>, ${p.age}</span></div>
+      <div class="meta muted small" style="margin-top:6px">${[kmText(p.distance_km), p.verified ? "фото подтверждено" : "", p.online ? "в сети" : ""].filter(Boolean).join(" · ")}</div>
+      <div class="match-strip">
+        <div><b>${p.match}%</b><span>совпадение</span></div>
+        <div><b>${p.common.length}</b><span>${plural(p.common.length, "общий интерес", "общих интереса", "общих интересов")}</span></div>
+        <div><b>${p.photos.length}</b><span>${plural(p.photos.length, "фото", "фото", "фото")}</span></div>
+      </div>
+      ${p.bio ? `<h3>О себе</h3><p style="font-size:16px;line-height:1.5">${esc(p.bio)}</p>` : ""}
+      ${p.goals.length ? `<h3>Ищет</h3><div class="chips">${p.goals.map((g) => `<span class="chip static ghost">${esc(g)}</span>`).join("")}</div>` : ""}
+      <h3>Интересы</h3>
+      <div class="chips">${p.interests.map((x) => `<span class="chip static ${goalsSet.has(x) ? "hot" : "ghost"}">${esc(x)}</span>`).join("")}</div>
+    </div>
+    <div class="profile-actions"></div>
+  </section>`);
+
+  const actions = $(".profile-actions", el);
+  const close = () => { el.remove(); document.removeEventListener("keydown", esc_); };
+  const esc_ = (e) => e.key === "Escape" && close();
+  if (p.conversation_id) {
+    actions.innerHTML = `<button class="btn block" data-write>${icons.chat} Написать сообщение</button>`;
+    $("[data-write]", actions).onclick = () => { close(); go(`#/chat/${p.conversation_id}`); };
+  } else if (onDecide) {
+    actions.innerHTML = `<div class="btns">
+      <div class="bw"><button class="skip" aria-label="Дальше">${icons.x}</button><span>Дальше</span></div>
+      <div class="bw"><button class="like" aria-label="Нравится">${icons.heart}</button><span>Нравится</span></div></div>
+      <p class="note">Написать можно после взаимной симпатии</p>`;
+    $(".skip", actions).onclick = () => { close(); onDecide(false); };
+    $(".like", actions).onclick = () => { close(); onDecide(true); };
+  } else {
+    actions.innerHTML = `<p class="note">${p.liked ? "Вы отметили симпатию. Чат откроется, когда она станет взаимной" : "Написать можно после взаимной симпатии"}</p>`;
+  }
+
+  const track = $(".track", el);
+  const dots = $$(".dots i", el);
+  track.addEventListener("scroll", () => {
+    const i = Math.round(track.scrollLeft / track.clientWidth);
+    dots.forEach((d, k) => d.classList.toggle("on", k === i));
+  }, { passive: true });
+  // тап по левой/правой половине фото листает, как в сторис
+  track.addEventListener("click", (e) => {
+    const right = e.clientX > track.getBoundingClientRect().left + track.clientWidth / 2;
+    track.scrollBy({ left: right ? track.clientWidth : -track.clientWidth, behavior: "smooth" });
+  });
+  $(".close", el).onclick = close;
+  document.addEventListener("keydown", esc_);
+  document.body.append(el);
+  $(".close", el).focus();
+}
+
+function showMatch({ conversation_id, user, common = [] }) {
+  if (state.shownMatches.has(conversation_id)) return;
+  state.shownMatches.add(conversation_id);
+  const el = h(`<div class="overlay match" role="dialog" aria-label="Взаимная симпатия">
     <div class="match-modal">
-      <div class="word">Взаимно!</div>
+      <div class="heart-stage" aria-hidden="true"></div>
+      <h1 class="match-title">Взаимно</h1>
       <div class="pair"><img src="${esc(state.me.photo_url)}" alt="Вы"><img src="${esc(user.photo_url)}" alt="${esc(user.name)}"></div>
-      <p class="muted">Вы и ${esc(user.name)} понравились друг другу в ленте «${FEED_SHORT[feed] || feed}». Теперь можно написать.</p>
-      <button class="btn block" data-chat>Написать сообщение</button>
+      <p>Вы и ${esc(user.name)} понравились друг другу.${common.length ? " У вас общее:" : ""}</p>
+      ${common.length ? `<div class="chips">${common.slice(0, 6).map((x) => `<span class="chip static">${esc(x)}</span>`).join("")}</div>` : ""}
+      <button class="btn dark block" data-chat>Написать сообщение</button>
       <button class="btn ghost block" data-close>Смотреть дальше</button>
     </div></div>`);
+  document.body.append(el);
+  mount3d($(".heart-stage", el), "heart");
+  navigator.vibrate?.([20, 60, 30]);
   $("[data-chat]", el).onclick = () => { el.remove(); go(`#/chat/${conversation_id}`); };
   $("[data-close]", el).onclick = () => el.remove();
-  document.body.append(el);
 }
 
 // ---------------- Чаты ----------------
 
 function previewText(m, meId) {
-  if (!m) return "Новая пара — напишите первым";
+  if (!m) return "Новая пара, напишите первым";
   const mine = m.sender_id === meId ? "Вы: " : "";
   const map = { image: "Фото", video: "Видео", voice: "Голосовое", circle: "Видеосообщение", sticker: m.text, call: m.text === "video" ? "Видеозвонок" : "Звонок" };
   return mine + (m.kind === "text" ? m.text : map[m.kind] || "");
 }
 
 async function renderChats() {
-  const root = screen(`<h1>Чаты</h1><div id="chats"><div class="spinner"></div></div>`);
+  const root = screen(`<h1>Чаты</h1><div id="chats"></div>`);
   let chats = [];
   try { chats = await api.get("/api/chats"); } catch (ex) { toast(ex.message, { error: true }); }
   state.unread = chats.reduce((s, c) => s + c.unread, 0);
   updateNavBadge();
   const box = $("#chats", root);
   if (!chats.length) {
-    box.replaceChildren(h(`<div class="empty"><h2>Пока без пар</h2><p class="muted">Когда симпатия окажется взаимной, здесь появится чат.</p><a class="btn" href="#/feed">Открыть ленту</a></div>`));
+    box.replaceChildren(h(`<div class="empty"><h2>Пока без пар</h2><p class="muted">Когда симпатия окажется взаимной, здесь появится чат.</p><a class="btn" href="#/feed">Смотреть анкеты</a></div>`));
     return;
   }
   const fresh = chats.filter((c) => !c.last_message);
   const talks = chats.filter((c) => c.last_message);
-  const dots = (feeds) => `<span class="feed-dots">${feeds.map((f) => `<i class="${f}" title="${FEED_SHORT[f]}"></i>`).join("")}</span>`;
   box.replaceChildren(h(`<div>
     ${fresh.length ? `<div class="new-matches" aria-label="Новые пары">${fresh.map((c) =>
       `<a href="#/chat/${c.id}"><img src="${esc(c.user.photo_url)}" alt="">${esc(c.user.name)}</a>`).join("")}</div>` : ""}
@@ -708,7 +834,7 @@ async function renderChats() {
       <a class="chat-item" href="#/chat/${c.id}">
         <span class="avatar-wrap"><img class="avatar" src="${esc(c.user.photo_url)}" alt="">${c.user.online ? '<i class="dot" title="В сети"></i>' : ""}</span>
         <span class="body">
-          <span class="top"><b>${esc(c.user.name)}</b>${dots(c.feeds)}<span class="time">${fmtShort(c.last_message.created_at)}</span></span>
+          <span class="top"><b>${esc(c.user.name)}</b><span class="time">${fmtShort(c.last_message.created_at)}</span></span>
           <span class="row" style="gap:8px"><span class="preview" style="flex:1">${esc(previewText(c.last_message, state.me.id))}</span>${c.unread ? `<span class="unread">${c.unread}</span>` : ""}</span>
         </span>
       </a>`).join("")}</div></div>`));
@@ -735,8 +861,10 @@ async function openChat(convId) {
   const el = h(`<section class="chat-screen" aria-label="Чат с ${esc(other.name)}">
     <header class="chat-header">
       <a class="icon-btn" href="#/chats" aria-label="Назад">${icons.back}</a>
-      <img class="avatar" src="${esc(other.photo_url)}" alt="">
-      <div class="who"><b>${esc(other.name)}${other.age ? `, ${other.age}` : ""}</b><small class="status">${other.online ? "в сети" : "не в сети"}</small></div>
+      <button class="who-link" data-profile aria-label="Открыть анкету">
+        <img class="avatar" src="${esc(other.photo_url)}" alt="">
+        <span class="who"><b>${esc(other.name)}${other.age ? `, ${other.age}` : ""}</b><small class="status">${other.online ? "в сети" : "не в сети"}</small></span>
+      </button>
       <button class="icon-btn" data-call="audio" aria-label="Аудиозвонок">${icons.phone}</button>
       <button class="icon-btn" data-call="video" aria-label="Видеозвонок">${icons.video}</button>
       <button class="icon-btn" data-menu aria-label="Ещё">${icons.more}</button>
@@ -773,7 +901,7 @@ async function openChat(convId) {
   }
 
   if (!data.messages.length) {
-    list.append(h(`<div class="empty" style="text-align:center"><h3>Вы понравились друг другу</h3><p class="muted small">Начните со стикера или кружочка — это проще, чем «привет».</p></div>`));
+    list.append(h(`<div class="empty" style="text-align:center"><h3>Вы понравились друг другу</h3><p class="muted small">Начните с общего интереса или запишите кружочек.</p></div>`));
   }
   data.messages.forEach(append);
   requestAnimationFrame(scrollDown);
@@ -804,6 +932,7 @@ async function openChat(convId) {
   chatCleanup = () => { offs.forEach((f) => f()); voice?.cancel(); el.remove(); };
 
   $$("[data-call]", el).forEach((b) => (b.onclick = () => startCall(convId, other, b.dataset.call === "video")));
+  $("[data-profile]", el).onclick = () => openProfile(other.id);
   $("[data-menu]", el).onclick = async () => {
     if (await confirmDialog(`Удалить пару с ${other.name}? Чат исчезнет у вас обоих.`, "Удалить пару")) {
       await api.del(`/api/chats/${convId}`);
@@ -990,7 +1119,7 @@ function circleEl(m, mine, time) {
   const el = h(`<div class="msg circle ${mine ? "mine" : ""}">
     <div class="circle-msg" role="button" tabindex="0" aria-label="Видеосообщение, нажмите для звука">
       <video src="${esc(m.media_url)}" muted loop playsinline autoplay preload="metadata"></video>
-      <svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="48" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-dasharray="${C}" stroke-dashoffset="${C}"/></svg>
+      <svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="48" fill="none" stroke="var(--orange)" stroke-width="2.5" stroke-dasharray="${C}" stroke-dashoffset="${C}"/></svg>
       <span class="dur">${fmtDur(m.duration)}</span>
     </div>${time}</div>`);
   const v = $("video", el), ring = $("circle", el);
@@ -1016,11 +1145,13 @@ function circleEl(m, mine, time) {
 function renderSettings() {
   const me = state.me;
   const step = onboardingStep(me);
+  const pick = { gender: me.gender, looking_for: me.looking_for };
   const root = screen(`
     <h1>Профиль</h1>
-    ${step ? `<p class="badge-warn" style="margin-top:10px">Анкета не завершена — <a href="#/feed">продолжить настройку</a></p>` : ""}
-    <div class="section profile-head">
-      ${me.photo_url ? `<img src="${esc(me.photo_url)}" alt="Ваше фото">` : ""}
+    ${me.is_demo ? `<div class="demo-banner" style="margin-top:14px">${icons.sparkle}<span>Вы в демо-режиме. Боты отвечают в чате, данные удалятся через сутки.</span></div>` : ""}
+    ${step ? `<p class="badge-warn" style="margin-top:10px">Анкета не завершена. <a href="#/feed">Продолжить настройку</a></p>` : ""}
+    <div class="section profile-hero">
+      ${me.photo_url ? `<img src="${esc(me.photo_url)}" alt="Ваше фото">` : "<span></span>"}
       <div class="stack" style="gap:8px">
         ${me.photo_verified ? `<span class="badge-ok">${icons.check} Фото подтверждено</span>` : `<span class="badge-warn">Фото не подтверждено</span>`}
         <button class="btn quiet" id="change-photo">Заменить фото</button>
@@ -1029,32 +1160,64 @@ function renderSettings() {
       <input type="file" accept="image/*" hidden>
     </div>
 
+    <div class="section">
+      <h3>Ещё фото</h3>
+      <p class="hint" style="margin:-4px 0 12px">До 6 фото: хобби, поездки, друзья. Их видно в подробной анкете.</p>
+      <div class="gallery-edit">${me.photos.map((p) => `<div class="ph-cell"><img src="${esc(p.url)}" alt=""><button class="del" data-del="${p.id}" aria-label="Удалить фото">${icons.x}</button></div>`).join("")}${
+        me.photos.length < 6 ? `<button class="ph-cell add" data-add aria-label="Добавить фото">${icons.plus}</button>` : ""}</div>
+      <input type="file" accept="image/*" multiple hidden id="gallery-input">
+    </div>
+
+    <div class="section">
+      <h3>Интересы</h3>
+      <div class="chips" style="margin-bottom:12px">${[...me.goals, ...me.interests].map((x, i) =>
+        `<span class="chip static ${i < me.goals.length ? "hot" : ""}">${esc(x)}</span>`).join("")}</div>
+      <a class="btn ghost" href="#/settings/interests">Изменить интересы</a>
+    </div>
+
     <form class="section stack" id="profile-form">
       <h3>О себе</h3>
       <label class="field"><span>Имя</span><input class="input" name="name" maxlength="64" value="${esc(me.name)}"></label>
       <label class="field"><span>Возраст</span><input class="input" name="age" type="number" min="18" max="100" value="${me.age ?? ""}"></label>
-      <label class="field"><span>Общее описание</span><textarea class="input" name="bio" maxlength="500">${esc(me.bio)}</textarea></label>
-      <h3 style="margin-top:14px">Ленты</h3>
-      ${feedEditor(me)}
-      <h3 style="margin-top:14px">Поиск</h3>
-      <label class="field"><span>Радиус поиска: <b id="dist-val">${me.max_distance_km}</b> км</span>
+      <div class="field"><span>Я</span>${choiceGroup("gender", state.config.genders, me.gender)}</div>
+      <div class="field"><span>Кого ищу</span>${choiceGroup("looking_for", state.config.looking_for, me.looking_for)}</div>
+      <label class="field"><span>Описание</span><textarea class="input" name="bio" maxlength="500">${esc(me.bio)}</textarea></label>
+      <label class="field"><span>Искать в радиусе <b id="dist-val">${me.max_distance_km}</b> км</span>
         <input type="range" name="dist" min="1" max="300" value="${Math.min(me.max_distance_km, 300)}"></label>
       <button type="button" class="btn ghost" id="relocate">${icons.pin} Обновить геопозицию</button>
       ${me.email ? `<label class="switch"><input type="checkbox" name="notify" ${me.email_notifications ? "checked" : ""}>
-        <span class="label">Письма о метчах и обновлениях<small>${esc(me.email)}</small></span></label>` : ""}
+        <span class="label">Письма о парах и обновлениях<small>${esc(me.email)}</small></span></label>` : ""}
       <button class="btn block">Сохранить изменения</button>
     </form>
 
+    <div class="section">
+      <h3>Оформление</h3>
+      <div class="choice-grid" style="grid-template-columns:repeat(3,1fr)" role="radiogroup" aria-label="Тема">
+        ${[["dark", "Тёмная"], ["light", "Светлая"], ["system", "Как в системе"]].map(([k, l]) =>
+          `<button type="button" class="chip" data-theme-pick="${k}" aria-pressed="${getThemePref() === k}">${l}</button>`).join("")}
+      </div>
+    </div>
+
+    <div class="section stack">
+      <a class="row-link" href="#/guide"><span><b>Как пользоваться</b><br><span class="muted small">Жесты, пары, чат и звонки</span></span>${icons.arrow}</a>
+    </div>
+
     <div class="section stack">
       <h3>Аккаунт</h3>
-      <p class="muted small">${me.auth_provider === "telegram" ? `Вход через Telegram${me.telegram_username ? ` (@${esc(me.telegram_username)})` : ""}` : `Вход по почте ${esc(me.email)}`}</p>
-      ${me.is_admin ? `<a class="btn quiet" href="/admin">Открыть админ-панель</a>` : ""}
+      <p class="muted small">${me.is_demo ? "Демо-аккаунт без регистрации" : me.auth_provider === "telegram" ? `Вход через Telegram${me.telegram_username ? ` (@${esc(me.telegram_username)})` : ""}` : `Вход по почте ${esc(me.email)}`}</p>
+      ${me.is_admin ? `<a class="btn quiet" href="/admin">Админ-панель</a>` : ""}
+      ${me.is_demo ? `<button class="btn" id="leave-demo">Зарегистрироваться</button>` : ""}
       <button class="btn ghost" id="logout">Выйти</button>
       <button class="btn danger" id="delete">Удалить анкету</button>
     </div>`);
 
+  bindChoice(root, "gender", (v) => (pick.gender = v));
+  bindChoice(root, "looking_for", (v) => (pick.looking_for = v));
+  $$("[data-theme-pick]", root).forEach((b) => (b.onclick = () => {
+    setTheme(b.dataset.themePick);
+    $$("[data-theme-pick]", root).forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  }));
   const form = $("#profile-form", root);
-  bindFeedEditor(form);
   form.dist.oninput = () => ($("#dist-val", root).textContent = form.dist.value);
   form.onsubmit = async (e) => {
     e.preventDefault();
@@ -1063,13 +1226,11 @@ function renderSettings() {
       age: Number(form.age.value) || undefined,
       bio: form.bio.value,
       max_distance_km: Number(form.dist.value),
-      ...readFeedEditor(form),
+      ...pick,
     };
     if (form.notify) data.email_notifications = form.notify.checked;
-    if (!Object.values(data.feeds).some((f) => f.enabled)) return toast("Оставьте хотя бы одну ленту", { error: true });
     try {
       state.me = await api.put("/api/profile", data);
-      if (!state.me.feeds[state.feed].enabled) setFeed(FEED_KEYS.find((k) => state.me.feeds[k].enabled));
       toast("Изменения сохранены");
     } catch (ex) { toast(ex.message, { error: true }); }
   };
@@ -1081,7 +1242,21 @@ function renderSettings() {
     } catch (ex) { toast(ex.message, { error: true }); }
   };
 
-  const input = $("input[type=file]", root);
+  const galleryInput = $("#gallery-input", root);
+  $("[data-add]", root)?.addEventListener("click", () => galleryInput.click());
+  galleryInput.onchange = async () => {
+    for (const f of [...galleryInput.files].slice(0, 6 - state.me.photos.length)) {
+      const fd = new FormData();
+      fd.append("file", f);
+      try { state.me = await api.post("/api/profile/photos", fd); } catch (ex) { toast(ex.message, { error: true }); break; }
+    }
+    renderSettings();
+  };
+  $$("[data-del]", root).forEach((b) => (b.onclick = async () => {
+    try { state.me = await api.del(`/api/profile/photos/${b.dataset.del}`); renderSettings(); } catch (ex) { toast(ex.message, { error: true }); }
+  }));
+
+  const input = $(".profile-hero input[type=file]", root);
   $("#change-photo", root).onclick = () => input.click();
   input.onchange = async () => {
     const fd = new FormData();
@@ -1093,6 +1268,12 @@ function renderSettings() {
     } catch (ex) { toast(ex.message, { error: true }); }
   };
 
+  $("#leave-demo", root)?.addEventListener("click", async () => {
+    await api.del("/api/profile");
+    disconnectSocket();
+    state.me = null;
+    go("#/");
+  });
   $("#logout", root).onclick = async () => {
     await api.post("/api/auth/logout");
     disconnectSocket();
@@ -1112,7 +1293,7 @@ function renderSettings() {
 
 on("match", (d) => {
   if (!state.me) return;
-  showMatch({ conversation_id: d.conversation_id, feed: d.feed, user: d.user });
+  showMatch({ conversation_id: d.conversation_id, user: d.user, common: d.common });
   notifyBrowser("Взаимная симпатия!", `Вы понравились ${d.user.name}`);
 });
 
@@ -1145,5 +1326,15 @@ window.addEventListener("unhandledrejection", (e) => {
     go("#/");
   }
 });
+
+// Если внешнее фото не загрузилось (нет сети), показываем фирменную заглушку
+const PLACEHOLDER = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="50"><defs><pattern id="p" width="11" height="11" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="11" height="11" fill="#c9461a"/><rect width="3" height="11" fill="#a9380f"/></pattern></defs><rect width="40" height="50" fill="url(#p)"/></svg>');
+document.addEventListener("error", (e) => {
+  const img = e.target;
+  if (img.tagName === "IMG" && !img.dataset.fallback) {
+    img.dataset.fallback = "1";
+    img.src = PLACEHOLDER;
+  }
+}, true);
 
 boot();

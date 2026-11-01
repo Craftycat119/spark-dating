@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import emailer
+from .. import demo, emailer
 from ..config import settings
 from ..database import get_db
 from ..deps import COOKIE_NAME, client_ip, current_user, start_session
@@ -217,6 +217,14 @@ def telegram_login(data: dict, request: Request, response: Response, db: Session
         user.telegram_username = data.get("username") or user.telegram_username
     start_session(db, user, request, response)
     return own_profile(user)
+
+
+@router.post("/demo")
+def demo_login(request: Request, response: Response, db: Session = Depends(get_db)):
+    """Вход в демо без регистрации: готовая анкета и 10 анкет-ботов рядом."""
+    guest = demo.create_guest(db, client_ip(request), request.headers.get("user-agent", ""))
+    start_session(db, guest, request, response)
+    return own_profile(guest)
 
 
 @router.post("/logout")

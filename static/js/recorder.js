@@ -42,9 +42,9 @@ export function recordCircle() {
     const C = 2 * Math.PI * 49;
     const el = h(`<div class="circle-recorder" role="dialog" aria-label="Запись видеосообщения">
       <div class="lens"><video playsinline muted autoplay></video>
-        <svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="49" fill="none" stroke="var(--accent)" stroke-width="3"
+        <svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="49" fill="none" stroke="var(--orange)" stroke-width="3"
           stroke-dasharray="${C}" stroke-dashoffset="${C}" stroke-linecap="round"/></svg></div>
-      <div class="timer" style="font:600 20px var(--display)">0:00</div>
+      <div class="timer" style="font:700 24px var(--pixel);color:var(--orange)">0:00</div>
       <div class="controls">
         <button class="icon-btn" data-close aria-label="Закрыть">${icons.x}</button>
         <button class="rec-button" data-rec aria-label="Начать запись"><i></i></button>

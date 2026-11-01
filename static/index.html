@@ -3,16 +3,56 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1f0f26">
-  <title>Spark — знакомства рядом</title>
+  <meta name="theme-color" content="#120c09">
+  <title>COFI: знакомства по интересам</title>
+  <script>/* тема до первой отрисовки, чтобы не мигало */try{var t=localStorage.getItem("theme")||"dark";if(t==="system")t=matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme="dark"}</script>
   <link rel="icon" href="/static/img/icon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=Unbounded:wght@300;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;800&family=Pixelify+Sans:wght@500;700&family=Unbounded:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/vendor/phosphor/regular.css">
+  <link rel="stylesheet" href="/static/vendor/phosphor/fill.css">
   <link rel="stylesheet" href="/static/css/app.css">
 </head>
-<body data-feed="dating">
-  <div id="app"><div class="spinner"></div></div>
+<body>
+  <!-- «Надутый» материал для логотипа: объём через карту высот + свет, фактура ткани через шум -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <filter id="puff" x="-10%" y="-25%" width="120%" height="150%" color-interpolation-filters="sRGB">
+      <feMorphology in="SourceAlpha" operator="dilate" radius="3" result="fat"/>
+      <feGaussianBlur in="fat" stdDeviation="7" result="soft"/>
+      <feComponentTransfer in="soft" result="shape"><feFuncA type="linear" slope="4" intercept="-1.2"/></feComponentTransfer>
+      <feComponentTransfer in="soft" result="dome"><feFuncA type="table" tableValues="0 0.35 0.6 0.78 0.9 0.97 1"/></feComponentTransfer>
+      <feTurbulence type="fractalNoise" baseFrequency="0.45 1.3" numOctaves="2" seed="7" result="knit"/>
+      <feColorMatrix in="knit" type="luminanceToAlpha" result="knitA"/>
+      <feComposite in="dome" in2="knitA" operator="arithmetic" k2="1" k3="0.06" result="height"/>
+      <feDiffuseLighting in="height" surfaceScale="16" diffuseConstant="1.3" lighting-color="#fff" result="diff"><feDistantLight azimuth="235" elevation="34"/></feDiffuseLighting>
+      <feSpecularLighting in="height" surfaceScale="16" specularConstant="0.35" specularExponent="14" lighting-color="#ffe2d2" result="spec"><feDistantLight azimuth="235" elevation="60"/></feSpecularLighting>
+      <feFlood flood-color="#ff5b1f"/><feBlend in2="diff" mode="multiply" result="lit"/>
+      <feComposite in="spec" in2="lit" operator="arithmetic" k2="0.5" k3="1" result="lit2"/>
+      <feComposite in="lit2" in2="shape" operator="in" result="body"/>
+      <feGaussianBlur in="shape" stdDeviation="9"/><feOffset dy="12" result="sh"/>
+      <feFlood flood-color="#000" flood-opacity=".6"/><feComposite in2="sh" operator="in" result="shadow"/>
+      <feMerge><feMergeNode in="shadow"/><feMergeNode in="body"/></feMerge>
+    </filter>
+    <filter id="puff-cream" x="-10%" y="-25%" width="120%" height="150%" color-interpolation-filters="sRGB">
+      <feMorphology in="SourceAlpha" operator="dilate" radius="3" result="fat"/>
+      <feGaussianBlur in="fat" stdDeviation="7" result="soft"/>
+      <feComponentTransfer in="soft" result="shape"><feFuncA type="linear" slope="4" intercept="-1.2"/></feComponentTransfer>
+      <feComponentTransfer in="soft" result="dome"><feFuncA type="table" tableValues="0 0.35 0.6 0.78 0.9 0.97 1"/></feComponentTransfer>
+      <feTurbulence type="fractalNoise" baseFrequency="0.45 1.3" numOctaves="2" seed="7" result="knit"/>
+      <feColorMatrix in="knit" type="luminanceToAlpha" result="knitA"/>
+      <feComposite in="dome" in2="knitA" operator="arithmetic" k2="1" k3="0.06" result="height"/>
+      <feDiffuseLighting in="height" surfaceScale="16" diffuseConstant="1.3" lighting-color="#fff" result="diff"><feDistantLight azimuth="235" elevation="34"/></feDiffuseLighting>
+      <feSpecularLighting in="height" surfaceScale="16" specularConstant="0.35" specularExponent="14" lighting-color="#ffe2d2" result="spec"><feDistantLight azimuth="235" elevation="60"/></feSpecularLighting>
+      <feFlood flood-color="#fff0e4"/><feBlend in2="diff" mode="multiply" result="lit"/>
+      <feComposite in="spec" in2="lit" operator="arithmetic" k2="0.5" k3="1" result="lit2"/>
+      <feComposite in="lit2" in2="shape" operator="in" result="body"/>
+      <feGaussianBlur in="shape" stdDeviation="9"/><feOffset dy="12" result="sh"/>
+      <feFlood flood-color="#000" flood-opacity=".35"/><feComposite in2="sh" operator="in" result="shadow"/>
+      <feMerge><feMergeNode in="shadow"/><feMergeNode in="body"/></feMerge>
+    </filter>
+  </svg>
+  <div id="app"></div>
   <div class="toast-host" id="toasts" aria-live="polite"></div>
   <script type="module" src="/static/js/app.js"></script>
 </body>

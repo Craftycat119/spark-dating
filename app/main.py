@@ -10,11 +10,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import face_verify
-from .config import BASE_DIR, FEEDS, settings
+from .config import BASE_DIR, settings
+from .interests import GENDERS, LOOKING_FOR, MIN_INTERESTS, SURVEY
 from .database import get_db, init_db
 from .deps import current_user
 from .models import Conversation, User
-from .routers import admin, auth, chat, feed, profile
+from .routers import admin, auth, chat, feed, profile, users
 from .storage import resolve
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -25,6 +26,13 @@ STATIC_DIR = BASE_DIR / "static"
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
+    from .database import SessionLocal
+    from .demo import cleanup
+
+    with SessionLocal() as db:
+        removed = cleanup(db)
+        if removed:
+            log.info("Удалено устаревших демо-аккаунтов: %s", removed)
     if settings.secret_key == "dev-secret-change-me" and not settings.dev_mode:
         log.error("SECRET_KEY не задан! Установите его в .env перед запуском в продакшене.")
     if face_verify.is_dev_mode():
@@ -39,6 +47,7 @@ app.include_router(feed.router)
 app.include_router(feed.notifications_router)
 app.include_router(chat.router)
 app.include_router(chat.ws_router)
+app.include_router(users.router)
 app.include_router(admin.router)
 
 
@@ -46,7 +55,10 @@ app.include_router(admin.router)
 def public_config():
     return {
         "app_name": settings.app_name,
-        "feeds": FEEDS,
+        "survey": SURVEY,
+        "genders": GENDERS,
+        "looking_for": LOOKING_FOR,
+        "min_interests": MIN_INTERESTS,
         "telegram_bot_username": settings.telegram_bot_username if settings.telegram_bot_token else None,
         "ice_servers": settings.ice_servers,
         "face_dev_mode": face_verify.is_dev_mode(),
@@ -60,7 +72,7 @@ def media(rel: str, user: User = Depends(current_user), db: Session = Depends(ge
     if not path:
         raise HTTPException(404)
     parts = rel.split("/")
-    if parts[0] == "photos":
+    if parts[0] in ("photos", "gallery"):
         pass
     elif parts[0] == "selfies":
         if not user.is_admin and user.selfie_path != rel:

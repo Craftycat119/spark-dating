@@ -3,17 +3,20 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Spark — админ-панель</title>
+  <title>COFI: админ-панель</title>
+  <script>/* тема до первой отрисовки, чтобы не мигало */try{var t=localStorage.getItem("theme")||"dark";if(t==="system")t=matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme="dark"}</script>
   <link rel="icon" href="/static/img/icon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=Unbounded:wght@600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;800&family=Pixelify+Sans:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/vendor/phosphor/regular.css">
+  <link rel="stylesheet" href="/static/vendor/phosphor/fill.css">
   <link rel="stylesheet" href="/static/css/app.css">
   <link rel="stylesheet" href="/static/css/admin.css">
 </head>
-<body class="admin" data-feed="dating">
+<body class="admin">
   <aside class="rail">
-    <div class="brand">Spark<small>админ</small></div>
+    <div class="brand">COFI<small>админ-панель</small></div>
     <nav>
       <a href="#overview" data-view="overview">Обзор</a>
       <a href="#users" data-view="users">Анкеты</a>

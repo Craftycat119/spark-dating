@@ -3,13 +3,13 @@ from __future__ import annotations
 import json
 import logging
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from .. import storage
+from .. import demo, storage
 from ..config import settings
 from ..database import SessionLocal, get_db
 from ..deps import COOKIE_NAME, current_user, user_from_token
@@ -82,7 +82,6 @@ def get_chat(conv_id: int, before_id: int | None = None, limit: int = 50, user: 
     other = conv.other(user.id)
     return {
         "id": conv.id,
-        "feeds": sorted({m.feed for m in conv.matches}),
         "user": {
             "id": other.id,
             "name": other.name,
@@ -95,8 +94,14 @@ def get_chat(conv_id: int, before_id: int | None = None, limit: int = 50, user: 
     }
 
 
+def _maybe_bot_reply(conv: Conversation, user: User, background: BackgroundTasks) -> None:
+    other = conv.other(user.id)
+    if other.is_bot and user.is_demo:
+        background.add_task(demo.bot_reply, conv.id, other.id)
+
+
 @router.post("/{conv_id}/messages")
-def send_message(conv_id: int, data: MessageIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def send_message(conv_id: int, data: MessageIn, background: BackgroundTasks, user: User = Depends(current_user), db: Session = Depends(get_db)):
     conv = get_conversation(db, conv_id, user)
     if data.kind not in {"text", "sticker"}:
         raise HTTPException(422, "Неизвестный тип сообщения")
@@ -107,12 +112,14 @@ def send_message(conv_id: int, data: MessageIn, user: User = Depends(current_use
         raise HTTPException(422, "Некорректный стикер")
     msg = _store(db, conv, Message(conversation_id=conv.id, sender_id=user.id, kind=data.kind, text=text))
     _publish(conv, msg)
+    _maybe_bot_reply(conv, user, background)
     return message_out(msg)
 
 
 @router.post("/{conv_id}/media")
 def send_media(
     conv_id: int,
+    background: BackgroundTasks,
     kind: str = Form(...),
     duration: float | None = Form(None),
     caption: str = Form("", max_length=1000),
@@ -135,6 +142,7 @@ def send_media(
         Message(conversation_id=conv.id, sender_id=user.id, kind=kind, text=caption.strip(), media_path=rel, duration=duration),
     )
     _publish(conv, msg)
+    _maybe_bot_reply(conv, user, background)
     return message_out(msg)
 
 
@@ -171,12 +179,13 @@ def _ws_user(token: str | None) -> tuple[int, str] | None:
         return (user.id, user.name) if user else None
 
 
-def _peer(conv_id: int, user_id: int) -> int | None:
+def _peer(conv_id: int, user_id: int) -> tuple[int, bool] | None:
     with SessionLocal() as db:
         conv = db.get(Conversation, conv_id)
         if not conv or not conv.has(user_id) or not conv.active:
             return None
-        return conv.other(user_id).id
+        other = conv.other(user_id)
+        return other.id, other.is_bot
 
 
 def _log_call(conv_id: int, user_id: int, video: bool) -> dict:
@@ -194,7 +203,7 @@ async def websocket_endpoint(ws: WebSocket):
         return
     user_id, user_name = who
     await manager.connect(user_id, ws)
-    peers: dict[int, int | None] = {}
+    peers: dict[int, tuple[int, bool] | None] = {}
     try:
         while True:
             raw = await ws.receive_text()
@@ -214,16 +223,19 @@ async def websocket_endpoint(ws: WebSocket):
                 continue
             if conv_id not in peers:
                 peers[conv_id] = await run_in_threadpool(_peer, conv_id, user_id)
-            peer = peers[conv_id]
-            if peer is None:
+            if peers[conv_id] is None:
                 continue
+            peer, peer_is_bot = peers[conv_id]
 
             out = {k: v for k, v in data.items() if k in {"type", "conversation_id", "sdp", "candidate", "video", "call_id", "reason"}}
             out["from"] = {"id": user_id, "name": user_name}
 
             if kind == "call:offer":
-                if not manager.is_online(peer):
-                    await ws.send_text(json.dumps({"type": "call:unavailable", "conversation_id": conv_id, "call_id": data.get("call_id")}))
+                if peer_is_bot or not manager.is_online(peer):
+                    await ws.send_text(json.dumps({
+                        "type": "call:unavailable", "conversation_id": conv_id, "call_id": data.get("call_id"),
+                        "reason": "bot" if peer_is_bot else "offline",
+                    }))
                     continue
                 msg = await run_in_threadpool(_log_call, conv_id, user_id, bool(data.get("video")))
                 for uid in (user_id, peer):

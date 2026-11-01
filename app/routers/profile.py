@@ -9,31 +9,30 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from .. import face_verify, storage
-from ..config import FEEDS, settings
+from ..config import settings
 from ..database import get_db
 from ..deps import current_user
-from ..models import Conversation, Message, ProfileFeed, User, utcnow
+from ..interests import GENDERS, GOALS, INTERESTS, LOOKING_FOR, MIN_INTERESTS, clean
+from ..models import Conversation, Message, User, UserPhoto, utcnow
 from ..serializers import own_profile
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
 log = logging.getLogger("spark.profile")
 
 BIO_MAX = 500
-
-
-class FeedIn(BaseModel):
-    enabled: bool | None = None
-    bio: str | None = Field(None, max_length=BIO_MAX)
+MAX_GALLERY = 6
 
 
 class ProfileIn(BaseModel):
     name: str | None = Field(None, max_length=64)
     age: int | None = None
     bio: str | None = Field(None, max_length=BIO_MAX)
-    use_common_bio: bool | None = None
+    gender: str | None = None
+    looking_for: str | None = None
+    interests: list[str] | None = None
+    goals: list[str] | None = None
     email_notifications: bool | None = None
     max_distance_km: int | None = None
-    feeds: dict[str, FeedIn] | None = None
 
 
 class FramesIn(BaseModel):
@@ -63,25 +62,28 @@ def update_profile(data: ProfileIn, user: User = Depends(current_user), db: Sess
         user.age = data.age
     if data.bio is not None:
         user.bio = data.bio.strip()
-    if data.use_common_bio is not None:
-        user.use_common_bio = data.use_common_bio
+    if data.gender is not None:
+        if data.gender not in GENDERS:
+            raise HTTPException(422, "Укажите пол")
+        user.gender = data.gender
+    if data.looking_for is not None:
+        if data.looking_for not in LOOKING_FOR:
+            raise HTTPException(422, "Укажите, кого ищете")
+        user.looking_for = data.looking_for
+    if data.interests is not None:
+        interests = clean(data.interests, INTERESTS)
+        if len(interests) < MIN_INTERESTS:
+            raise HTTPException(422, f"Выберите хотя бы {MIN_INTERESTS} интереса")
+        user.interests = interests
+    if data.goals is not None:
+        goals = clean(data.goals, GOALS)
+        if not goals:
+            raise HTTPException(422, "Выберите, что вы ищете")
+        user.goals = goals
     if data.email_notifications is not None:
         user.email_notifications = data.email_notifications
     if data.max_distance_km is not None:
         user.max_distance_km = max(1, min(data.max_distance_km, 20000))
-
-    if data.feeds:
-        for key, f in data.feeds.items():
-            if key not in FEEDS:
-                raise HTTPException(422, f"Неизвестная лента: {key}")
-            row = user.feed(key)
-            if row is None:
-                row = ProfileFeed(feed=key, enabled=False, bio="")
-                user.feeds.append(row)
-            if f.enabled is not None:
-                row.enabled = f.enabled
-            if f.bio is not None:
-                row.bio = f.bio.strip()
 
     db.commit()
     db.refresh(user)
@@ -108,6 +110,29 @@ def upload_photo(file: UploadFile = File(...), user: User = Depends(current_user
     user.photo_verified_at = None
     user.face_score = None
     db.commit()
+    return own_profile(user)
+
+
+@router.post("/photos")
+def add_photo(file: UploadFile = File(...), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if len(user.photos) >= MAX_GALLERY:
+        raise HTTPException(400, f"Можно добавить не больше {MAX_GALLERY} фото")
+    rel = storage.save_image(storage.read_limited(file, settings.max_image_mb), "gallery")
+    user.photos.append(UserPhoto(path=rel))
+    db.commit()
+    db.refresh(user)
+    return own_profile(user)
+
+
+@router.delete("/photos/{photo_id}")
+def delete_photo(photo_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    photo = next((p for p in user.photos if p.id == photo_id), None)
+    if not photo:
+        raise HTTPException(404, "Фото не найдено")
+    storage.delete_file(photo.path)
+    user.photos.remove(photo)
+    db.commit()
+    db.refresh(user)
     return own_profile(user)
 
 
@@ -148,6 +173,8 @@ def verify_face(data: FramesIn, user: User = Depends(current_user), db: Session 
 
 @router.post("/location")
 def update_location(data: LocationIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if user.is_demo:
+        return {"status": "ok"}  # демо всегда «в Москве», рядом с ботами
     user.lat, user.lon = data.lat, data.lon
     user.location_updated_at = utcnow()
     if user.registration_lat is None:
@@ -171,6 +198,8 @@ def delete_user_completely(db: Session, user: User) -> None:
         db.delete(c)
     storage.delete_file(user.photo_path)
     storage.delete_file(user.selfie_path)
+    for p in user.photos:
+        storage.delete_file(p.path)
     db.delete(user)
     db.commit()
 

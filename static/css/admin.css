@@ -2,21 +2,22 @@
 body.admin { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
 body.admin::before { display: none; }
 .rail { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 28px; padding: 24px 16px; border-right: 1px solid var(--line); background: var(--bg); }
-.rail .brand { font: 700 26px var(--display); color: var(--accent); letter-spacing: -0.03em; }
-.rail .brand small { display: block; font: 500 13px var(--body); color: var(--muted); letter-spacing: 0; }
+.rail .brand { font: 800 28px var(--sans); color: var(--orange); letter-spacing: -0.04em; }
+.rail .brand small { display: block; font: 500 13px var(--sans); color: var(--muted); letter-spacing: 0; }
 .rail nav { display: flex; flex-direction: column; gap: 2px; }
 .rail nav a { padding: 10px 12px; border-radius: 10px; color: var(--muted); text-decoration: none; font-weight: 600; }
-.rail nav a.on { background: var(--surface); color: var(--text); }
+.rail nav a.on { background: var(--orange); color: var(--on-orange); }
 .rail .back { margin-top: auto; color: var(--muted); font-size: 14px; }
 #view { padding: 28px 32px; min-width: 0; }
 #view > h1 { font-size: 30px; margin-bottom: 20px; }
 
-.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
-.stats div { background: var(--bg); padding: 18px; }
-.stats b { display: block; font: 600 30px var(--display); }
-.stats span { color: var(--muted); font-size: 14px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-box); overflow: hidden; }
+.kpis div { background: var(--bg); padding: 18px; border: 0; }
+.kpis b { display: block; font: 700 34px var(--pixel); color: var(--orange); }
+.kpis span { color: var(--muted); font-size: 14px; }
 .feed-bars { margin-top: 28px; display: grid; gap: 10px; max-width: 560px; }
-.feed-bars .r { display: grid; grid-template-columns: 150px 1fr 48px; gap: 12px; align-items: center; font-size: 14px; }
+.feed-bars .fill { background: var(--orange); }
+.feed-bars .r { display: grid; grid-template-columns: 170px 1fr 48px; gap: 12px; align-items: center; font-size: 14px; }
 .feed-bars .track { height: 10px; background: var(--surface); border-radius: 6px; overflow: hidden; }
 .feed-bars .fill { height: 100%; border-radius: 6px; }
 
@@ -30,9 +31,8 @@ table.grid tbody tr { cursor: pointer; }
 table.grid tbody tr:hover { background: var(--surface); }
 table.grid img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
 .tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; margin-right: 4px; }
-.tag.dating { background: color-mix(in oklab, var(--dating) 20%, transparent); color: var(--dating); }
-.tag.sex { background: color-mix(in oklab, var(--sex) 20%, transparent); color: var(--sex); }
-.tag.friends { background: color-mix(in oklab, var(--friends) 20%, transparent); color: var(--friends); }
+.tag { background: var(--surface-2); color: var(--text); margin-bottom: 3px; }
+.tag.hot { background: var(--orange); color: var(--on-orange); }
 .tag.warn { background: color-mix(in oklab, var(--danger) 20%, transparent); color: var(--danger); }
 .tag.ok { background: color-mix(in oklab, var(--ok) 18%, transparent); color: var(--ok); }
 .pager { display: flex; gap: 10px; align-items: center; margin-top: 16px; color: var(--muted); font-size: 14px; }
@@ -44,7 +44,7 @@ table.grid img { width: 40px; height: 40px; border-radius: 50%; object-fit: cove
 .drawer h2 { font-size: 26px; margin-right: 48px; }
 .drawer .photos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 0; }
 .drawer .photos figure { margin: 0; }
-.drawer .photos img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 14px; background: var(--bg); }
+.drawer .photos img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 20px; background: var(--bg); }
 .drawer .photos figcaption { font-size: 13px; color: var(--muted); margin-top: 4px; }
 dl.kv { display: grid; grid-template-columns: 170px 1fr; gap: 6px 12px; font-size: 14px; margin: 14px 0; }
 dl.kv dt { color: var(--muted); }
