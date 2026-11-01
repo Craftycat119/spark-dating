@@ -71,7 +71,7 @@ export function mountThread(box, labels) {
     guide.setAttribute("d", d);
     q("shadow").setAttribute("d", d);
     q("core").setAttribute("d", d);
-    const len = guide.getTotalLength(), n = Math.max(2, Math.ceil(len / 3)), S = [];
+    const len = guide.getTotalLength(), n = Math.max(2, Math.ceil(len / 4)), S = [];
     for (let i = 0; i <= n; i++) { const p = guide.getPointAtLength((len * i) / n); S.push({ x: p.x, y: p.y, s: (len * i) / n }); }
     for (let i = 0; i < S.length; i++) {
       const a = S[Math.max(0, i - 1)], b = S[Math.min(S.length - 1, i + 1)];
@@ -98,6 +98,11 @@ export function mountThread(box, labels) {
   let phase = "idle", k = 0, done = null, raf = 0;
   function frame(now) {
     if (!box.isConnected) { ro.disconnect(); return; }
+    // в фоне (вкладка скрыта или поверх открыта анкета) не тратим батарею
+    if (phase === "idle" && (document.hidden || document.querySelector(".profile-view"))) {
+      raf = requestAnimationFrame(frame);
+      return;
+    }
     const t = reduce ? 0 : now / 1000;
     if (phase === "like") { k += (1 - k) * 0.09 + 0.004; if (k >= 0.99) { k = 1; phase = "end"; done?.(); } }
     if (phase === "skip") { k += 0.035; if (k >= 1) { k = 1; phase = "end"; done?.(); } }

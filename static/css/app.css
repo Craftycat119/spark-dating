@@ -438,7 +438,7 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .person.enter { animation: person-in .5s var(--ease) both; }
 @keyframes person-in { from { opacity: 0; transform: translateY(18px); } }
 .ava { position: relative; width: 176px; height: 176px; border-radius: 50%; padding: 0; background: repeating-linear-gradient(135deg, #c9461a 0 8px, #a9380f 8px 11px); color: var(--text); font: 700 64px var(--display); display: grid; place-items: center; transition: transform .25s var(--ease); }
-.ava img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.ava img { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .ava:active { transform: scale(.97); }
 .ava::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 1.5px solid rgba(242, 98, 31, .45); }
 .ava .more { position: absolute; right: 4px; bottom: 8px; padding: 5px 10px; border-radius: 999px; background: var(--orange); color: var(--on-orange); font: 600 12px var(--sans); box-shadow: 0 6px 16px rgba(0, 0, 0, .35); }
