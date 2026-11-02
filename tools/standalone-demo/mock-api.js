@@ -1,7 +1,7 @@
 // Имитация сервера COFI прямо в браузере: тот же интерфейс, что у static/js/api.js.
 // Логика повторяет app/routers: подбор по интересам, свайпы, пары, чаты, ответы ботов.
 import DATA from "./data.json";
-import { portraitFor, sceneFor, fileToDataUrl } from "./images.js";
+import { portraitFor, sceneFor, petFor, fileToDataUrl } from "./images.js";
 
 export class ApiError extends Error {
   constructor(status, detail) {
@@ -40,7 +40,7 @@ export function send(payload) {
 
 // ---------- состояние ----------
 function fresh() {
-  return { seq: 100, me: null, accounts: {}, users: {}, swipes: [], convs: [], messages: [] };
+  return { seq: 100, me: null, accounts: {}, users: {}, swipes: [], convs: [], messages: [], pets: null, threads: [], smsgs: [] };
 }
 let S = load();
 function load() {
@@ -49,7 +49,7 @@ function load() {
     if (raw) {
       const s = JSON.parse(raw);
       s.messages = s.messages.filter((m) => !(m.media_url || "").startsWith("blob:")); // видео не переживает перезагрузку
-      return s;
+      return { ...fresh(), ...s };
     }
   } catch { /* приватный режим */ }
   return fresh();
@@ -81,13 +81,28 @@ function km(a, b) {
 }
 
 // ---------- сериализация (как app/serializers.py) ----------
+function years(u) {
+  if (!u.birth_date) return u.age ?? null;
+  const b = new Date(u.birth_date), n = new Date();
+  return n.getFullYear() - b.getFullYear() - (n < new Date(n.getFullYear(), b.getMonth(), b.getDate()) ? 1 : 0);
+}
+function group(u) {
+  const y = years(u);
+  return y == null || y < DATA.min_age ? null : y >= 18 ? "adult" : "teen";
+}
+function birthFor(age) {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - age);
+  return d.toISOString().slice(0, 10);
+}
 function isComplete(u) {
-  return !!(u.name && u.age && u.gender && u.looking_for && u.interests.length >= DATA.min_interests && u.goals.length && u.photo_url && u.photo_verified);
+  return !!(u.name && group(u) && u.gender && u.looking_for && u.interests.length >= DATA.min_interests && u.goals.length && u.photo_url && u.photo_verified);
 }
 function ownProfile(u) {
   return {
     id: u.id, email: u.email, email_verified: true, email_notifications: false, auth_provider: u.is_demo ? "demo" : "email",
-    telegram_username: null, name: u.name, age: u.age, bio: u.bio, gender: u.gender, looking_for: u.looking_for,
+    telegram_username: null, name: u.name, age: years(u), birth_date: u.birth_date || null, age_group: group(u),
+    age_verified: false, language: "ru", bio: u.bio, gender: u.gender, looking_for: u.looking_for,
     interests: u.interests, goals: u.goals, survey_done: u.interests.length >= DATA.min_interests && u.goals.length > 0,
     photo_url: u.photo_url, photos: u.photos, photo_verified: u.photo_verified, has_location: true,
     max_distance_km: u.max_distance_km, is_admin: false, is_complete: isComplete(u), is_demo: true,
@@ -104,7 +119,7 @@ async function ensureBots() {
   for (const b of DATA.bots) {
     const uid = id();
     S.users[uid] = {
-      id: uid, key: b.key, is_bot: true, name: b.name, age: b.age, gender: b.gender, looking_for: "any", bio: b.bio,
+      id: uid, key: b.key, is_bot: true, name: b.name, age: b.age, birth_date: birthFor(b.age), gender: b.gender, looking_for: "any", bio: b.bio,
       goals: b.goals, interests: b.interests, lat: DATA.center[0] + b.km[0] / 111, lon: DATA.center[1] + b.km[1] / 63,
       photo_url: `@portrait:${b.key}`, photos: b.scenes.map((sc, i) => ({ id: uid * 10 + i, url: `@scene:${sc}` })),
       photo_verified: true, likes_you: b.likes_you, replies: b.replies,
@@ -155,7 +170,7 @@ route("POST", "/api/auth/demo", async () => {
   await ensureBots();
   const uid = id();
   const g = DATA.guest;
-  S.users[uid] = { id: uid, is_demo: true, name: g.name, age: g.age, gender: g.gender, looking_for: g.looking_for, bio: g.bio,
+  S.users[uid] = { id: uid, is_demo: true, name: g.name, age: g.age, birth_date: birthFor(g.age), gender: g.gender, looking_for: g.looking_for, bio: g.bio,
     goals: g.goals, interests: g.interests, lat: DATA.center[0], lon: DATA.center[1], max_distance_km: 50,
     photo_url: await portraitFor("guest", g.name), photos: [], photo_verified: true };
   for (const b of Object.values(S.users)) if (b.is_bot && b.likes_you) S.swipes.push({ from: b.id, to: uid, liked: true });
@@ -194,7 +209,7 @@ async function loginAs(email) {
   if (!acc.userId) {
     const uid = id();
     // в демо геопозиция и проверка фото не нужны: браузер на странице не даёт камеру и геолокацию
-    S.users[uid] = { id: uid, is_demo: true, email, name: "", age: null, gender: null, looking_for: null, bio: "",
+    S.users[uid] = { id: uid, is_demo: true, email, name: "", age: null, birth_date: null, gender: null, looking_for: null, bio: "",
       goals: [], interests: [], lat: DATA.center[0], lon: DATA.center[1], max_distance_km: 50, photo_url: null, photos: [], photo_verified: false };
     for (const b of Object.values(S.users)) if (b.is_bot && b.likes_you) S.swipes.push({ from: b.id, to: uid, liked: true });
     acc.userId = uid;
@@ -231,7 +246,13 @@ route("GET", "/api/profile", () => ownProfile(requireMe()));
 route("PUT", "/api/profile", (b) => {
   const u = requireMe();
   if (b.name !== undefined) { if (!b.name.trim()) deny(422, "Укажите имя"); u.name = b.name.trim().slice(0, 64); }
-  if (b.age !== undefined) { if (!(b.age >= 18 && b.age <= 100)) deny(422, "Приложение доступно только с 18 лет"); u.age = b.age; }
+  if (b.birth_date !== undefined && b.birth_date !== u.birth_date) {
+    if (u.birth_date) deny(403, "Дату рождения можно изменить только через поддержку");
+    const y = years({ birth_date: b.birth_date });
+    if (y < DATA.min_age) deny(422, `COFI доступен с ${DATA.min_age} лет`);
+    u.birth_date = b.birth_date;
+    if (group(u) === "teen") { u.goals = u.goals.filter((g) => DATA.teen_goals.includes(g)); u.looking_for = "any"; }
+  }
   if (b.bio !== undefined) u.bio = b.bio.trim().slice(0, 500);
   if (b.gender !== undefined) u.gender = b.gender;
   if (b.looking_for !== undefined) u.looking_for = b.looking_for;
@@ -240,7 +261,11 @@ route("PUT", "/api/profile", (b) => {
     if (v.length < DATA.min_interests) deny(422, `Выберите хотя бы ${DATA.min_interests} интереса`);
     u.interests = v;
   }
-  if (b.goals !== undefined) { if (!b.goals.length) deny(422, "Выберите, что вы ищете"); u.goals = [...new Set(b.goals)]; }
+  if (b.goals !== undefined) {
+    if (group(u) === "teen" && b.goals.some((g) => !DATA.teen_goals.includes(g))) deny(422, "В 14–17 лет доступна только дружба");
+    if (!b.goals.length) deny(422, "Выберите, что вы ищете");
+    u.goals = [...new Set(b.goals)];
+  }
   if (b.max_distance_km !== undefined) u.max_distance_km = Math.max(1, Math.min(b.max_distance_km, 20000));
   save();
   return ownProfile(u);
@@ -270,7 +295,8 @@ route("POST", "/api/profile/location", () => ({ status: "ok" }));
 route("DELETE", "/api/profile", () => { S = fresh(); save(); return { status: "deleted" }; });
 
 function visibleBots(u) {
-  return Object.values(S.users).filter((o) => o.is_bot && compatible(u, o));
+  // боты взрослые: подростку в демо их не показываем, как и в приложении
+  return Object.values(S.users).filter((o) => o.is_bot && group(o) === group(u) && compatible(u, o));
 }
 
 route("GET", "/api/feed", async () => {
@@ -287,7 +313,7 @@ route("GET", "/api/feed", async () => {
   }
   scored.sort((a, b) => Math.floor(b.score / 10) - Math.floor(a.score / 10) || a.d - b.d);
   const cards = await Promise.all(scored.slice(0, 10).map(async ({ score, d, common, o }) => ({
-    id: o.id, name: o.name, age: o.age, bio: o.bio, photo_url: await img(o.photo_url), verified: true,
+    id: o.id, name: o.name, age: years(o), bio: o.bio, photo_url: await img(o.photo_url), verified: true,
     interests: o.interests, goals: o.goals, photos_count: o.photos.length, match: score, common, distance_km: Math.round(d * 10) / 10,
   })));
   return { total: scored.length, cards };
@@ -392,13 +418,154 @@ route("DELETE", "/api/chats/(\\d+)", (_, [cid]) => {
   return { status: "ok" };
 });
 
+route("POST", "/api/feed/undo", async (b) => {
+  const u = requireMe();
+  const sw = S.swipes.find((s) => s.from === u.id && s.to === b.user_id);
+  if (!sw) deny(404, "Нечего отменять");
+  const conv = S.convs.find((c) => c.active && c.users.includes(u.id) && c.users.includes(b.user_id));
+  if (sw.liked && conv) {
+    if (S.messages.some((m) => m.conversation_id === conv.id)) deny(409, "У вас уже есть переписка. Удалить пару можно в чате");
+    conv.active = false;
+  }
+  S.swipes = S.swipes.filter((s) => s !== sw);
+  save();
+  const o = S.users[b.user_id];
+  const [score, common] = matchScore(u.interests, u.goals, o.interests, o.goals);
+  return { undone: sw.liked ? "like" : "skip", card: { id: o.id, name: o.name, age: years(o), bio: o.bio, photo_url: await img(o.photo_url),
+    verified: true, interests: o.interests, goals: o.goals, photos_count: o.photos.length, match: score, common, distance_km: Math.round(km(u, o) * 10) / 10 } };
+});
+
+// ---------- Животные ----------
+const CAT_TITLE = { charity: "Помощь и сборы", foster: "Передержка", adoption: "Ищет хозяина" };
+const tgUrl = (c) => { const m = (c || "").trim().match(/^(?:@|https?:\/\/t\.me\/|t\.me\/)?([A-Za-z0-9_+/-]{3,64})\/?$/); return m ? `https://t.me/${m[1]}` : null; };
+function ensurePets() {
+  if (S.pets) return;
+  S.pets = DATA.animals.map((a, i) => ({ id: 9000 + i, ...a, city: "Москва", contact: "@cofi_volunteers", fundraising_open: true, active: true,
+    photos: [`@pet:${a.name}:${a.species}:0`, `@pet:${a.name}:${a.species}:1`], author: { id: 0, name: "Волонтёры COFI" }, author_id: 0, created_at: now() }));
+}
+async function petOut(p, u) {
+  return { id: p.id, category: p.category, name: p.name, species: p.species, age_text: p.age_text, city: p.city, description: p.description,
+    contact_url: tgUrl(p.contact), fundraising_open: p.category === "charity" ? p.fundraising_open : null,
+    fundraising_goal: p.category === "charity" ? p.fundraising_goal : "",
+    photos: await Promise.all(p.photos.map((x) => (x.startsWith("@pet:") ? petFor(...x.slice(5).split(":")) : x))),
+    distance_km: 2.4, author: p.author, is_mine: p.author_id === u.id, created_at: p.created_at };
+}
+route("GET", "/api/animals", async (_, __, url) => {
+  const u = requireMe();
+  ensurePets();
+  const cat = new URLSearchParams(url.split("?")[1] || "").get("category") || "";
+  const list = S.pets.filter((p) => p.active && (!cat || p.category === cat)).sort((a, b) => b.id - a.id);
+  return { total: list.length, items: await Promise.all(list.map((p) => petOut(p, u))), categories: CAT_TITLE };
+});
+route("POST", "/api/animals", async (fd) => {
+  const u = requireMe();
+  if (group(u) !== "adult") deny(403, "Публиковать объявления и отправлять заявки можно с 18 лет");
+  ensurePets();
+  if (!CAT_TITLE[fd.get("category")]) deny(422, "Выберите категорию");
+  if (!(fd.get("name") || "").trim()) deny(422, "Укажите кличку или название");
+  if (!tgUrl(fd.get("contact"))) deny(422, "Укажите Telegram: @username или ссылку t.me/…");
+  const photos = [];
+  for (const f of fd.getAll("files")) photos.push(await fileToDataUrl(f, 1000));
+  const p = { id: id(), category: fd.get("category"), name: fd.get("name").trim(), species: fd.get("species") || "", age_text: fd.get("age_text") || "",
+    city: fd.get("city") || "", description: fd.get("description") || "", contact: fd.get("contact"), fundraising_goal: fd.get("fundraising_goal") || "",
+    fundraising_open: true, active: true, photos, author: { id: u.id, name: u.name }, author_id: u.id, created_at: now() };
+  S.pets.push(p);
+  save();
+  return petOut(p, u);
+});
+route("PATCH", "/api/animals/(\\d+)", async (b, [pid]) => {
+  const u = requireMe();
+  const p = (S.pets || []).find((x) => x.id === +pid && x.author_id === u.id);
+  if (!p) deny(404, "Объявление не найдено");
+  if (b.fundraising_open !== undefined) p.fundraising_open = b.fundraising_open;
+  if (b.active !== undefined) p.active = b.active;
+  save();
+  return petOut(p, u);
+});
+route("POST", "/api/animals/(\\d+)/help", (_, [pid]) => {
+  const u = requireMe();
+  if (group(u) !== "adult") deny(403, "Публиковать объявления и отправлять заявки можно с 18 лет");
+  const p = (S.pets || []).find((x) => x.id === +pid);
+  if (!p) deny(404, "Объявление не найдено");
+  if (p.category === "charity" && !p.fundraising_open) deny(409, "Сбор уже закрыт, спасибо!");
+  return { status: "sent", contact_url: tgUrl(p.contact) };
+});
+
+// ---------- Поддержка и реклама ----------
+const T = DATA.support;
+function threadOut(t, withMsgs = true) {
+  const out = { id: t.id, topic: t.topic, category: t.category, status: t.status, contact: "", about_user_id: t.about_user_id || null,
+    created_at: t.created_at, updated_at: t.updated_at, user: null };
+  if (withMsgs) out.messages = S.smsgs.filter((m) => m.thread_id === t.id);
+  return out;
+}
+function smsg(t, author, text) {
+  const m = { id: id(), thread_id: t.id, author, text, created_at: now() };
+  S.smsgs.push(m);
+  t.updated_at = m.created_at;
+  return m;
+}
+function adsAnswer(text) {
+  const x = text.toLowerCase();
+  if (/формат|размест|вариант|format|placement/.test(x)) return T.formats;
+  if (/цен|стоим|бюджет|сколько|прайс|price|cost|budget/.test(x)) return T.price;
+  if (/аудитор|охват|статист|audience|reach|stat/.test(x)) {
+    const people = Object.values(S.users).filter((u) => u.is_bot);
+    const counts = {};
+    people.forEach((u) => u.interests.forEach((i) => (counts[i] = (counts[i] || 0) + 1)));
+    const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k} (${v})`).join(", ");
+    return `Сейчас в COFI ${people.length} анкет с подтверждённым фото, из них ${people.length} старше 18 лет. Популярные интересы: ${top}. Подростковая лента (14–17) для рекламы закрыта.`;
+  }
+  if (/заявк|менеджер|связ|контакт|звон|request|manager|contact|call/.test(x)) return T.lead;
+  return null;
+}
+route("POST", "/api/support/threads", async (b) => {
+  await ensureBots();
+  const u = me();
+  if (b.topic === "support" && !u) deny(401, "Чтобы написать в поддержку, войдите в аккаунт");
+  const t = { id: id(), topic: b.topic === "ads" ? "ads" : "support", category: b.topic === "ads" ? "ads" : b.category || "help",
+    status: "open", about_user_id: b.about_user_id, created_at: now(), updated_at: now() };
+  S.threads.push(t);
+  if (t.topic === "ads") smsg(t, "bot", T.ads_greeting);
+  if ((b.text || "").trim()) userMsg(t, b.text);
+  else if (t.topic === "support") smsg(t, "bot", T.support_greeting.replace("{id}", t.id));
+  save();
+  return threadOut(t);
+});
+function userMsg(t, text) {
+  smsg(t, "user", text.trim());
+  if (t.topic === "ads") smsg(t, "bot", adsAnswer(text) || T.handoff);
+  else if (!S.smsgs.some((m) => m.thread_id === t.id && m.author === "bot")) smsg(t, "bot", T.support_greeting.replace("{id}", t.id));
+  else if (S.smsgs.filter((m) => m.thread_id === t.id && m.author === "user").length === 1) {
+    // в демо «оператор» отвечает сам, чтобы было видно, как это выглядит
+    setTimeout(() => {
+      const m = smsg(t, "staff", "Здравствуйте! Это демо, здесь отвечает автоматический оператор. В приложении ответит живой сотрудник из админ-панели.");
+      save();
+      emit("support", { thread_id: t.id, message: m });
+    }, 2500);
+  }
+}
+route("GET", "/api/support/threads", () => S.threads.slice().reverse().map((t) => threadOut(t, false)));
+route("GET", "/api/support/threads/(\\d+)", (_, [tid]) => {
+  const t = S.threads.find((x) => x.id === +tid);
+  if (!t) deny(404, "Обращение не найдено");
+  return threadOut(t);
+});
+route("POST", "/api/support/threads/(\\d+)/messages", (b, [tid]) => {
+  const t = S.threads.find((x) => x.id === +tid);
+  if (!t) deny(404, "Обращение не найдено");
+  userMsg(t, b.text || "");
+  save();
+  return S.smsgs[S.smsgs.length - 1];
+});
+
 async function request(method, url, body) {
   const path = url.split("?")[0];
   for (const r of ROUTES) {
     const m = r.method === method && path.match(r.re);
     if (m) {
       await new Promise((res) => setTimeout(res, 60)); // как будто сеть
-      return structuredClone(await r.fn(body, m.slice(1)));
+      return structuredClone(await r.fn(body, m.slice(1), url));
     }
   }
   throw new ApiError(404, "Не найдено");
@@ -408,5 +575,6 @@ export const api = {
   get: (u) => request("GET", u),
   post: (u, b) => request("POST", u, b ?? {}),
   put: (u, b) => request("PUT", u, b),
+  patch: (u, b) => request("PATCH", u, b),
   del: (u) => request("DELETE", u),
 };

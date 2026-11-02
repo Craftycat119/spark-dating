@@ -94,6 +94,17 @@ export async function sceneFor(key) {
   return url;
 }
 
+/** Фото животного для демо-объявлений. */
+export async function petFor(name, species, n) {
+  const key = `pet-${name}-${n}`;
+  if (cache.has(key)) return cache.get(key);
+  const emoji = species === "Собака" ? (n === "1" ? "🐕" : "🐶") : species === "Кошка" ? (n === "1" ? "🐈" : "🐱") : (n === "1" ? "🦴" : "🐾");
+  SCENES[key] = [emoji, name];
+  const url = await sceneFor(key);
+  cache.set(key, url);
+  return url;
+}
+
 /** Файл пользователя → уменьшенный JPEG data: URL (переживает перезагрузку страницы). */
 export function fileToDataUrl(file, max = 900) {
   return new Promise((resolve, reject) => {

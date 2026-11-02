@@ -176,7 +176,7 @@ export const EN = {
   "Открыть демо без регистрации": "Open the demo", "К анкетам": "To profiles", "Ролик с примерами жестов": "Gesture examples video",
   "Смотреть ролик": "Play video", "Плёнка, бег по набережной и пуровер по субботам.": "Film cameras, riverside runs and pour-over on Saturdays.",
   "Зал, рэп и ночной город.": "Gym, rap and the city at night.", "Рисую обложки для релизов и смотрю аниме без стыда.": "I draw album covers and watch anime unapologetically.",
-  "Походы выходного дня и велосипед за городом.": "Weekend hikes and cycling out of town.", "Рисование": "Drawing",
+  "Походы выходного дня и велосипед за городом.": "Weekend hikes and cycling out of town.",
   // ошибки сервера
   "Нужно войти в аккаунт": "Please sign in", "Неверная почта или пароль": "Wrong email or password", "Неверный код": "Wrong code",
   "Некорректная почта": "Invalid email", "Аккаунт заблокирован": "Account blocked", "Аккаунт не найден": "Account not found",
@@ -205,6 +205,7 @@ export const EN = {
   "Можно добавить не больше 6 фото": "You can add up to 6 photos", "Выберите хотя бы 3 интереса": "Choose at least 3 interests",
   "COFI доступен с 14 лет": "COFI is for ages 14 and up",
   "COFI: знакомства по интересам": "COFI: dating by interests",
+  "COFI демо": "COFI demo",
 };
 
 export const PATTERNS = [
@@ -234,7 +235,7 @@ export const PATTERNS = [
   [/^Не больше (\d+) фото$/, "Up to $1 photos"],
   [/^Файл больше (\d+) МБ$/, "File is larger than $1 MB"],
   [/^Сейчас в COFI (\d+) анкет с подтверждённым фото, из них (\d+) старше 18 лет\. Популярные интересы: (.+)\. Подростковая лента \(14–17\) для рекламы закрыта\.$/,
-    (_, a, b, c) => `COFI has ${a} profiles with a verified photo, ${b} of them 18+. Popular interests: ${c.replace(/([^,(]+) \((\d+)\)/g, (m, k, v) => `${w(k.trim())} (${v})`)}. The teen feed (14–17) is closed to ads.`],
+    (_, a, b, c) => `COFI has ${a} profiles with a verified photo, ${b} of them 18+. Popular interests: ${c.split(", ").map((x) => x.replace(/^(.+) \((\d+)\)$/, (m, k, v) => `${w(k)} (${v})`)).join(", ")}. The teen feed (14–17) is closed to ads.`],
   [/^Спасибо! Обращение №(\d+) принято\. Оператор ответит прямо здесь, обычно в течение часа\.$/, "Thanks! Request #$1 received. An operator will reply right here, usually within an hour."],
   [/^Жалоба на анкету: (.+) \(№(\d+)\)\. Причина:$/, "Report on profile: $1 (#$2). Reason:"],
   [/^(Помощь|Жалоба|Предложение|Реклама) №(\d+)$/, (_, c, n) => `${w(c)} #${n}`],

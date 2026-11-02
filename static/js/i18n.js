@@ -69,7 +69,7 @@ function translateTree(root) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
   for (let n = root; n; n = walker.nextNode()) {
     if (n.nodeType === 1) {
-      if (n.getAttribute("translate") === "no" || SKIP.has(n.tagName)) continue;
+      if (n.getAttribute("translate") === "no") continue;
       for (const a of ATTRS) {
         const v = n.getAttribute(a);
         if (v && CYR.test(v)) {
@@ -85,6 +85,7 @@ function translateTree(root) {
 }
 
 function apply() {
+  if (document.body.classList.contains("admin")) return; // админ-панель всегда на русском
   document.documentElement.lang = lang;
   if (lang === "en") {
     document.title = translate(document.title);

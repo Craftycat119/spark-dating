@@ -14,7 +14,8 @@ const out = process.argv[2] || resolve(here, "cofi-demo.html");
 const data = execFileSync("python3", ["-c", `
 import json, sys
 sys.path.insert(0, ".")
-from app import demo, interests
+from app import ages, cli, demo, interests
+from app.routers import support
 print(json.dumps({
   "bots": [{k: b[k] for k in ("key","name","age","gender","km","likes_you","scenes","goals","interests","bio","replies","fit")} for b in demo.BOTS],
   "guest": {k: v for k, v in demo.GUEST.items() if k != "photo"},
@@ -22,6 +23,12 @@ print(json.dumps({
   "center": demo.CENTER,
   "survey": interests.SURVEY, "genders": interests.GENDERS, "looking_for": interests.LOOKING_FOR,
   "min_interests": interests.MIN_INTERESTS,
+  "teen_goals": ages.TEEN_GOALS, "min_age": ages.MIN_AGE,
+  "animals": [dict(zip(("category","name","species","age_text","description","fundraising_goal","color"), a)) for a in cli.ANIMALS],
+  "support": {
+    "ads_greeting": support.ADS_GREETING, "support_greeting": support.SUPPORT_GREETING, "handoff": support.HANDOFF,
+    "formats": support.ads_answer("формат", None), "price": support.ads_answer("цена", None), "lead": support.ads_answer("заявка", None),
+  },
 }, ensure_ascii=False))
 `], { cwd: root, env: { ...process.env, DATA_DIR: resolve(here, ".tmp-data") } }).toString();
 writeFileSync(resolve(here, "data.json"), data);
