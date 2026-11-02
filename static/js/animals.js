@@ -74,10 +74,12 @@ export async function renderAnimals({ screen, state, go }) {
         ${p.fundraising_goal ? `<p class="pet-goal">Цель сбора: <b translate="no">${esc(p.fundraising_goal)}</b></p>` : ""}
         ${p.description ? `<p class="pet-desc" translate="no">${esc(p.description)}</p>` : ""}
         <p class="muted small">Разместил: <span translate="no">${esc(p.author.name)}</span></p>
+        <button class="link more-link" data-more>Подробнее и все фото ${icons.arrow}</button>
         ${p.is_mine ? `<div class="owner-tools">
           ${p.category === "charity" ? `<div class="seg"><button class="chip" data-fund="1" aria-pressed="${p.fundraising_open}">Сбор открыт</button><button class="chip" data-fund="0" aria-pressed="${!p.fundraising_open}">Сбор закрыт</button></div>` : ""}
           <button class="btn danger" data-remove>Снять с публикации</button></div>` : ""}
       </div></article>`));
+    $("[data-more]", stage).onclick = () => openPet(p.id, { adult, onChange: (np) => { items[index] = np; draw(); } });
     const track = $(".track", stage);
     const pc = $(".pet-photo-count", stage);
     track.addEventListener("scroll", () => pc && (pc.textContent = `${Math.round(track.scrollLeft / track.clientWidth) + 1}/${p.photos.length}`), { passive: true });
@@ -115,12 +117,18 @@ export async function renderAnimals({ screen, state, go }) {
     load();
   }));
   // свайп влево/вправо по карточке (кроме листания фото внутри)
-  let x0 = null;
-  stage.addEventListener("pointerdown", (e) => { if (!e.target.closest(".track")) x0 = e.clientX; });
+  let x0 = null, y0 = 0, onTrack = false;
+  stage.addEventListener("pointerdown", (e) => { x0 = e.clientX; y0 = e.clientY; onTrack = !!e.target.closest(".track"); });
   stage.addEventListener("pointerup", (e) => {
     if (x0 === null) return;
-    const dx = e.clientX - x0;
+    const dx = e.clientX - x0, dy = e.clientY - y0;
     x0 = null;
+    // короткое касание карточки (не по кнопкам) открывает подробности
+    if (Math.abs(dx) < 8 && Math.abs(dy) < 8 && !e.target.closest("button, a") && items[index]) {
+      openPet(items[index].id, { adult, onChange: (np) => { items[index] = np; draw(); } });
+      return;
+    }
+    if (onTrack) return; // по фото листаются фото
     if (dx < -70) step(1);
     else if (dx > 70) step(-1);
   });
@@ -132,6 +140,73 @@ export async function renderAnimals({ screen, state, go }) {
   };
   document.addEventListener("keydown", keys);
   load();
+}
+
+/** Подробная карточка животного: все фото, описание, подробности, отклики и «Помочь». */
+export async function openPet(postId, { adult, onChange = () => {} }) {
+  let p;
+  try { p = await api.get(`/api/animals/${postId}`); } catch (ex) { return toast(ex.message, { error: true }); }
+  const photos = p.photos.length ? p.photos : [null];
+  const closed = p.category === "charity" && !p.fundraising_open;
+  const posted = new Date(p.created_at).toLocaleDateString(document.documentElement.lang === "en" ? "en-GB" : "ru-RU", { day: "numeric", month: "long", year: "numeric" });
+  const rows = [
+    ["Кто это", p.species], ["Возраст", p.age_text], ["Город", p.city],
+    ["Расстояние", p.distance_km != null ? `${Math.round(p.distance_km)} км от вас` : ""],
+    ["Разместил", p.author.name, true], ["Опубликовано", posted],
+    ["Telegram", p.contact_url ? p.contact_url.replace("https://", "") : "", true],
+  ].filter(([, v]) => v);
+  const el = h(`<section class="profile-view pet-view" role="dialog" aria-label="${esc(p.name)}">
+    <div class="gallery">
+      <div class="track">${photos.map((u, i) => u ? `<img src="${esc(u)}" alt="Фото ${i + 1}">` : `<div class="pet-noimg">${icons.paw}</div>`).join("")}</div>
+      ${photos.length > 1 ? `<div class="dots">${photos.map((_, i) => `<i class="${i ? "" : "on"}"></i>`).join("")}</div>` : ""}
+    </div>
+    <button class="icon-btn close" aria-label="Закрыть">${icons.back}</button>
+    <div class="profile-body">
+      <div class="chips"><span class="chip static ghost">${CAT_TITLE[p.category]}</span>${p.category === "charity"
+        ? `<span class="chip static ${p.fundraising_open ? "ok" : "ghost"}">${p.fundraising_open ? "Сбор открыт" : "Сбор закрыт"}</span>` : ""}</div>
+      <div class="pname" translate="no" style="margin-top:12px">${esc(p.name)}</div>
+      <div class="match-strip">
+        ${p.category === "charity" ? `<div><b translate="no">${esc(p.fundraising_goal || "—")}</b><span>цель сбора</span></div>` : `<div><b translate="no">${esc(p.age_text || "—")}</b><span>возраст</span></div>`}
+        <div><b>${p.help_count}</b><span>уже откликнулись</span></div>
+        <div><b>${p.photos.length}</b><span>фото</span></div>
+      </div>
+      ${p.description ? `<h3>Описание</h3><p class="pet-full" translate="no">${esc(p.description)}</p>` : ""}
+      <h3>Подробности</h3>
+      <dl class="pet-facts">${rows.map(([k, v, raw]) => `<dt>${k}</dt><dd ${raw ? 'translate="no"' : ""}>${esc(v)}</dd>`).join("")}</dl>
+      ${p.is_mine ? `<h3>Управление</h3><div class="owner-tools">
+        ${p.category === "charity" ? `<div class="seg"><button class="chip" data-fund="1" aria-pressed="${p.fundraising_open}">Сбор открыт</button><button class="chip" data-fund="0" aria-pressed="${!p.fundraising_open}">Сбор закрыт</button></div>` : ""}
+      </div>` : ""}
+    </div>
+    <div class="profile-actions">
+      <button class="btn block" data-help ${closed ? "disabled" : ""}>${closed ? "Сбор закрыт, спасибо!" : `${icons.heart} Помочь`}</button>
+    </div>
+  </section>`);
+  const close = () => { el.remove(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e) => e.key === "Escape" && close();
+  $(".close", el).onclick = close;
+  document.addEventListener("keydown", onKey);
+  $("[data-help]", el).onclick = () => helpSheet(p, adult);
+  $$("[data-fund]", el).forEach((b) => (b.onclick = async () => {
+    try {
+      const np = await api.patch(`/api/animals/${p.id}`, { fundraising_open: b.dataset.fund === "1" });
+      toast(np.fundraising_open ? "Сбор открыт" : "Сбор закрыт");
+      onChange(np);
+      close();
+      openPet(p.id, { adult, onChange });
+    } catch (ex) { toast(ex.message, { error: true }); }
+  }));
+  const track = $(".track", el);
+  const dots = $$(".dots i", el);
+  track.addEventListener("scroll", () => {
+    const i = Math.round(track.scrollLeft / track.clientWidth);
+    dots.forEach((d, k) => d.classList.toggle("on", k === i));
+  }, { passive: true });
+  track.addEventListener("click", (e) => {
+    const right = e.clientX > track.getBoundingClientRect().left + track.clientWidth / 2;
+    track.scrollBy({ left: right ? track.clientWidth : -track.clientWidth, behavior: "smooth" });
+  });
+  document.body.append(el);
+  $(".close", el).focus();
 }
 
 function helpSheet(p, adult) {

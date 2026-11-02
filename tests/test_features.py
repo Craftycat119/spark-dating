@@ -98,3 +98,17 @@ def test_support_and_ads_threads():
     msgs = guest.get(f"/api/support/threads/{ad['id']}").json()["messages"]
     assert "Форматы" in msgs[2]["text"] and "анкет" in msgs[4]["text"]
     assert len(boss.get("/api/admin/support?topic=ads").json()) == 1
+
+
+def test_animal_details():
+    owner = make_user("owner@x.io", name="Волонтёр")
+    other = make_user("o@x.io")
+    pid = owner.post("/api/animals", data={"category": "foster", "name": "Луна", "contact": "@luna",
+                                           "description": "Длинное описание"}).json()["id"]
+    with mock.patch("app.telegram_notify.send_message", return_value=False):
+        other.post(f"/api/animals/{pid}/help", json={"message": "Могу взять"})
+    d = other.get(f"/api/animals/{pid}").json()
+    assert d["help_count"] == 1 and d["description"] == "Длинное описание" and d["author"]["name"] == "Волонтёр"
+    owner.patch(f"/api/animals/{pid}", json={"active": False})
+    assert other.get(f"/api/animals/{pid}").status_code == 404   # снятое видит только автор
+    assert owner.get(f"/api/animals/{pid}").status_code == 200

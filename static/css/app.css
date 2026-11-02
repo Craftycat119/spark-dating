@@ -621,7 +621,7 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .pet-body { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
 .pet-name { font: 600 28px var(--display); letter-spacing: -0.8px; }
 .pet-goal b { color: var(--orange-hi); }
-.pet-desc { font-size: 15px; line-height: 1.5; color: var(--text-soft); white-space: pre-wrap; max-height: 9em; overflow-y: auto; }
+.pet-desc { font-size: 15px; line-height: 1.5; color: var(--text-soft); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .owner-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 .owner-tools .btn { min-height: 40px; font-size: 14px; }
 .seg { display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--surface-2); }
@@ -667,3 +667,19 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .mini .pet-photos .track { aspect-ratio: 16 / 10; }
 .mini-sheet.help .wide { margin-top: 8px; }
 .mini-sheet.help .wide.tg { background: #2aabee; color: #fff; }
+
+/* ---------- Подробная карточка животного ---------- */
+.pet-view .gallery .track { aspect-ratio: 1 / 1; }
+.pet-view .pet-noimg { width: 100%; height: 100%; }
+.pet-view .pet-noimg .ph-fill { font-size: 110px; }
+.pet-full { font-size: 16px; line-height: 1.55; white-space: pre-wrap; color: var(--text-soft); }
+.pet-facts { display: grid; grid-template-columns: 130px 1fr; gap: 10px 14px; margin: 0; font-size: 15px; }
+.pet-facts dt { color: var(--muted); }
+.pet-facts dd { margin: 0; word-break: break-word; }
+.chip.static.ok { background: #1f8a4c; color: #fff; box-shadow: none; }
+.more-link { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; margin-top: 2px; font-size: 14px; }
+.more-link .ph { font-size: 16px; }
+.pet-desc { cursor: pointer; }
+.pet { cursor: pointer; }
+.pet-view .match-strip b { font-size: 19px; }
+.animals .pet-photos .track { aspect-ratio: 16 / 11; }

@@ -62,6 +62,19 @@ def _require_adult(me: User) -> None:
         raise HTTPException(403, "Публиковать объявления и отправлять заявки можно с 18 лет")
 
 
+@router.get("/{post_id}")
+def get_post(post_id: int, me: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Подробная карточка: всё из ленты плюс число откликов."""
+    from sqlalchemy import func
+
+    post = db.get(AnimalPost, post_id)
+    if not post or (not post.active and post.author_id != me.id):
+        raise HTTPException(404, "Объявление не найдено")
+    out = post_out(post, me)
+    out["help_count"] = db.scalar(select(func.count(HelpRequest.id)).where(HelpRequest.post_id == post.id)) or 0
+    return out
+
+
 @router.post("")
 def create_post(
     category: str = Form(...),

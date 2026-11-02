@@ -458,9 +458,12 @@ route("POST", "/api/feed/undo", async (b) => {
 const CAT_TITLE = { charity: "Помощь и сборы", foster: "Передержка", adoption: "Ищет хозяина" };
 const tgUrl = (c) => { const m = (c || "").trim().match(/^(?:@|https?:\/\/t\.me\/|t\.me\/)?([A-Za-z0-9_+/-]{3,64})\/?$/); return m ? `https://t.me/${m[1]}` : null; };
 function ensurePets() {
-  if (S.pets) return;
+  if (S.pets && S.pets.some((p) => p.photos.length >= 3)) return;
+  if (S.pets) S.pets = S.pets.filter((p) => p.author_id !== 0); else S.pets = [];
+  const mine = S.pets;
   S.pets = DATA.animals.map((a, i) => ({ id: 9000 + i, ...a, city: "Москва", contact: "@cofi_volunteers", fundraising_open: true, active: true,
-    photos: [`@pet:${a.name}:${a.species}:0`, `@pet:${a.name}:${a.species}:1`], author: { id: 0, name: "Волонтёры COFI" }, author_id: 0, created_at: now() }));
+    photos: [0, 1, 2].map((n) => `@pet:${a.name}:${a.species}:${n}`), author: { id: 0, name: "Волонтёры COFI" }, author_id: 0,
+    created_at: new Date(Date.now() - (i + 1) * 86400000 * 2).toISOString(), help_count: [7, 2, 4, 23][i] ?? 0 })).concat(mine);
 }
 async function petOut(p, u) {
   return { id: p.id, category: p.category, name: p.name, species: p.species, age_text: p.age_text, city: p.city, description: p.description,
@@ -475,6 +478,13 @@ route("GET", "/api/animals", async (_, __, url) => {
   const cat = new URLSearchParams(url.split("?")[1] || "").get("category") || "";
   const list = S.pets.filter((p) => p.active && (!cat || p.category === cat)).sort((a, b) => b.id - a.id);
   return { total: list.length, items: await Promise.all(list.map((p) => petOut(p, u))), categories: CAT_TITLE };
+});
+route("GET", "/api/animals/(\\d+)", async (_, [pid]) => {
+  const u = requireMe();
+  ensurePets();
+  const p = S.pets.find((x) => x.id === +pid && (x.active || x.author_id === u.id));
+  if (!p) deny(404, "Объявление не найдено");
+  return { ...(await petOut(p, u)), help_count: p.help_count || 0 };
 });
 route("POST", "/api/animals", async (fd) => {
   const u = requireMe();
@@ -507,6 +517,8 @@ route("POST", "/api/animals/(\\d+)/help", (_, [pid]) => {
   const p = (S.pets || []).find((x) => x.id === +pid);
   if (!p) deny(404, "Объявление не найдено");
   if (p.category === "charity" && !p.fundraising_open) deny(409, "Сбор уже закрыт, спасибо!");
+  p.help_count = (p.help_count || 0) + 1;
+  save();
   return { status: "sent", contact_url: tgUrl(p.contact) };
 });
 

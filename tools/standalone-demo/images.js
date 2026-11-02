@@ -100,7 +100,8 @@ export async function sceneFor(key) {
 export async function petFor(name, species, n) {
   const key = `pet-${name}-${n}`;
   if (cache.has(key)) return cache.get(key);
-  const emoji = species === "Собака" ? (n === "1" ? "🐕" : "🐶") : species === "Кошка" ? (n === "1" ? "🐈" : "🐱") : (n === "1" ? "🦴" : "🐾");
+  const set = species === "Собака" ? ["🐶", "🐕", "🦮"] : species === "Кошка" ? ["🐱", "🐈", "😺"] : ["🐾", "🦴", "🏠"];
+  const emoji = set[+n % set.length];
   SCENES[key] = [emoji, name];
   const url = await sceneFor(key);
   cache.set(key, url);
