@@ -6,8 +6,11 @@ import { runScanner } from "./scanner.js";
 import { PACKS } from "./stickers.js";
 import { mountThread } from "./threads.js";
 import { renderGuide } from "./guide.js";
+import { feedTabs, renderAnimalForm, renderAnimals } from "./animals.js";
+import { renderAds, renderSupportHub, renderThread, reportUser } from "./support.js";
 import { currentHash, navigate, onRoute } from "./router.js";
 import { getThemePref, resolvedTheme, setTheme } from "./theme.js";
+import { getLang, setLang, t } from "./i18n.js";
 import { $, $$, confirmDialog, esc, fmtDay, fmtDur, fmtShort, fmtTime, h, toast, wordmark } from "./ui.js";
 
 const app = document.getElementById("app");
@@ -66,8 +69,14 @@ function afterLogin() {
 
 const go = navigate;
 
+/** Перерисовать экран с нуля (после смены языка: тексты собираются заново). */
+function rerender() {
+  app.replaceChildren();
+  route();
+}
+
 function onboardingStep(me) {
-  if (!me.name || !me.age || !me.gender || !me.looking_for) return "about";
+  if (!me.name || !me.birth_date || !me.gender || !me.looking_for) return "about";
   if (!me.survey_done) return "survey";
   if (!me.photo_url) return "photo";
   if (!me.photo_verified) return "scan";
@@ -80,11 +89,15 @@ function route() {
   $(".profile-view")?.remove();
   const page = currentHash().split("/")[1];
   if (page === "guide") return showGuide();
+  if (page === "ads") return renderAds({ screen, go, loggedIn: !!state.me });
   if (!state.me) return renderAuth();
   const step = onboardingStep(state.me);
   const [, name, arg] = currentHash().split("/");
-  if (step && name !== "settings") return renderOnboarding(step);
+  if (step && !["settings", "support"].includes(name)) return renderOnboarding(step);
+  const ctx = { screen, state, go };
   switch (name) {
+    case "animals": return arg === "new" ? renderAnimalForm(ctx) : renderAnimals(ctx);
+    case "support": return arg ? renderThread({ screen, threadId: Number(arg) }) : renderSupportHub(ctx);
     case "chats": return renderChats();
     case "chat": return renderChats().then(() => openChat(Number(arg)));
     case "settings": return arg === "interests" ? renderSurvey({ editing: true }) : renderSettings();
@@ -108,9 +121,9 @@ function screen(html, { nav = true, cls = "" } = {}) {
 function navBar() {
   const cur = currentHash().split("/")[1] || "feed";
   const item = (key, label, icon) =>
-    `<a href="#/${key}" class="${cur === key || (key === "chats" && cur === "chat") ? "on" : ""}">${icon}<span>${label}</span>${
+    `<a href="#/${key}" class="${cur === key || (key === "chats" && cur === "chat") || (key === "feed" && cur === "animals") ? "on" : ""}">${icon}<span>${label}</span>${
       key === "chats" && state.unread ? `<b class="badge">${state.unread}</b>` : ""}</a>`;
-  return h(`<nav class="nav" aria-label="Разделы">${item("feed", "Пары", icons.flame)}${item("chats", "Чаты", icons.chat)}${item("settings", "Профиль", icons.user)}</nav>`);
+  return h(`<nav class="nav" aria-label="Разделы">${item("feed", "Ленты", icons.flame)}${item("chats", "Чаты", icons.chat)}${item("settings", "Профиль", icons.user)}</nav>`);
 }
 
 function updateNavBadge() {
@@ -197,11 +210,13 @@ function renderAuth(mode = "login") {
           <button class="chip hot" data-demo>Демо без регистрации</button>
           <a class="chip" href="#/guide">Как это работает</a>
         </div>
+        <div class="hero-foot"><a href="#/ads">Реклама в COFI</a><button class="lang-toggle" data-lang-toggle>${getLang() === "en" ? "RU" : "EN"}</button></div>
       </div>
     </section>
 ${sheet}`, { nav: false, cls: "auth" });
     mount3d($(".stage", root), "knot");
     $("[data-demo]", root).onclick = startDemo;
+    $("[data-lang-toggle]", root).onclick = () => { setLang(getLang() === "en" ? "ru" : "en"); rerender(); };
     $(".theme-toggle", root).onclick = (e) => {
       setTheme(resolvedTheme() === "light" ? "dark" : "light");
       e.currentTarget.innerHTML = themeIcon();
@@ -403,22 +418,38 @@ function stepAbout() {
     <form class="stack">
       <h1>Знакомимся</h1>
       <label class="field"><span>Имя</span><input class="input" name="name" maxlength="64" value="${esc(me.name)}" autocomplete="given-name" required></label>
-      <label class="field"><span>Возраст</span><input class="input" name="age" type="number" min="18" max="100" value="${me.age ?? ""}" required></label>
+      <label class="field"><span>Дата рождения</span><input class="input" name="birth" type="date" value="${me.birth_date ?? ""}" ${me.birth_date ? "disabled" : ""} required max="${new Date().toISOString().slice(0, 10)}"></label>
+      <p class="hint">COFI доступен с 14 лет. До 18 лет открыта только лента «Дружба 14–17», без знакомств. Дату нельзя будет изменить самостоятельно.</p>
       <div class="field"><span>Я</span>${choiceGroup("gender", state.config.genders, me.gender)}</div>
-      <div class="field"><span>Кого ищу</span>${choiceGroup("looking_for", state.config.looking_for, me.looking_for)}</div>
+      <div class="field" data-looking><span>Кого ищу</span>${choiceGroup("looking_for", state.config.looking_for, me.looking_for)}</div>
       <label class="field"><span>Коротко о себе</span><textarea class="input" name="bio" maxlength="500" placeholder="Например: варю фильтр-кофе, по субботам бегаю в парке">${esc(me.bio)}</textarea></label>
       <p class="error-text" hidden></p>
       <button class="btn block">Дальше</button>
     </form>`, { nav: false });
   bindChoice(root, "gender", (v) => (pick.gender = v));
   bindChoice(root, "looking_for", (v) => (pick.looking_for = v));
-  $("form", root).onsubmit = async (e) => {
+  const form = $("form", root);
+  const teen = () => {
+    const v = form.birth.value;
+    if (!v) return false;
+    const b = new Date(v), n = new Date();
+    const y = n.getFullYear() - b.getFullYear() - (n < new Date(n.getFullYear(), b.getMonth(), b.getDate()) ? 1 : 0);
+    return y < 18;
+  };
+  const syncTeen = () => ($("[data-looking]", root).hidden = teen());
+  form.birth.addEventListener("change", syncTeen);
+  syncTeen();
+  form.onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target;
     const err = $(".error-text", root);
+    if (teen()) pick.looking_for = "any"; // в 14–17 только дружба, без предпочтений по полу
+    if (!f.birth.value) { err.textContent = "Укажите дату рождения"; err.hidden = false; return; }
     if (!pick.gender || !pick.looking_for) { err.textContent = "Выберите пол и кого ищете"; err.hidden = false; return; }
     try {
-      await api.put("/api/profile", { name: f.name.value, age: Number(f.age.value), bio: f.bio.value, ...pick });
+      const data = { name: f.name.value, bio: f.bio.value, ...pick };
+      if (!state.me.birth_date) data.birth_date = f.birth.value;
+      await api.put("/api/profile", data);
       nextStep();
     } catch (ex) { err.textContent = ex.message; err.hidden = false; }
   };
@@ -431,7 +462,10 @@ function renderSurvey({ editing = false } = {}) {
   let i = 0;
 
   const draw = () => {
-    const q = survey[i];
+    let q = survey[i];
+    if (q.key === "goals" && state.me.age_group === "teen") {
+      q = { ...q, options: state.config.teen_goals, hint: "В 14–17 лет COFI только для дружбы" };
+    }
     const set = q.key === "goals" ? answers.goals : answers.interests;
     const last = i === survey.length - 1;
     const root = screen(`${editing ? "" : stepsBar("survey")}
@@ -609,8 +643,10 @@ const kmText = (km) => (km == null ? "" : km < 1 ? "меньше 1 км от в�
 async function renderFeed() {
   const root = screen(`
     <div class="topbar"><span class="row" style="gap:8px"><span class="logo">cofi<span>°</span></span>${state.me.is_demo ? '<span class="demo-pill">демо</span>' : ""}</span><span class="counter"></span></div>
+    ${feedTabs("people", state.me)}
     <div class="deck" aria-live="polite"><div class="skeleton" style="position:relative;height:420px"></div></div>
     <div class="btns" hidden>
+      <div class="bw undo-wrap"><button class="undo" aria-label="Вернуть" disabled>${icons.undo}</button><span class="undo-label">Вернуть</span></div>
       <div class="bw"><button class="skip" aria-label="Дальше">${icons.x}</button><span>Дальше</span></div>
       <div class="bw"><button class="like" aria-label="Нравится">${icons.heart}</button><span>Нравится</span></div>
     </div>
@@ -620,12 +656,24 @@ async function renderFeed() {
   const hint = $(".swipe-hint", root);
   const counter = $(".counter", root);
   let cards = [], total = 0, seen = 0, busy = false, loading = false, thread = null;
+  const history = []; // последние решения, чтобы вернуть случайно пролистанную анкету или отменить лайк
+  const undoBtn = () => $(".undo", btns);
+  const syncUndo = () => {
+    const last = history[history.length - 1];
+    undoBtn().disabled = !last || busy;
+    $(".undo-label", btns).textContent = last?.like ? "Отменить лайк" : "Вернуть";
+  };
 
   const empty = (title, text, btnLabel, fn) => {
     btns.hidden = hint.hidden = true;
     counter.textContent = "";
     deck.replaceChildren(h(`<div class="empty"><h1>${title}</h1><p class="lead">${text}</p>${btnLabel ? `<button class="btn">${btnLabel}</button>` : ""}</div>`));
     if (fn) $(".btn", deck).onclick = fn;
+    if (history.length) {
+      const back = h(`<button class="btn ghost">${icons.undo} Вернуть последнюю анкету</button>`);
+      back.onclick = undo;
+      $(".empty", deck).append(back);
+    }
   };
 
   async function load() {
@@ -661,9 +709,9 @@ async function renderFeed() {
           ${c.photo_url ? `<img src="${esc(c.photo_url)}" alt="">` : esc(c.name.charAt(0))}
           ${c.photos_count ? `<span class="more">+${c.photos_count} фото</span>` : ""}
         </button>
-        <div class="pname">${esc(c.name)}<span>, ${c.age}</span></div>
+        <div class="pname" translate="no">${esc(c.name)}<span>, ${c.age}</span></div>
         <div class="meta">${[kmText(c.distance_km), c.verified ? "фото подтверждено" : ""].filter(Boolean).join(" · ")}</div>
-        ${c.bio ? `<p class="pbio">${esc(c.bio)}</p>` : ""}
+        ${c.bio ? `<p class="pbio" translate="no">${esc(c.bio)}</p>` : ""}
       </article>
       <div class="shared-lbl">${c.common.length
         ? `У вас общего: <b>${c.common.length} ${plural(c.common.length, "интерес", "интереса", "интересов")}</b> · совпадение ${c.match}%`
@@ -686,12 +734,32 @@ async function renderFeed() {
     if (res.match) showMatch({ conversation_id: res.conversation_id, user: res.user, common: res.user.common });
     cards.shift();
     seen++;
+    if (!res.match) history.push({ id: c.id, like });
+    if (history.length > 20) history.shift();
     busy = false;
     $$("button", btns).forEach((b) => (b.disabled = false));
+    syncUndo();
     thread = null;
     draw();
     if (cards.length < 3) load();
   }
+
+  async function undo() {
+    const last = history.pop();
+    if (!last || busy) return;
+    try {
+      const r = await api.post("/api/feed/undo", { user_id: last.id });
+      cards.unshift(r.card);
+      seen = Math.max(0, seen - 1);
+      toast(r.undone === "like" ? "Лайк отменён" : "Анкета возвращена");
+      thread = null;
+      draw();
+    } catch (ex) {
+      toast(ex.message, { error: true });
+    }
+    syncUndo();
+  }
+  undoBtn().onclick = undo;
 
   $(".skip", btns).onclick = () => decide(false);
   $(".like", btns).onclick = () => decide(true);
@@ -734,23 +802,25 @@ async function openProfile(userId, { onDecide = null } = {}) {
     </div>
     <button class="icon-btn close" aria-label="Закрыть">${icons.back}</button>
     <div class="profile-body">
-      <div class="pname">${esc(p.name)}<span>, ${p.age}</span></div>
+      <div class="pname" translate="no">${esc(p.name)}<span>, ${p.age}</span></div>
       <div class="meta muted small" style="margin-top:6px">${[kmText(p.distance_km), p.verified ? "фото подтверждено" : "", p.online ? "в сети" : ""].filter(Boolean).join(" · ")}</div>
       <div class="match-strip">
         <div><b>${p.match}%</b><span>совпадение</span></div>
         <div><b>${p.common.length}</b><span>${plural(p.common.length, "общий интерес", "общих интереса", "общих интересов")}</span></div>
         <div><b>${p.photos.length}</b><span>${plural(p.photos.length, "фото", "фото", "фото")}</span></div>
       </div>
-      ${p.bio ? `<h3>О себе</h3><p style="font-size:16px;line-height:1.5">${esc(p.bio)}</p>` : ""}
+      ${p.bio ? `<h3>О себе</h3><p style="font-size:16px;line-height:1.5" translate="no">${esc(p.bio)}</p>` : ""}
       ${p.goals.length ? `<h3>Ищет</h3><div class="chips">${p.goals.map((g) => `<span class="chip static ghost">${esc(g)}</span>`).join("")}</div>` : ""}
       <h3>Интересы</h3>
       <div class="chips">${p.interests.map((x) => `<span class="chip static ${goalsSet.has(x) ? "hot" : "ghost"}">${esc(x)}</span>`).join("")}</div>
+      <button class="link report" data-report>${icons.flag} Пожаловаться на анкету</button>
     </div>
     <div class="profile-actions"></div>
   </section>`);
 
   const actions = $(".profile-actions", el);
   const close = () => { el.remove(); document.removeEventListener("keydown", esc_); };
+  $("[data-report]", el).onclick = () => { close(); reportUser(p, go); };
   const esc_ = (e) => e.key === "Escape" && close();
   if (p.conversation_id) {
     actions.innerHTML = `<button class="btn block" data-write>${icons.chat} Написать сообщение</button>`;
@@ -806,10 +876,10 @@ function showMatch({ conversation_id, user, common = [] }) {
 // ---------------- Чаты ----------------
 
 function previewText(m, meId) {
-  if (!m) return "Новая пара, напишите первым";
-  const mine = m.sender_id === meId ? "Вы: " : "";
-  const map = { image: "Фото", video: "Видео", voice: "Голосовое", circle: "Видеосообщение", sticker: m.text, call: m.text === "video" ? "Видеозвонок" : "Звонок" };
-  return mine + (m.kind === "text" ? m.text : map[m.kind] || "");
+  if (!m) return t("Новая пара, напишите первым");
+  const mine = m.sender_id === meId ? t("Вы:") + " " : "";
+  const map = { image: "Фото", video: "Видео", voice: "Голосовое", circle: "Видеосообщение", call: m.text === "video" ? "Видеозвонок" : "Звонок" };
+  return mine + (m.kind === "text" || m.kind === "sticker" ? m.text : t(map[m.kind] || ""));
 }
 
 async function renderChats() {
@@ -832,8 +902,8 @@ async function renderChats() {
       <a class="chat-item" href="#/chat/${c.id}">
         <span class="avatar-wrap"><img class="avatar" src="${esc(c.user.photo_url)}" alt="">${c.user.online ? '<i class="dot" title="В сети"></i>' : ""}</span>
         <span class="body">
-          <span class="top"><b>${esc(c.user.name)}</b><span class="time">${fmtShort(c.last_message.created_at)}</span></span>
-          <span class="row" style="gap:8px"><span class="preview" style="flex:1">${esc(previewText(c.last_message, state.me.id))}</span>${c.unread ? `<span class="unread">${c.unread}</span>` : ""}</span>
+          <span class="top"><b translate="no">${esc(c.user.name)}</b><span class="time">${fmtShort(c.last_message.created_at)}</span></span>
+          <span class="row" style="gap:8px"><span class="preview" style="flex:1" translate="no">${esc(previewText(c.last_message, state.me.id))}</span>${c.unread ? `<span class="unread">${c.unread}</span>` : ""}</span>
         </span>
       </a>`).join("")}</div></div>`));
 }
@@ -861,13 +931,13 @@ async function openChat(convId) {
       <a class="icon-btn" href="#/chats" aria-label="Назад">${icons.back}</a>
       <button class="who-link" data-profile aria-label="Открыть анкету">
         <img class="avatar" src="${esc(other.photo_url)}" alt="">
-        <span class="who"><b>${esc(other.name)}${other.age ? `, ${other.age}` : ""}</b><small class="status">${other.online ? "в сети" : "не в сети"}</small></span>
+        <span class="who"><b translate="no">${esc(other.name)}${other.age ? `, ${other.age}` : ""}</b><small class="status">${other.online ? "в сети" : "не в сети"}</small></span>
       </button>
       <button class="icon-btn" data-call="audio" aria-label="Аудиозвонок">${icons.phone}</button>
       <button class="icon-btn" data-call="video" aria-label="Видеозвонок">${icons.video}</button>
       <button class="icon-btn" data-menu aria-label="Ещё">${icons.more}</button>
     </header>
-    <div class="messages" tabindex="0"></div>
+    <div class="messages" tabindex="0" translate="no"></div>
     <div class="typing" aria-live="polite"></div>
     <div class="sticker-panel" hidden></div>
     <div class="composer"></div>
@@ -1176,9 +1246,11 @@ function renderSettings() {
     <form class="section stack" id="profile-form">
       <h3>О себе</h3>
       <label class="field"><span>Имя</span><input class="input" name="name" maxlength="64" value="${esc(me.name)}"></label>
-      <label class="field"><span>Возраст</span><input class="input" name="age" type="number" min="18" max="100" value="${me.age ?? ""}"></label>
+      <div class="field"><span>Дата рождения</span>
+        <div class="readonly">${me.birth_date ? new Date(me.birth_date).toLocaleDateString(getLang() === "en" ? "en-GB" : "ru-RU") : "—"} · ${me.age_group === "teen" ? "лента «Дружба 14–17»" : "лента 18+"}</div>
+        <span class="hint">Изменить дату можно только через <a href="#/support">поддержку</a></span></div>
       <div class="field"><span>Я</span>${choiceGroup("gender", state.config.genders, me.gender)}</div>
-      <div class="field"><span>Кого ищу</span>${choiceGroup("looking_for", state.config.looking_for, me.looking_for)}</div>
+      ${me.age_group === "teen" ? "" : `<div class="field"><span>Кого ищу</span>${choiceGroup("looking_for", state.config.looking_for, me.looking_for)}</div>`}
       <label class="field"><span>Описание</span><textarea class="input" name="bio" maxlength="500">${esc(me.bio)}</textarea></label>
       <label class="field"><span>Искать в радиусе <b id="dist-val">${me.max_distance_km}</b> км</span>
         <input type="range" name="dist" min="1" max="300" value="${Math.min(me.max_distance_km, 300)}"></label>
@@ -1196,8 +1268,17 @@ function renderSettings() {
       </div>
     </div>
 
+    <div class="section">
+      <h3>Язык</h3>
+      <div class="choice-grid" style="grid-template-columns:repeat(2,1fr)" role="radiogroup" aria-label="Язык">
+        ${[["ru", "Русский"], ["en", "English"]].map(([k, l]) => `<button type="button" class="chip" data-lang="${k}" translate="no" aria-pressed="${getLang() === k}">${l}</button>`).join("")}
+      </div>
+    </div>
+
     <div class="section stack">
       <a class="row-link" href="#/guide"><span><b>Как пользоваться</b><br><span class="muted small">Жесты, пары, чат и звонки</span></span>${icons.arrow}</a>
+      <a class="row-link" href="#/support"><span><b>Поддержка</b><br><span class="muted small">Помощь, жалобы и предложения</span></span>${icons.headset}</a>
+      ${me.age_group === "adult" ? `<a class="row-link" href="#/ads"><span><b>Реклама в COFI</b><br><span class="muted small">Чат с помощником для рекламодателей</span></span>${icons.megaphone}</a>` : ""}
     </div>
 
     <div class="section stack">
@@ -1211,6 +1292,12 @@ function renderSettings() {
 
   bindChoice(root, "gender", (v) => (pick.gender = v));
   bindChoice(root, "looking_for", (v) => (pick.looking_for = v));
+  $$("[data-lang]", root).forEach((b) => (b.onclick = () => {
+    if (b.dataset.lang === getLang()) return;
+    setLang(b.dataset.lang);
+    api.put("/api/profile", { language: b.dataset.lang }).catch(() => {});
+    rerender();
+  }));
   $$("[data-theme-pick]", root).forEach((b) => (b.onclick = () => {
     setTheme(b.dataset.themePick);
     $$("[data-theme-pick]", root).forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
@@ -1221,7 +1308,6 @@ function renderSettings() {
     e.preventDefault();
     const data = {
       name: form.name.value,
-      age: Number(form.age.value) || undefined,
       bio: form.bio.value,
       max_distance_km: Number(form.dist.value),
       ...pick,

@@ -30,5 +30,11 @@ export const icons = {
   sparkle: i("sparkle", true),
   plus: i("plus"),
   sun: i("sun"),
+  paw: i("paw-print", true),
+  undo: i("arrow-counter-clockwise"),
+  flag: i("flag"),
+  headset: i("headset"),
+  megaphone: i("megaphone"),
+  globe: i("globe"),
   moon: i("moon"),
 };

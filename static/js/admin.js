@@ -1,4 +1,4 @@
-import { api } from "./api.js";
+import { api, connectSocket, on } from "./api.js";
 import "./theme.js";
 import { icons } from "./icons.js";
 import { $, $$, confirmDialog, esc, h, toast } from "./ui.js";
@@ -23,6 +23,7 @@ async function boot() {
     return;
   }
   window.addEventListener("hashchange", route);
+  connectSocket();
   route();
 }
 
@@ -30,7 +31,7 @@ function route() {
   const [name, arg] = (location.hash.slice(1) || "overview").split("/");
   $$(".rail nav a").forEach((a) => a.classList.toggle("on", a.dataset.view === name));
   closeDrawer();
-  ({ overview, users, chats, mail })[name]?.(arg) ?? overview();
+  ({ overview, users, chats, mail, support, animals })[name]?.(arg) ?? overview();
 }
 
 // ---------- Обзор ----------
@@ -130,6 +131,10 @@ async function openUser(id) {
     </dl>
     <h3>Анкета</h3>
     <dl class="kv">
+      <dt>Дата рождения</dt><dd>${u.birth_date ? new Date(u.birth_date).toLocaleDateString("ru-RU") : "—"}, ${u.age ?? "?"} лет, ${u.age_group === "teen" ? '<span class="tag">14–17</span>' : u.age_group === "adult" ? '<span class="tag">18+</span>' : "—"}
+        ${u.age_verified ? '<span class="tag ok">проверен по документу</span>' : ""}
+        <form class="row" data-birth style="margin-top:8px;gap:8px"><input class="input" type="date" name="d" value="${u.birth_date || ""}" style="padding:8px 10px;max-width:170px">
+        <button class="btn quiet" style="min-height:38px;padding:0 14px;font-size:13px">Исправить и отметить проверенным</button></form></dd>
       <dt>Пол</dt><dd>${esc(u.gender || "—")}</dd>
       <dt>Кого ищет</dt><dd>${esc(u.looking_for || "—")}</dd>
       <dt>Цель</dt><dd>${tags(u.goals, "hot") || "—"}</dd>
@@ -139,6 +144,14 @@ async function openUser(id) {
     <h3>Переписки (${u.conversations.length})</h3>
     <div>${u.conversations.map((c) => convRow(c)).join("") || '<p class="muted small">Пар пока нет</p>'}</div>`;
   $(".close", drawer).onclick = closeDrawer;
+  $("[data-birth]", drawer).onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post(`/api/admin/users/${id}/birth-date`, { birth_date: e.target.d.value, verified: true });
+      toast("Дата рождения обновлена");
+      openUser(id);
+    } catch (ex) { toast(ex.message, { error: true }); }
+  };
   $$(".conv-row", drawer).forEach((r) => (r.onclick = () => openConversation(Number(r.dataset.id))));
   $("[data-ban]", drawer).onclick = async () => {
     try {
@@ -200,6 +213,95 @@ async function openConversation(id) {
     <div class="transcript">${c.items.map((m) => `<div class="msg ${m.sender_id === a.id ? "" : "mine"}">
       <div class="who">${esc(names[m.sender_id] || "?")} · ${dt(m.created_at)}</div>${body(m)}</div>`).join("") || '<p class="muted">Сообщений нет</p>'}</div>`;
   $(".close", drawer).onclick = closeDrawer;
+}
+
+// ---------- Обращения: поддержка и реклама ----------
+const CAT = { help: "Помощь", complaint: "Жалоба", suggestion: "Предложение", ads: "Реклама" };
+const supportState = { topic: "", status: "open" };
+
+async function support(arg) {
+  view.innerHTML = `<h1>Обращения</h1>
+    <div class="toolbar">
+      <select class="input" data-topic><option value="">Все разделы</option><option value="support">Поддержка</option><option value="ads">Реклама</option></select>
+      <select class="input" data-status><option value="open">Открытые</option><option value="closed">Решённые</option><option value="">Все</option></select>
+    </div>
+    <div id="threads"><div class="spinner"></div></div>`;
+  $("[data-topic]", view).value = supportState.topic;
+  $("[data-status]", view).value = supportState.status;
+  $("[data-topic]", view).onchange = (e) => { supportState.topic = e.target.value; loadThreads(); };
+  $("[data-status]", view).onchange = (e) => { supportState.status = e.target.value; loadThreads(); };
+  await loadThreads();
+  if (arg) openThread(Number(arg));
+}
+
+async function loadThreads() {
+  const list = await api.get(`/api/admin/support?topic=${supportState.topic}&status=${supportState.status}`);
+  const box = $("#threads");
+  if (!box) return;
+  box.innerHTML = list.map((t) => `<div class="conv-row" data-id="${t.id}">
+      <span class="tag ${t.topic === "ads" ? "hot" : t.category === "complaint" ? "warn" : ""}">${CAT[t.category]}</span>
+      <span style="flex:1"><b>${t.user ? esc(t.user.name || t.user.email || "#" + t.user.id) : "Гость" + (t.contact ? `, ${esc(t.contact)}` : "")}</b> №${t.id}<br>
+      <span class="muted">${t.last ? esc((t.last.author === "user" ? "" : t.last.author === "staff" ? "Вы: " : "Бот: ") + t.last.text).slice(0, 90) : ""}</span></span>
+      <span class="muted">${dt(t.updated_at)}</span></div>`).join("") || '<p class="muted">Обращений нет.</p>';
+  $$(".conv-row", box).forEach((r) => (r.onclick = () => openThread(Number(r.dataset.id))));
+}
+
+async function openThread(id) {
+  const t = await api.get(`/api/admin/support/${id}`);
+  const who = { user: t.user ? t.user.name || "Пользователь" : "Гость", bot: "Бот", staff: "Вы" };
+  drawer.hidden = false;
+  drawer.innerHTML = `<button class="icon-btn close" aria-label="Закрыть">${icons.x}</button>
+    <h2>${CAT[t.category]} №${t.id}</h2>
+    <p class="muted small">${t.user ? `Пользователь <a href="#users" data-user="${t.user.id}">#${t.user.id}</a>` : "Без аккаунта"}${t.contact ? `, контакт: ${esc(t.contact)}` : ""}${t.about_user_id ? `, жалоба на <a href="#users" data-user="${t.about_user_id}">анкету #${t.about_user_id}</a>` : ""}</p>
+    <div class="transcript">${t.messages.map((m) => `<div class="msg ${m.author === "staff" ? "mine" : ""}">
+      <div class="who">${who[m.author]} · ${dt(m.created_at)}</div><div class="bubble">${esc(m.text)}</div></div>`).join("")}</div>
+    <form class="stack" style="margin-top:16px" data-reply>
+      <textarea class="input" name="text" rows="3" placeholder="Ответ пользователю" required></textarea>
+      <div class="row"><button class="btn">Ответить</button>
+      <button type="button" class="btn quiet" data-close-thread>${t.status === "open" ? "Отметить решённым" : "Открыть снова"}</button></div>
+    </form>`;
+  $(".close", drawer).onclick = closeDrawer;
+  $$("[data-user]", drawer).forEach((a) => (a.onclick = (e) => { e.preventDefault(); openUser(Number(a.dataset.user)); }));
+  $("[data-reply]", drawer).onsubmit = async (e) => {
+    e.preventDefault();
+    await api.post(`/api/admin/support/${id}/reply`, { text: e.target.text.value });
+    openThread(id);
+    loadThreads();
+  };
+  $("[data-close-thread]", drawer).onclick = async () => {
+    await api.post(`/api/admin/support/${id}/status`, { status: t.status === "open" ? "closed" : "open" });
+    closeDrawer();
+    loadThreads();
+  };
+  const tr = $(".transcript", drawer);
+  tr.lastElementChild?.scrollIntoView({ block: "end" });
+}
+
+// новые сообщения в обращениях приходят в реальном времени
+on("support", (d) => {
+  if (!d.admin) return;
+  if (location.hash.startsWith("#support")) loadThreads();
+  const open = $(".drawer h2");
+  if (open && open.textContent.endsWith(`№${d.thread_id}`)) openThread(d.thread_id);
+  else toast(`Новое сообщение в обращении №${d.thread_id}`);
+});
+
+// ---------- Животные ----------
+async function animals() {
+  view.innerHTML = `<h1>Животные</h1><div id="pets"><div class="spinner"></div></div>`;
+  const list = await api.get("/api/admin/animals");
+  $("#pets").innerHTML = list.length ? `<table class="grid"><thead><tr><th></th><th>Кличка</th><th>Категория</th><th>Автор</th><th>Telegram</th><th>Заявки</th><th>Статус</th><th></th></tr></thead><tbody>
+    ${list.map((p) => `<tr><td>${p.photos[0] ? `<img src="${esc(p.photos[0])}" alt="">` : ""}</td><td><b>${esc(p.name)}</b><br><span class="muted small">${dt(p.created_at)}</span></td>
+      <td>${esc(p.category)}${p.fundraising_open === null ? "" : p.fundraising_open ? ' <span class="tag ok">сбор открыт</span>' : ' <span class="tag">сбор закрыт</span>'}</td>
+      <td>${esc(p.author.name)} #${p.author.id}</td><td>${esc(p.contact)}</td><td>${p.requests}</td>
+      <td>${p.active ? '<span class="tag ok">опубликовано</span>' : '<span class="tag warn">снято</span>'}</td>
+      <td><button class="btn danger" data-del="${p.id}" style="min-height:34px;padding:0 12px;font-size:13px">Удалить</button></td></tr>`).join("")}</tbody></table>`
+    : '<p class="muted">Объявлений пока нет.</p>';
+  $$("[data-del]", view).forEach((b) => (b.onclick = async () => {
+    if (!(await confirmDialog("Удалить объявление вместе с фото?", "Удалить"))) return;
+    await api.del(`/api/admin/animals/${b.dataset.del}`);
+    animals();
+  }));
 }
 
 // ---------- Рассылка ----------

@@ -179,6 +179,6 @@ def handle_user_message(db: Session, t: SupportThread, text: str) -> dict:
     if t.topic == "ads":
         answer = ads_answer(text, db)
         _add(db, t, "bot", answer or HANDOFF)
-    elif first:
+    elif first and not db.scalar(select(SupportMessage.id).where(SupportMessage.thread_id == t.id, SupportMessage.author == "bot")):
         _add(db, t, "bot", SUPPORT_GREETING.format(id=t.id))
     return msg_out(m)

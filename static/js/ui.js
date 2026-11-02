@@ -1,4 +1,7 @@
 // Мелкие помощники интерфейса
+import { getLang } from "./i18n.js";
+
+const locale = () => (getLang() === "en" ? "en-GB" : "ru-RU");
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
@@ -21,7 +24,7 @@ export function toast(text, { error = false, image = null, onClick = null, timeo
 
 export function fmtTime(iso) {
   const d = new Date(iso);
-  return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
 }
 
 export function fmtDay(iso) {
@@ -30,14 +33,14 @@ export function fmtDay(iso) {
   const y = new Date(); y.setDate(today.getDate() - 1);
   if (d.toDateString() === today.toDateString()) return "Сегодня";
   if (d.toDateString() === y.toDateString()) return "Вчера";
-  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+  return d.toLocaleDateString(locale(), { day: "numeric", month: "long" });
 }
 
 export function fmtShort(iso) {
   const d = new Date(iso);
   return d.toDateString() === new Date().toDateString()
     ? fmtTime(iso)
-    : d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+    : d.toLocaleDateString(locale(), { day: "numeric", month: "short" });
 }
 
 export function fmtDur(sec) {

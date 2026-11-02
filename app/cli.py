@@ -17,7 +17,7 @@ from .ages import birth_for_age
 from .interests import GOALS, SURVEY
 from .database import SessionLocal, init_db
 from .face_verify import download_models
-from .models import User, UserPhoto, utcnow
+from .models import AnimalPost, User, UserPhoto, utcnow
 from .security import hash_password
 
 DEMO_NAMES = ["Алина", "Марк", "Соня", "Илья", "Вера", "Тимур", "Ника", "Глеб", "Лиза", "Артём", "Мира", "Даня"]
@@ -28,6 +28,12 @@ DEMO_BIOS = [
     "Готовлю лучшую пасту в районе. Проверишь?",
     "Работаю в IT, по вечерам играю на гитаре.",
     "Путешествую налегке, в этом году была в Грузии и Армении.",
+]
+ANIMALS = [
+    ("charity", "Барсик", "Кошка", "3 года", "Сбили машиной, нужна операция на лапе. Ветклиника ждёт оплату, остальное покроют волонтёры.", "38 000 ₽", "#c9461a"),
+    ("adoption", "Рыжик", "Кошка", "7 месяцев", "Ласковый котёнок, приучен к лотку, привит. Ищем дом без маленьких детей.", "", "#e0743a"),
+    ("foster", "Луна", "Собака", "2 года", "После стерилизации нужна передержка на две недели. Корм и лекарства даём.", "", "#a8411f"),
+    ("charity", "Приют «Хвосты»", "Другое", "", "Собираем на зимний корм для 40 собак. Отчёты публикуем в канале.", "120 000 ₽", "#cf5a2c"),
 ]
 COLORS = ["#ff5b1f", "#c9411a", "#e8763f", "#8a3214", "#ff8a4c", "#5a2410"]
 
@@ -84,7 +90,14 @@ def seed(lat: float, lon: float, count: int) -> None:
             u.interests = [opt for q in SURVEY[1:] for opt in random.sample(q["options"], k=random.randint(1, 3))]
             db.add(u)
         db.commit()
-    print(f"Создано {count} демо-анкет (пароль у всех Demo12345)")
+        author = db.scalar(select(User).where(User.email == "demo1@example.com"))
+        for cat, name, species, age, desc, goal, color in ANIMALS:
+            post = AnimalPost(author_id=author.id, category=cat, name=name, species=species, age_text=age, city="Москва",
+                              description=desc, contact="@cofi_volunteers", fundraising_goal=goal, lat=lat, lon=lon)
+            post.photos = [_avatar(name, color), _avatar(f"{name} 2", color)]
+            db.add(post)
+        db.commit()
+    print(f"Создано {count} демо-анкет (пароль у всех Demo12345) и {len(ANIMALS)} объявлений о животных")
 
 
 def main() -> None:
