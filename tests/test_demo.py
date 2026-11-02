@@ -47,3 +47,17 @@ def test_bots_and_guests_are_invisible_to_real_users():
     assert real.post("/api/feed/swipe", json={"user_id": bot_id, "like": True}).status_code == 404
     assert all(x["id"] != real.user_id for x in guest.get("/api/feed?limit=30").json()["cards"])
     assert other.user_id
+
+
+def test_teen_demo_sees_only_teen_bots():
+    teen = new_client()
+    me = teen.post("/api/auth/demo", json={"teen": True}).json()
+    assert me["age_group"] == "teen" and set(me["goals"]) <= {"Дружба", "Компания для хобби", "Просто общение"}
+    names = [c["name"] for c in teen.get("/api/feed?limit=30").json()["cards"]]
+    assert sorted(names) == sorted(["Маша", "Кирилл", "Даша", "Тимофей", "Вика", "Гоша"])
+    adult = demo_client()
+    adult_names = {c["name"] for c in adult.get("/api/feed?limit=30").json()["cards"]}
+    assert not adult_names & set(names)  # взрослый гость не видит подростков
+    masha = next(c for c in teen.get("/api/feed?limit=30").json()["cards"] if c["name"] == "Маша")
+    r = teen.post("/api/feed/swipe", json={"user_id": masha["id"], "like": True}).json()
+    assert r["match"] is True

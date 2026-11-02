@@ -219,10 +219,14 @@ def telegram_login(data: dict, request: Request, response: Response, db: Session
     return own_profile(user)
 
 
+class DemoIn(BaseModel):
+    teen: bool = False
+
+
 @router.post("/demo")
-def demo_login(request: Request, response: Response, db: Session = Depends(get_db)):
-    """Вход в демо без регистрации: готовая анкета и 10 анкет-ботов рядом."""
-    guest = demo.create_guest(db, client_ip(request), request.headers.get("user-agent", ""))
+def demo_login(request: Request, response: Response, data: DemoIn | None = None, db: Session = Depends(get_db)):
+    """Вход в демо без регистрации: готовая анкета и анкеты-боты рядом (18+ или лента 14–17)."""
+    guest = demo.create_guest(db, client_ip(request), request.headers.get("user-agent", ""), teen=bool(data and data.teen))
     start_session(db, guest, request, response)
     return own_profile(guest)
 

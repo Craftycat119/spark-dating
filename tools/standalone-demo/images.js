@@ -19,6 +19,8 @@ const SCENES = {
   "church-old": ["⛪", "Воскресенье"], "family-dinner": ["🥘", "Семейный ужин"], office: ["💼", "Офис"],
   "horror-night": ["🕯️", "Хоррор-ночь"], "plants-home": ["🪴", "Мои растения"], knitting: ["🧶", "Вязание"],
   "night-club": ["🪩", "Клуб"], "car-city": ["🚗", "Ночная поездка"], "luxury-dinner": ["🥂", "Ресторан"],
+  sketchbook: ["✏️", "Скетчбук"], robotics: ["🤖", "Робототехника"], "volunteer-shelter": ["🐕", "Приют"], "dog-walk": ["🦮", "Прогулка"],
+  "skate-park": ["🛹", "Скейтпарк"], "guitar-room": ["🎸", "Репетиция"], "k-pop": ["🎧", "K-pop кавер"], football: ["⚽", "Футбол"],
 };
 
 function hash(s) {

@@ -154,15 +154,31 @@ function showGuide() {
   stopGuide = renderGuide(main, { loggedIn: !!state.me, onDemo: startDemo });
 }
 
-async function startDemo() {
-  try {
-    state.me = await api.post("/api/auth/demo");
-  } catch (ex) {
-    return toast(ex.message, { error: true });
-  }
-  afterLogin();
-  go("#/feed");
-  toast("Это демо: свайп вниз, чтобы лайкнуть. Трое из ботов уже лайкнули вас", { timeout: 6000 });
+function startDemo() {
+  // в демо две отдельные ленты: взрослая и подростковая, как в настоящем приложении
+  const el = h(`<div class="overlay sheet-overlay" role="dialog" aria-label="Демо">
+    <div class="bottom-sheet">
+      <h2>Какое демо открыть</h2>
+      <p class="muted">Подростки и взрослые в COFI никогда не пересекаются, поэтому ленты разные.</p>
+      <button class="row-link" data-age="adult"><span><b>Мне 18 или больше</b><br><span class="muted small">Знакомства 18+, животные, 10 анкет</span></span>${icons.arrow}</button>
+      <button class="row-link" data-age="teen"><span><b>Мне 14–17</b><br><span class="muted small">Дружба 14–17 без знакомств, 6 анкет</span></span>${icons.arrow}</button>
+      <button class="btn ghost block" data-close>Отмена</button>
+    </div></div>`);
+  $("[data-close]", el).onclick = () => el.remove();
+  el.addEventListener("click", (e) => e.target === el && el.remove());
+  $$("[data-age]", el).forEach((b) => (b.onclick = async () => {
+    const teen = b.dataset.age === "teen";
+    try {
+      state.me = await api.post("/api/auth/demo", { teen });
+    } catch (ex) {
+      return toast(ex.message, { error: true });
+    }
+    el.remove();
+    afterLogin();
+    go("#/feed");
+    toast(teen ? "Это демо 14–17: только дружба. Свайп вниз, чтобы добавить в друзья" : "Это демо: свайп вниз, чтобы лайкнуть. Некоторые боты уже лайкнули вас", { timeout: 6000 });
+  }));
+  document.body.append(el);
 }
 
 function themeIcon() {
@@ -648,7 +664,7 @@ async function renderFeed() {
     <div class="btns" hidden>
       <div class="bw undo-wrap"><button class="undo" aria-label="Вернуть" disabled>${icons.undo}</button><span class="undo-label">Вернуть</span></div>
       <div class="bw"><button class="skip" aria-label="Дальше">${icons.x}</button><span>Дальше</span></div>
-      <div class="bw"><button class="like" aria-label="Нравится">${icons.heart}</button><span>Нравится</span></div>
+      <div class="bw"><button class="like" aria-label="${teenLike()}">${icons.heart}</button><span>${teenLike()}</span></div>
     </div>
     <p class="swipe-hint" hidden>Свайп вниз: нравится, вверх: дальше. Нажмите на фото, чтобы открыть анкету</p>`, { cls: "feed" });
   const deck = $(".deck", root);
@@ -853,21 +869,24 @@ async function openProfile(userId, { onDecide = null } = {}) {
   $(".close", el).focus();
 }
 
+const isTeen = () => state.me?.age_group === "teen";
+const teenLike = () => (isTeen() ? "Дружить" : "Нравится");
+
 function showMatch({ conversation_id, user, common = [] }) {
   if (state.shownMatches.has(conversation_id)) return;
   state.shownMatches.add(conversation_id);
   const el = h(`<div class="overlay match" role="dialog" aria-label="Взаимная симпатия">
     <div class="match-modal">
       <div class="heart-stage" aria-hidden="true"></div>
-      <h1 class="match-title">Взаимно</h1>
+      <h1 class="match-title">${isTeen() ? "Новый друг" : "Взаимно"}</h1>
       <div class="pair"><img src="${esc(state.me.photo_url)}" alt="Вы"><img src="${esc(user.photo_url)}" alt="${esc(user.name)}"></div>
-      <p>Вы и ${esc(user.name)} понравились друг другу.${common.length ? " У вас общее:" : ""}</p>
+      <p>${isTeen() ? `Вы и ${esc(user.name)} хотите дружить.` : `Вы и ${esc(user.name)} понравились друг другу.`}${common.length ? " У вас общее:" : ""}</p>
       ${common.length ? `<div class="chips">${common.slice(0, 6).map((x) => `<span class="chip static">${esc(x)}</span>`).join("")}</div>` : ""}
       <button class="btn dark block" data-chat>Написать сообщение</button>
       <button class="btn ghost block" data-close>Смотреть дальше</button>
     </div></div>`);
   document.body.append(el);
-  mount3d($(".heart-stage", el), "heart");
+  mount3d($(".heart-stage", el), isTeen() ? "knot" : "heart");
   navigator.vibrate?.([20, 60, 30]);
   $("[data-chat]", el).onclick = () => { el.remove(); go(`#/chat/${conversation_id}`); };
   $("[data-close]", el).onclick = () => el.remove();

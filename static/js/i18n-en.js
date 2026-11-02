@@ -206,6 +206,15 @@ export const EN = {
   "COFI доступен с 14 лет": "COFI is for ages 14 and up",
   "COFI: знакомства по интересам": "COFI: dating by interests",
   "COFI демо": "COFI demo",
+  "Какое демо открыть": "Which demo to open", "Подростки и взрослые в COFI никогда не пересекаются, поэтому ленты разные.": "Teens and adults never meet on COFI, so the feeds are separate.",
+  "Мне 18 или больше": "I'm 18 or older", "Мне 14–17": "I'm 14–17", "Знакомства 18+, животные, 10 анкет": "Dating 18+, animals, 10 profiles",
+  "Дружба 14–17 без знакомств, 6 анкет": "Friends 14–17, no dating, 6 profiles",
+  "Это демо 14–17: только дружба. Свайп вниз, чтобы добавить в друзья": "This is the 14–17 demo: friendship only. Swipe down to add a friend",
+  "Это демо: свайп вниз, чтобы лайкнуть. Некоторые боты уже лайкнули вас": "This is a demo: swipe down to like. Some bots have already liked you",
+  "Вход через Telegram": "Sign in with Telegram", "Дружить": "Be friends", "Новый друг": "New friend", "Войти через Telegram": "Sign in with Telegram",
+  "Сайт COFI запрашивает вход через ваш аккаунт Telegram. Он получит ваше имя, username и фото профиля.": "COFI wants to sign you in with your Telegram account. It will get your name, username and profile photo.",
+  "Имя в Telegram": "Telegram name", "Принять": "Accept",
+  "Это имитация окна Telegram: в демо по ссылке настоящий Telegram недоступен. В приложении здесь откроется официальное окно Telegram.": "This imitates the Telegram window: real Telegram isn't available in the link demo. In the app the official Telegram window opens here.",
 };
 
 export const PATTERNS = [
@@ -257,6 +266,7 @@ export const PATTERNS = [
   [/^(\d{1,2}) ([а-я]+)\.$/, (m, d, mon) => `${d} ${({ янв: "Jan", февр: "Feb", мар: "Mar", апр: "Apr", мая: "May", июн: "Jun", июл: "Jul", авг: "Aug", сент: "Sep", окт: "Oct", нояб: "Nov", дек: "Dec" })[mon] || mon}`],
   [/^Ещё интересы: (.+)$/, (_, list) => `More interests: ${list.split(", ").map(w).join(", ")}`],
   [/^Вы и (.+) понравились друг другу$/, "You and $1 liked each other"],
+  [/^Вы и (.+) хотите дружить\.( У вас общее:)?$/, (_, n, c) => `You and ${n} want to be friends.${c ? " You share:" : ""}`],
   [/^(.+) · (лента 18\+|лента «Дружба 14–17»)$/, (_, d, f) => `${d} · ${w(f)}`],
   [/^(\d+) км$/, "$1 km"],
   // «Кошка · 2 года · Москва · 3 км»: переводим известные части

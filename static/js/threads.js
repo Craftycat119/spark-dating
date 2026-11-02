@@ -55,7 +55,7 @@ export function mountThread(box, labels) {
         <path class="fuzz" fill="none" stroke="#FFB07A" stroke-width=".8" stroke-linecap="round" stroke-opacity=".55"/>
       </g>
     </svg>
-    <div class="beads">${labels.map((l) => `<div class="bead">${esc(l)}</div>`).join("")}</div>
+    <div class="beads">${labels.map((l) => `<div class="bead" style="opacity:0">${esc(l)}</div>`).join("")}</div>
     <div class="yarn-heart" aria-hidden="true">${HEART}</div>`;
   const svg = box.querySelector("svg");
   const q = (c) => box.querySelector("." + c);

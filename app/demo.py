@@ -197,13 +197,98 @@ BOTS: list[dict] = [
     },
 ]
 
+# Подростковая лента (14–17): только дружба и общие хобби, без романтики.
+# Фото у ботов-подростков рисованные (буква на вязаном фоне), а не фотографии людей.
+TEEN_GUEST = {
+    "name": "Гость",
+    "age": 15,
+    "gender": "male",
+    "looking_for": "any",
+    "goals": ["Дружба", "Компания для хобби"],
+    "interests": ["Видеоигры", "Аниме", "Программирование", "Настольные игры", "Бег", "Фантастика", "Юмор", "Рисование"],
+    "bio": "Это демо-аккаунт 14–17. Здесь только дружба: ищите компанию по интересам.",
+}
+
+TEEN_BOTS: list[dict] = [
+    {
+        "key": "teen_masha", "name": "Маша", "age": 15, "gender": "female", "km": (1.1, -0.9), "likes_you": True,
+        "scenes": ["anime-room", "sketchbook", "board-games"], "goals": ["Дружба", "Компания для хобби"],
+        "interests": ["Аниме", "Рисование", "Настольные игры", "Фантастика", "Юмор", "Видеоигры"],
+        "bio": (
+            "Рисую мангу в планшете и мечтаю выпустить свой комикс. Хожу в художку по вторникам и четвергам, "
+            "а по выходным играю с друзьями в настолки: сейчас залипли в «Каркассон» и «Мафию». Ищу ребят, "
+            "с которыми можно обсуждать аниме, вместе ходить на фестивали и рисовать на скорость."
+        ),
+        "replies": ["Привет! Какое аниме сейчас смотришь?", "Круто! Приходи в субботу в антикафе на настолки, нас там пятеро"],
+    },
+    {
+        "key": "teen_kirill", "name": "Кирилл", "age": 16, "gender": "male", "km": (-1.8, 1.4), "likes_you": True,
+        "scenes": ["robotics", "retro-console", "bike-forest"], "goals": ["Компания для хобби", "Дружба"],
+        "interests": ["Программирование", "Видеоигры", "Фантастика", "Велосипед", "Настольные игры"],
+        "bio": (
+            "Собираю роботов в кружке робототехники, в этом году ездили на олимпиаду в Казань. Пишу бота для "
+            "Telegram на Python и учу Unity. Летом катаюсь на велике по паркам. Ищу команду на хакатон для "
+            "школьников и тех, кто любит кооперативные игры."
+        ),
+        "replies": ["Хей! Ты тоже кодишь? На чём пишешь?", "Давай вместе на хакатон в декабре, нужен ещё человек в команду"],
+    },
+    {
+        "key": "teen_dasha", "name": "Даша", "age": 16, "gender": "female", "km": (2.3, 0.6), "likes_you": False,
+        "scenes": ["volunteer-shelter", "dog-walk", "bookshop"], "goals": ["Дружба"],
+        "interests": ["Животные", "Чтение", "Экология", "Бег", "Юмор"],
+        "bio": (
+            "Волонтёрю в приюте: гуляю с собаками по воскресеньям. Читаю фэнтези и детективы, бегаю по утрам. "
+            "Хочу найти друзей, которые тоже любят животных, чтобы вместе ходить в приют и на эко-субботники."
+        ),
+        "replies": ["Привет! Хочешь в воскресенье с нами в приют погулять с собаками?"],
+    },
+    {
+        "key": "teen_tim", "name": "Тимофей", "age": 17, "gender": "male", "km": (-2.9, -1.5), "likes_you": False,
+        "scenes": ["skate-park", "concert-lights", "guitar-room"], "goals": ["Компания для хобби", "Просто общение"],
+        "interests": ["Играю на инструменте", "Рок", "Инди", "Концерты", "Юмор"],
+        "bio": (
+            "Играю на гитаре в школьной группе, репетируем в подвале у барабанщика. Катаюсь на скейте в парке "
+            "у реки. Ищем басиста и просто людей, с кем можно сходить на концерт или поджемить."
+        ),
+        "replies": ["Привет! На чём играешь? Нам нужен басист 🎸"],
+    },
+    {
+        "key": "teen_vika", "name": "Вика", "age": 14, "gender": "female", "km": (0.4, 2.7), "likes_you": True,
+        "scenes": ["dance-floor", "k-pop", "coffee-bar"], "goals": ["Дружба", "Просто общение"],
+        "interests": ["Танцы", "K-pop", "Поп", "Юмор", "Сериалы запоем"],
+        "bio": (
+            "Танцую k-pop каверы в студии, снимаем ролики на телефон. Обожаю сериалы и какао с маршмеллоу. "
+            "Ищу подругу или друга для танцевальной команды и просто поболтать после школы."
+        ),
+        "replies": ["Привет! Любишь k-pop? Какая группа любимая?", "Приходи к нам на пробное занятие в студию!"],
+    },
+    {
+        "key": "teen_gosha", "name": "Гоша", "age": 17, "gender": "male", "km": (3.6, -2.2), "likes_you": False,
+        "scenes": ["football", "gym-weights", "mountain-trail"], "goals": ["Компания для хобби"],
+        "interests": ["Спортзал", "Бег", "Природа и походы", "Документальное"],
+        "bio": (
+            "Играю в футбол за школьную команду, по выходным хожу с отцом в походы. Готовлюсь к ЕГЭ по биологии. "
+            "Ищу ребят на дворовый футбол и пробежки."
+        ),
+        "replies": ["Привет! Погоняем в футбол в субботу?"],
+    },
+]
+
 FALLBACK_REPLY = "Давай лучше встретимся и обсудим вживую 🙂"
+TEEN_FALLBACK = "Давай договоримся встретиться всей компанией, так веселее 🙂"
+
+
+def _teen_portrait(name: str) -> str:
+    """Рисованный портрет для бота-подростка (буква на вязаном фоне)."""
+    from .cli import _avatar
+
+    return _avatar(name, "#c9461a")
 
 
 def ensure_bots(db: Session) -> list[User]:
     bots = {u.email: u for u in db.scalars(select(User).where(User.is_bot.is_(True)))}
     created = []
-    for b in BOTS:
+    for b in BOTS + TEEN_BOTS:
         email = f"{b['key']}@bots.cofi"
         if email in bots:
             continue
@@ -212,7 +297,8 @@ def ensure_bots(db: Session) -> list[User]:
         u = User(
             email=email, email_verified=False, email_notifications=False, auth_provider="bot", is_bot=True,
             name=b["name"], age=b["age"], birth_date=birth_for_age(b["age"]), gender=b["gender"], looking_for="any", bio=b["bio"],
-            photo_path=portrait(b["gender"], b["photo"]), photo_verified=True, photo_verified_at=utcnow(),
+            photo_path=_teen_portrait(b["name"]) if b in TEEN_BOTS else portrait(b["gender"], b["photo"]),
+            photo_verified=True, photo_verified_at=utcnow(),
             lat=lat, lon=lon, registration_lat=lat, registration_lon=lon,
         )
         u.goals, u.interests = b["goals"], b["interests"]
@@ -225,21 +311,22 @@ def ensure_bots(db: Session) -> list[User]:
     return list(db.scalars(select(User).where(User.is_bot.is_(True))))
 
 
-def create_guest(db: Session, ip: str, user_agent: str) -> User:
+def create_guest(db: Session, ip: str, user_agent: str, teen: bool = False) -> User:
     cleanup(db)
     bots = ensure_bots(db)
+    G = TEEN_GUEST if teen else GUEST
     g = User(
-        name=GUEST["name"], age=GUEST["age"], birth_date=birth_for_age(GUEST["age"]), gender=GUEST["gender"], looking_for=GUEST["looking_for"],
-        bio=GUEST["bio"], auth_provider="demo", is_demo=True, email_notifications=False,
-        photo_path=GUEST["photo"], photo_verified=True, photo_verified_at=utcnow(),
+        name=G["name"], age=G["age"], birth_date=birth_for_age(G["age"]), gender=G["gender"], looking_for=G["looking_for"],
+        bio=G["bio"], auth_provider="demo", is_demo=True, email_notifications=False,
+        photo_path=_teen_portrait(G["name"]) if teen else G["photo"], photo_verified=True, photo_verified_at=utcnow(),
         lat=CENTER[0], lon=CENTER[1], registration_lat=CENTER[0], registration_lon=CENTER[1],
         registration_ip=ip, registration_user_agent=user_agent[:512], max_distance_km=50,
     )
-    g.goals, g.interests = GUEST["goals"], GUEST["interests"]
+    g.goals, g.interests = G["goals"], G["interests"]
     db.add(g)
     db.flush()
     by_email = {b.email: b for b in bots}
-    for b in BOTS:
+    for b in TEEN_BOTS if teen else BOTS:
         if b["likes_you"]:
             db.add(Swipe(from_user_id=by_email[f"{b['key']}@bots.cofi"].id, to_user_id=g.id, liked=True))
     db.commit()
@@ -258,7 +345,7 @@ def cleanup(db: Session) -> int:
 
 def _script(bot: User) -> list[str]:
     key = bot.email.split("@")[0]
-    return next((b["replies"] for b in BOTS if b["key"] == key), [])
+    return next((b["replies"] for b in BOTS + TEEN_BOTS if b["key"] == key), [])
 
 
 def bot_reply(conv_id: int, bot_id: int, greeting: bool = False) -> None:
@@ -274,7 +361,8 @@ def bot_reply(conv_id: int, bot_id: int, greeting: bool = False) -> None:
         if greeting and sent:
             return
         script = _script(bot)
-        text = script[len(sent)] if len(sent) < len(script) else FALLBACK_REPLY
+        fallback = TEEN_FALLBACK if bot.age_group == "teen" else FALLBACK_REPLY
+        text = script[len(sent)] if len(sent) < len(script) else fallback
     if delay:
         time.sleep(delay * 0.4)
         notify(guest_id, {"type": "typing", "conversation_id": conv_id})

@@ -19,6 +19,8 @@ from app.routers import support
 print(json.dumps({
   "bots": [{k: b[k] for k in ("key","name","age","gender","km","likes_you","scenes","goals","interests","bio","replies","fit")} for b in demo.BOTS],
   "guest": {k: v for k, v in demo.GUEST.items() if k != "photo"},
+  "teen_bots": [{k: b[k] for k in ("key","name","age","gender","km","likes_you","scenes","goals","interests","bio","replies")} for b in demo.TEEN_BOTS],
+  "teen_guest": demo.TEEN_GUEST, "teen_fallback": demo.TEEN_FALLBACK,
   "fallback_reply": demo.FALLBACK_REPLY,
   "center": demo.CENTER,
   "survey": interests.SURVEY, "genders": interests.GENDERS, "looking_for": interests.LOOKING_FOR,

@@ -100,8 +100,8 @@ function isComplete(u) {
 }
 function ownProfile(u) {
   return {
-    id: u.id, email: u.email, email_verified: true, email_notifications: false, auth_provider: u.is_demo ? "demo" : "email",
-    telegram_username: null, name: u.name, age: years(u), birth_date: u.birth_date || null, age_group: group(u),
+    id: u.id, email: u.email || null, email_verified: true, email_notifications: false,
+    auth_provider: u.provider || (u.is_demo ? "demo" : "email"), telegram_username: u.telegram_username || null, name: u.name, age: years(u), birth_date: u.birth_date || null, age_group: group(u),
     age_verified: false, language: "ru", bio: u.bio, gender: u.gender, looking_for: u.looking_for,
     interests: u.interests, goals: u.goals, survey_done: u.interests.length >= DATA.min_interests && u.goals.length > 0,
     photo_url: u.photo_url, photos: u.photos, photo_verified: u.photo_verified, has_location: true,
@@ -115,8 +115,9 @@ function messageOut(m) {
 
 // ---------- боты ----------
 async function ensureBots() {
-  if (Object.values(S.users).some((u) => u.is_bot)) return;
-  for (const b of DATA.bots) {
+  if (Object.values(S.users).some((u) => u.is_bot && u.key?.startsWith("teen_"))) return;
+  for (const u of Object.values(S.users)) if (u.is_bot) delete S.users[u.id]; // старое сохранение без подростков
+  for (const b of [...DATA.bots, ...DATA.teen_bots]) {
     const uid = id();
     S.users[uid] = {
       id: uid, key: b.key, is_bot: true, name: b.name, age: b.age, birth_date: birthFor(b.age), gender: b.gender, looking_for: "any", bio: b.bio,
@@ -143,7 +144,7 @@ async function photos(u) {
 function botReply(conv, bot, greeting = false) {
   const sent = S.messages.filter((m) => m.conversation_id === conv.id && m.sender_id === bot.id);
   if (greeting && sent.length) return;
-  const text = sent.length < bot.replies.length ? bot.replies[sent.length] : DATA.fallback_reply;
+  const text = sent.length < bot.replies.length ? bot.replies[sent.length] : group(bot) === "teen" ? DATA.teen_fallback : DATA.fallback_reply;
   setTimeout(() => emit("typing", { conversation_id: conv.id }), REPLY_DELAY * 0.4);
   setTimeout(() => {
     if (!conv.active) return;
@@ -160,20 +161,21 @@ const ROUTES = [];
 const route = (method, pattern, fn) => ROUTES.push({ method, re: new RegExp(`^${pattern}$`), fn });
 
 route("GET", "/api/config", () => ({
-  app_name: "COFI", survey: DATA.survey, genders: DATA.genders, looking_for: DATA.looking_for,
-  min_interests: DATA.min_interests, telegram_bot_username: null, ice_servers: [], face_dev_mode: true,
+  app_name: "COFI", survey: DATA.survey, genders: DATA.genders, looking_for: DATA.looking_for, teen_goals: DATA.teen_goals,
+  min_age: DATA.min_age, min_interests: DATA.min_interests, telegram_bot_username: "cofi_bot", ice_servers: [], face_dev_mode: true,
 }));
 
 route("GET", "/api/auth/me", () => (me() ? ownProfile(me()) : deny(401, "Нужно войти в аккаунт")));
 
-route("POST", "/api/auth/demo", async () => {
+route("POST", "/api/auth/demo", async (body) => {
   await ensureBots();
   const uid = id();
-  const g = DATA.guest;
+  const teen = !!body?.teen;
+  const g = teen ? DATA.teen_guest : DATA.guest;
   S.users[uid] = { id: uid, is_demo: true, name: g.name, age: g.age, birth_date: birthFor(g.age), gender: g.gender, looking_for: g.looking_for, bio: g.bio,
     goals: g.goals, interests: g.interests, lat: DATA.center[0], lon: DATA.center[1], max_distance_km: 50,
-    photo_url: await portraitFor("guest", g.name), photos: [], photo_verified: true };
-  for (const b of Object.values(S.users)) if (b.is_bot && b.likes_you) S.swipes.push({ from: b.id, to: uid, liked: true });
+    photo_url: await portraitFor(teen ? "guest-teen" : "guest", g.name), photos: [], photo_verified: true };
+  for (const b of Object.values(S.users)) if (b.is_bot && b.likes_you && group(b) === group(S.users[uid])) S.swipes.push({ from: b.id, to: uid, liked: true });
   S.me = uid;
   save();
   return ownProfile(S.users[uid]);
@@ -211,7 +213,6 @@ async function loginAs(email) {
     // в демо геопозиция и проверка фото не нужны: браузер на странице не даёт камеру и геолокацию
     S.users[uid] = { id: uid, is_demo: true, email, name: "", age: null, birth_date: null, gender: null, looking_for: null, bio: "",
       goals: [], interests: [], lat: DATA.center[0], lon: DATA.center[1], max_distance_km: 50, photo_url: null, photos: [], photo_verified: false };
-    for (const b of Object.values(S.users)) if (b.is_bot && b.likes_you) S.swipes.push({ from: b.id, to: uid, liked: true });
     acc.userId = uid;
   }
   S.me = acc.userId;
@@ -233,7 +234,21 @@ route("POST", "/api/auth/reset-password", (b) => {
   acc.verified = true;
   return loginAs(b.email.toLowerCase());
 });
-route("POST", "/api/auth/telegram", () => deny(503, "Вход через Telegram в демо не работает"));
+// Вход через Telegram: в демо приходит имитация данных виджета (настоящий Telegram на странице по ссылке недоступен)
+route("POST", "/api/auth/telegram", async (b) => {
+  await ensureBots();
+  const key = `tg:${b.id}`;
+  if (!S.accounts[key]) {
+    const uid = id();
+    S.users[uid] = { id: uid, is_demo: true, provider: "telegram", telegram_username: b.username || null, name: (b.first_name || "").slice(0, 64),
+      age: null, birth_date: null, gender: null, looking_for: null, bio: "", goals: [], interests: [], lat: DATA.center[0], lon: DATA.center[1],
+      max_distance_km: 50, photo_url: null, photos: [], photo_verified: false };
+    S.accounts[key] = { userId: uid, verified: true };
+  }
+  S.me = S.accounts[key].userId;
+  save();
+  return ownProfile(me());
+});
 route("POST", "/api/auth/logout", () => { S.me = null; save(); return { status: "ok" }; });
 
 function requireMe() {
@@ -252,6 +267,10 @@ route("PUT", "/api/profile", (b) => {
     if (y < DATA.min_age) deny(422, `COFI доступен с ${DATA.min_age} лет`);
     u.birth_date = b.birth_date;
     if (group(u) === "teen") { u.goals = u.goals.filter((g) => DATA.teen_goals.includes(g)); u.looking_for = "any"; }
+    // боты своей возрастной группы, которые «уже лайкнули», как у гостя демо
+    for (const o of Object.values(S.users)) {
+      if (o.is_bot && o.likes_you && group(o) === group(u) && !S.swipes.some((s) => s.from === o.id && s.to === u.id)) S.swipes.push({ from: o.id, to: u.id, liked: true });
+    }
   }
   if (b.bio !== undefined) u.bio = b.bio.trim().slice(0, 500);
   if (b.gender !== undefined) u.gender = b.gender;
