@@ -14,6 +14,7 @@ from datetime import timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .ages import birth_for_age
 from .config import settings
 from .database import SessionLocal
 from .models import Conversation, Message, Swipe, User, UserPhoto, utcnow
@@ -210,7 +211,7 @@ def ensure_bots(db: Session) -> list[User]:
         lon = CENTER[1] + b["km"][1] / 63
         u = User(
             email=email, email_verified=False, email_notifications=False, auth_provider="bot", is_bot=True,
-            name=b["name"], age=b["age"], gender=b["gender"], looking_for="any", bio=b["bio"],
+            name=b["name"], age=b["age"], birth_date=birth_for_age(b["age"]), gender=b["gender"], looking_for="any", bio=b["bio"],
             photo_path=portrait(b["gender"], b["photo"]), photo_verified=True, photo_verified_at=utcnow(),
             lat=lat, lon=lon, registration_lat=lat, registration_lon=lon,
         )
@@ -228,7 +229,7 @@ def create_guest(db: Session, ip: str, user_agent: str) -> User:
     cleanup(db)
     bots = ensure_bots(db)
     g = User(
-        name=GUEST["name"], age=GUEST["age"], gender=GUEST["gender"], looking_for=GUEST["looking_for"],
+        name=GUEST["name"], age=GUEST["age"], birth_date=birth_for_age(GUEST["age"]), gender=GUEST["gender"], looking_for=GUEST["looking_for"],
         bio=GUEST["bio"], auth_provider="demo", is_demo=True, email_notifications=False,
         photo_path=GUEST["photo"], photo_verified=True, photo_verified_at=utcnow(),
         lat=CENTER[0], lon=CENTER[1], registration_lat=CENTER[0], registration_lon=CENTER[1],

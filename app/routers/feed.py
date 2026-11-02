@@ -37,7 +37,7 @@ def visible_users():
         User.photo_verified.is_(True),
         User.is_banned.is_(False),
         User.lat.is_not(None),
-        User.age.is_not(None),
+        User.birth_date.is_not(None),
         User.gender.is_not(None),
         User.name != "",
     )
@@ -70,7 +70,9 @@ def get_feed(limit: int = 10, user: User = Depends(current_user), db: Session = 
     for other in db.scalars(q):
         if not other.survey_done:
             continue
-        if not compatible(user.gender, user.looking_for, other.gender, other.looking_for):
+        if other.age_group != user.age_group:
+            continue  # подростки и взрослые никогда не видят друг друга
+        if user.age_group == "adult" and not compatible(user.gender, user.looking_for, other.gender, other.looking_for):
             continue
         d = haversine_km(user.lat, user.lon, other.lat, other.lon)
         if d > radius:
@@ -103,7 +105,7 @@ def swipe(data: SwipeIn, background: BackgroundTasks, user: User = Depends(curre
     if data.user_id == user.id:
         raise HTTPException(400, "Нельзя лайкнуть себя")
     target = db.scalar(audience(visible_users(), user).where(User.id == data.user_id))
-    if not target:
+    if not target or target.age_group != user.age_group:
         raise HTTPException(404, "Анкета больше не доступна")
 
     existing = db.scalar(select(Swipe).where(Swipe.from_user_id == user.id, Swipe.to_user_id == target.id))
@@ -137,6 +139,36 @@ def swipe(data: SwipeIn, background: BackgroundTasks, user: User = Depends(curre
             background.add_task(demo.bot_reply, conv.id, target.id, True)
     score, common = match_score(user.interests, user.goals, target.interests, target.goals)
     return {"match": True, "conversation_id": conv.id, "user": public_card(target, score, common)}
+
+
+class UndoIn(BaseModel):
+    user_id: int
+
+
+@router.post("/undo")
+def undo(data: UndoIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Вернуть анкету, пролистанную по ошибке, или отменить лайк.
+    Если лайк уже дал пару и в чате есть сообщения, отменить нельзя: пару удаляют из чата."""
+    swipe = db.scalar(select(Swipe).where(Swipe.from_user_id == user.id, Swipe.to_user_id == data.user_id))
+    if not swipe:
+        raise HTTPException(404, "Нечего отменять")
+    a, b = sorted((user.id, data.user_id))
+    conv = db.scalar(select(Conversation).where(Conversation.user_a_id == a, Conversation.user_b_id == b))
+    if swipe.liked and conv is not None and conv.active:
+        from ..models import Message
+
+        has_messages = db.scalar(select(Message.id).where(Message.conversation_id == conv.id, Message.kind != "call").limit(1))
+        if has_messages:
+            raise HTTPException(409, "У вас уже есть переписка. Удалить пару можно в чате")
+        conv.active = False
+        notify(conv.other(user.id).id, {"type": "unmatch", "conversation_id": conv.id})
+    was_like = swipe.liked
+    db.delete(swipe)
+    db.commit()
+    target = db.get(User, data.user_id)
+    score, common = match_score(user.interests, user.goals, target.interests, target.goals)
+    d = haversine_km(user.lat, user.lon, target.lat, target.lon) if user.lat is not None and target.lat is not None else None
+    return {"undone": "like" if was_like else "skip", "card": public_card(target, score, common, d)}
 
 
 @notifications_router.get("")

@@ -14,6 +14,7 @@ import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from PIL import Image  # noqa: E402
 
+from app.ages import birth_for_age  # noqa: E402
 from app.database import Base, engine  # noqa: E402
 from app.main import app  # noqa: E402
 
@@ -50,7 +51,7 @@ def make_user(email, name="Тест", lat=55.75, lon=37.61, age=25, bio="При�
               looking_for="any", interests=DEFAULT_INTERESTS, goals=("Свидания",)):
     c = new_client()
     register(c, email)
-    r = c.put("/api/profile", json={"name": name, "age": age, "bio": bio, "gender": gender,
+    r = c.put("/api/profile", json={"name": name, "birth_date": birth_for_age(age).isoformat(), "bio": bio, "gender": gender,
                                     "looking_for": looking_for, "interests": list(interests), "goals": list(goals)})
     assert r.status_code == 200, r.text
     r = c.post("/api/profile/photo", files={"file": ("a.jpg", jpeg_bytes(), "image/jpeg")})

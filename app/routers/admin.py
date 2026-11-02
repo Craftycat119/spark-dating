@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+from datetime import date, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -12,7 +12,7 @@ from .. import emailer
 from ..interests import GENDERS, INTERESTS, LOOKING_FOR
 from ..database import get_db
 from ..deps import admin_user
-from ..models import AuthSession, Conversation, Message, Swipe, User, utcnow
+from ..models import AnimalPost, AuthSession, Conversation, Message, SupportThread, Swipe, User, utcnow
 from ..realtime import manager
 from ..serializers import media_url, message_out, photo_url
 from .profile import delete_user_completely
@@ -28,7 +28,10 @@ def user_row(u: User) -> dict:
     return {
         "id": u.id,
         "name": u.name,
-        "age": u.age,
+        "age": u.years,
+        "birth_date": u.birth_date.isoformat() if u.birth_date else None,
+        "age_group": u.age_group,
+        "age_verified": u.age_verified,
         "email": u.email,
         "email_verified": u.email_verified,
         "telegram_id": u.telegram_id,
@@ -204,3 +207,113 @@ def broadcast(data: BroadcastIn, background: BackgroundTasks, _: User = Depends(
 
     background.add_task(_send_all)
     return {"status": "queued", "recipients": len(emails)}
+
+
+# ---------- Возраст ----------
+
+class BirthIn(BaseModel):
+    birth_date: date
+    verified: bool = True
+
+
+@router.post("/users/{user_id}/birth-date")
+def set_birth_date(user_id: int, data: BirthIn, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Исправить дату рождения по обращению в поддержку и отметить, что возраст проверен по документу."""
+    from ..ages import years_between
+
+    u = _get_user(db, user_id)
+    u.birth_date = data.birth_date
+    u.age = years_between(data.birth_date)
+    u.age_verified = data.verified
+    db.commit()
+    return user_row(u)
+
+
+# ---------- Поддержка и реклама ----------
+
+@router.get("/support")
+def support_threads(topic: str = "", status: str = "", _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    from .support import _thread_out
+
+    q = select(SupportThread)
+    if topic in ("support", "ads"):
+        q = q.where(SupportThread.topic == topic)
+    if status in ("open", "closed"):
+        q = q.where(SupportThread.status == status)
+    rows = db.scalars(q.order_by(SupportThread.updated_at.desc()).limit(100)).unique().all()
+    out = []
+    for t in rows:
+        item = _thread_out(t, db)
+        item["last"] = item["messages"][-1] if item["messages"] else None
+        item.pop("messages")
+        out.append(item)
+    return out
+
+
+@router.get("/support/{thread_id}")
+def support_thread(thread_id: int, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    from .support import _thread_out
+
+    t = db.get(SupportThread, thread_id)
+    if not t:
+        raise HTTPException(404, "Обращение не найдено")
+    return _thread_out(t, db)
+
+
+class StaffReply(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+
+
+@router.post("/support/{thread_id}/reply")
+def support_reply(thread_id: int, data: StaffReply, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    from .support import _add, msg_out
+
+    t = db.get(SupportThread, thread_id)
+    if not t:
+        raise HTTPException(404, "Обращение не найдено")
+    return msg_out(_add(db, t, "staff", data.text.strip()))
+
+
+class StatusIn(BaseModel):
+    status: str
+
+
+@router.post("/support/{thread_id}/status")
+def support_status(thread_id: int, data: StatusIn, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    t = db.get(SupportThread, thread_id)
+    if not t or data.status not in ("open", "closed"):
+        raise HTTPException(404, "Обращение не найдено")
+    t.status = data.status
+    db.commit()
+    return {"status": t.status}
+
+
+# ---------- Животные ----------
+
+@router.get("/animals")
+def animals(_: User = Depends(admin_user), db: Session = Depends(get_db)):
+    from ..models import HelpRequest
+    from .animals import CATEGORIES
+
+    rows = db.scalars(select(AnimalPost).order_by(AnimalPost.id.desc()).limit(200)).unique().all()
+    return [{
+        "id": p.id, "category": CATEGORIES.get(p.category, p.category), "name": p.name, "contact": p.contact,
+        "author": {"id": p.author.id, "name": p.author.name}, "active": p.active,
+        "fundraising_open": p.fundraising_open if p.category == "charity" else None,
+        "photos": [media_url(x) for x in p.photos], "created_at": _iso(p.created_at),
+        "requests": db.scalar(select(func.count(HelpRequest.id)).where(HelpRequest.post_id == p.id)) or 0,
+    } for p in rows]
+
+
+@router.delete("/animals/{post_id}")
+def delete_animal(post_id: int, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    from .. import storage
+
+    p = db.get(AnimalPost, post_id)
+    if not p:
+        raise HTTPException(404, "Объявление не найдено")
+    for x in p.photos:
+        storage.delete_file(x)
+    db.delete(p)
+    db.commit()
+    return {"status": "deleted"}

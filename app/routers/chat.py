@@ -34,6 +34,8 @@ def get_conversation(db: Session, conv_id: int, user: User) -> Conversation:
     conv = db.get(Conversation, conv_id)
     if not conv or not conv.has(user.id) or not conv.active:
         raise HTTPException(404, "Чат не найден")
+    if conv.other(user.id).age_group != user.age_group:
+        raise HTTPException(404, "Чат не найден")  # кто-то сменил возрастную группу: переписка закрыта
     return conv
 
 
@@ -61,6 +63,8 @@ def list_chats(user: User = Depends(current_user), db: Session = Depends(get_db)
     ).unique().all()
     result = []
     for c in convs:
+        if c.other(user.id).age_group != user.age_group:
+            continue
         last = db.scalar(select(Message).where(Message.conversation_id == c.id).order_by(Message.id.desc()).limit(1))
         unread = db.scalar(
             select(func.count(Message.id)).where(
@@ -85,7 +89,7 @@ def get_chat(conv_id: int, before_id: int | None = None, limit: int = 50, user: 
         "user": {
             "id": other.id,
             "name": other.name,
-            "age": other.age,
+            "age": other.years,
             "bio": other.bio,
             "photo_url": photo_url(other),
             "online": manager.is_online(other.id),
@@ -185,6 +189,8 @@ def _peer(conv_id: int, user_id: int) -> tuple[int, bool] | None:
         if not conv or not conv.has(user_id) or not conv.active:
             return None
         other = conv.other(user_id)
+        if other.age_group != conv.other(other.id).age_group:
+            return None
         return other.id, other.is_bot
 
 

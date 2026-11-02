@@ -12,7 +12,9 @@ from .. import face_verify, storage
 from ..config import settings
 from ..database import get_db
 from ..deps import current_user
+from ..ages import MIN_AGE, TEEN_GOALS, years_between
 from ..interests import GENDERS, GOALS, INTERESTS, LOOKING_FOR, MIN_INTERESTS, clean
+from datetime import date
 from ..models import Conversation, Message, User, UserPhoto, utcnow
 from ..serializers import own_profile
 
@@ -25,7 +27,7 @@ MAX_GALLERY = 6
 
 class ProfileIn(BaseModel):
     name: str | None = Field(None, max_length=64)
-    age: int | None = None
+    birth_date: date | None = None
     bio: str | None = Field(None, max_length=BIO_MAX)
     gender: str | None = None
     looking_for: str | None = None
@@ -33,6 +35,7 @@ class ProfileIn(BaseModel):
     goals: list[str] | None = None
     email_notifications: bool | None = None
     max_distance_km: int | None = None
+    language: str | None = None
 
 
 class FramesIn(BaseModel):
@@ -56,10 +59,22 @@ def update_profile(data: ProfileIn, user: User = Depends(current_user), db: Sess
         if not name:
             raise HTTPException(422, "Укажите имя")
         user.name = name
-    if data.age is not None:
-        if not 18 <= data.age <= 100:
-            raise HTTPException(422, "Приложение доступно только с 18 лет")
-        user.age = data.age
+    if data.birth_date is not None and data.birth_date != user.birth_date:
+        if user.birth_date is not None:
+            raise HTTPException(403, "Дату рождения можно изменить только через поддержку")
+        years = years_between(data.birth_date)
+        if years < MIN_AGE:
+            raise HTTPException(422, f"COFI доступен с {MIN_AGE} лет")
+        if years > 100:
+            raise HTTPException(422, "Проверьте дату рождения")
+        user.birth_date = data.birth_date
+        user.age = years
+        if user.age_group == "teen":
+            # подросткам только дружба: убираем «свидания» и предпочтения по полу
+            user.goals = [g for g in user.goals if g in TEEN_GOALS]
+            user.looking_for = "any"
+    if data.language in ("ru", "en"):
+        user.language = data.language
     if data.bio is not None:
         user.bio = data.bio.strip()
     if data.gender is not None:
@@ -69,7 +84,7 @@ def update_profile(data: ProfileIn, user: User = Depends(current_user), db: Sess
     if data.looking_for is not None:
         if data.looking_for not in LOOKING_FOR:
             raise HTTPException(422, "Укажите, кого ищете")
-        user.looking_for = data.looking_for
+        user.looking_for = "any" if user.age_group == "teen" else data.looking_for
     if data.interests is not None:
         interests = clean(data.interests, INTERESTS)
         if len(interests) < MIN_INTERESTS:
@@ -77,6 +92,8 @@ def update_profile(data: ProfileIn, user: User = Depends(current_user), db: Sess
         user.interests = interests
     if data.goals is not None:
         goals = clean(data.goals, GOALS)
+        if user.age_group == "teen" and any(g not in TEEN_GOALS for g in goals):
+            raise HTTPException(422, "В 14–17 лет доступна только дружба")
         if not goals:
             raise HTTPException(422, "Выберите, что вы ищете")
         user.goals = goals

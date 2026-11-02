@@ -61,6 +61,8 @@ class Settings:
     # Telegram Login Widget
     telegram_bot_token: str = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     telegram_bot_username: str = os.environ.get("TELEGRAM_BOT_USERNAME", "")
+    # Куда бот присылает заявки «Помочь» по животным: id группы или человека (бот должен быть добавлен / запущен)
+    telegram_requests_chat_id: str = os.environ.get("TELEGRAM_REQUESTS_CHAT_ID", "")
 
     # Админы: эти почты получают права администратора автоматически
     admin_emails: list[str] = field(default_factory=lambda: _list("ADMIN_EMAILS"))

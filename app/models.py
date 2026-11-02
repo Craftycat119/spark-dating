@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -17,6 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
+from .ages import group_for, years_between
 from .interests import MIN_INTERESTS
 
 
@@ -43,7 +45,10 @@ class User(Base):
 
     # Профиль
     name: Mapped[str] = mapped_column(String(64), default="")
-    age: Mapped[int | None] = mapped_column(Integer)
+    age: Mapped[int | None] = mapped_column(Integer)  # кеш; источник правды — birth_date
+    birth_date: Mapped[date | None] = mapped_column(Date)
+    age_verified: Mapped[bool] = mapped_column(Boolean, default=False)  # возраст подтверждён документом (вручную админом)
+    language: Mapped[str] = mapped_column(String(8), default="ru")
     gender: Mapped[str | None] = mapped_column(String(16))  # male | female
     looking_for: Mapped[str | None] = mapped_column(String(16))  # male | female | any
     bio: Mapped[str] = mapped_column(Text, default="")
@@ -100,10 +105,18 @@ class User(Base):
         return len(self.interests) >= MIN_INTERESTS and bool(self.goals)
 
     @property
+    def years(self) -> int | None:
+        return years_between(self.birth_date) if self.birth_date else None
+
+    @property
+    def age_group(self) -> str | None:
+        return group_for(self.years)
+
+    @property
     def is_complete(self) -> bool:
         """Анкета готова к показу в ленте."""
         return bool(
-            self.name and self.age and self.gender and self.looking_for
+            self.name and self.age_group and self.gender and self.looking_for
             and self.survey_done and self.photo_path and self.photo_verified
         )
 
@@ -193,6 +206,82 @@ class UserPhoto(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     path: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class AnimalPost(Base):
+    """Объявление в ленте «Животные»."""
+
+    __tablename__ = "animal_posts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    category: Mapped[str] = mapped_column(String(16), index=True)  # charity | foster | adoption
+    name: Mapped[str] = mapped_column(String(64))
+    species: Mapped[str] = mapped_column(String(32), default="")
+    age_text: Mapped[str] = mapped_column(String(32), default="")
+    city: Mapped[str] = mapped_column(String(64), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    contact: Mapped[str] = mapped_column(String(128))  # @username или ссылка t.me/… на человека или группу
+    fundraising_open: Mapped[bool] = mapped_column(Boolean, default=True)
+    fundraising_goal: Mapped[str] = mapped_column(String(64), default="")
+    photos_json: Mapped[str] = mapped_column(Text, default="[]")
+    lat: Mapped[float | None] = mapped_column(Float)
+    lon: Mapped[float | None] = mapped_column(Float)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+    author: Mapped[User] = relationship(lazy="joined")
+
+    @property
+    def photos(self) -> list[str]:
+        return json.loads(self.photos_json or "[]")
+
+    @photos.setter
+    def photos(self, values: list[str]) -> None:
+        self.photos_json = json.dumps(values, ensure_ascii=False)
+
+
+class HelpRequest(Base):
+    """Заявка «Хочу помочь» по объявлению о животном."""
+
+    __tablename__ = "help_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    post_id: Mapped[int] = mapped_column(ForeignKey("animal_posts.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    message: Mapped[str] = mapped_column(Text, default="")
+    contact: Mapped[str] = mapped_column(String(128), default="")
+    delivered: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class SupportThread(Base):
+    """Обращение в поддержку или к помощнику по рекламе."""
+
+    __tablename__ = "support_threads"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    topic: Mapped[str] = mapped_column(String(16), index=True)  # support | ads
+    category: Mapped[str] = mapped_column(String(16), default="help")  # help | complaint | suggestion | ads
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    guest_token_hash: Mapped[str | None] = mapped_column(String(128), index=True)  # рекламодатель без аккаунта
+    contact: Mapped[str] = mapped_column(String(128), default="")
+    about_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    status: Mapped[str] = mapped_column(String(16), default="open")  # open | closed
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+    user: Mapped[User | None] = relationship(foreign_keys=[user_id], lazy="joined")
+
+
+class SupportMessage(Base):
+    __tablename__ = "support_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    thread_id: Mapped[int] = mapped_column(ForeignKey("support_threads.id", ondelete="CASCADE"), index=True)
+    author: Mapped[str] = mapped_column(String(8))  # user | staff | bot
+    text: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

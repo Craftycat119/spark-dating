@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw
 from sqlalchemy import select
 
 from . import storage
+from .ages import birth_for_age
 from .interests import GOALS, SURVEY
 from .database import SessionLocal, init_db
 from .face_verify import download_models
@@ -64,7 +65,8 @@ def seed(lat: float, lon: float, count: int) -> None:
                 password_hash=hash_password("Demo12345"),
                 email_verified=True,
                 name=name,
-                age=random.randint(19, 38),
+                age=(a := random.randint(19, 38)),
+                birth_date=birth_for_age(a),
                 bio=random.choice(DEMO_BIOS),
                 photo_path=_avatar(name, COLORS[i % len(COLORS)]),
                 photo_verified=True,

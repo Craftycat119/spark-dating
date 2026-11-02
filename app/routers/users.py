@@ -29,12 +29,16 @@ def user_profile(user_id: int, me: User = Depends(current_user), db: Session = D
     )
     other = db.scalar(audience(visible_users(), me).where(User.id == user_id))
     if conv is None:
-        if not other or not me.is_complete or not compatible(me.gender, me.looking_for, other.gender, other.looking_for):
+        if not other or not me.is_complete:
+            raise HTTPException(404, "Анкета не найдена")
+        if me.age_group == "adult" and not compatible(me.gender, me.looking_for, other.gender, other.looking_for):
             raise HTTPException(404, "Анкета не найдена")
     else:
         other = db.get(User, user_id)
         if not other or other.is_banned:
             raise HTTPException(404, "Анкета не найдена")
+    if other.age_group != me.age_group:
+        raise HTTPException(404, "Анкета не найдена")  # подростки и взрослые изолированы
 
     score, common = match_score(me.interests, me.goals, other.interests, other.goals)
     distance = None
@@ -46,7 +50,7 @@ def user_profile(user_id: int, me: User = Depends(current_user), db: Session = D
     return {
         "id": other.id,
         "name": other.name,
-        "age": other.age,
+        "age": other.years,
         "bio": other.bio,
         "verified": other.photo_verified,
         "photos": [u for u in [photo_url(other)] if u] + [media_url(p.path) for p in other.photos],
