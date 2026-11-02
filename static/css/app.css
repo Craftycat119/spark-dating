@@ -662,3 +662,8 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .tg-sheet .tg-head { display: flex; align-items: center; gap: 10px; color: #2aabee; font-size: 18px; }
 .tg-logo { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: #2aabee; color: #fff; }
 .tg-logo .ph-fill { font-size: 20px; transform: translateX(-1px); }
+.guide-section { margin: 30px 0 -12px; font: 600 22px var(--display); letter-spacing: -0.5px; }
+.mini .pet-stage { flex: none; }
+.mini .pet-photos .track { aspect-ratio: 16 / 10; }
+.mini-sheet.help .wide { margin-top: 8px; }
+.mini-sheet.help .wide.tg { background: #2aabee; color: #fff; }

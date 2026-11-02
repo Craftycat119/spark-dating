@@ -211,7 +211,38 @@ export const EN = {
   "Дружба 14–17 без знакомств, 6 анкет": "Friends 14–17, no dating, 6 profiles",
   "Это демо 14–17: только дружба. Свайп вниз, чтобы добавить в друзья": "This is the 14–17 demo: friendship only. Swipe down to add a friend",
   "Это демо: свайп вниз, чтобы лайкнуть. Некоторые боты уже лайкнули вас": "This is a demo: swipe down to like. Some bots have already liked you",
-  "Вход через Telegram": "Sign in with Telegram", "Дружить": "Be friends", "Новый друг": "New friend", "Войти через Telegram": "Sign in with Telegram",
+  "Вход через Telegram": "Sign in with Telegram",
+  "Кнопка «Вернуть»": "Undo button", "Пролистали случайно? Анкета вернётся, лайк можно отменить": "Skipped by mistake? The profile comes back, and a like can be cancelled",
+  "Лента «Животные»": "Animals feed", "Листайте влево и вправо, а кнопка «Помочь» свяжет с волонтёрами": "Swipe left and right, and the Help button connects you with volunteers",
+  "Нужна операция на лапе": "Needs paw surgery", "Ищем передержку на две недели": "Looking for a two-week foster",
+  "Кошка · 3 года · Москва": "Cat · 3 years · Moscow", "Собака · 2 года · Москва": "Dog · 2 years · Moscow",
+  "Помочь: Луна": "Help: Luna", "Напишите автору в Telegram или оставьте заявку": "Message the author on Telegram or leave a request",
+  "Ленты и жесты": "Feeds and gestures", "Общение и помощь": "Chat and support",
+  "Три ленты": "Three feeds", "«Знакомства 18+», «Дружба 14–17» и «Животные» переключаются вкладками сверху. Подростки и взрослые никогда не видят друг друга.":
+    "Dating 18+, Friends 14–17 and Animals switch with the tabs at the top. Teens and adults never see each other.",
+  "Или кнопка с сердцем. Если симпатия взаимная, появится экран «Взаимно». В ленте 14–17 кнопка называется «Дружить».":
+    "Or the heart button. If it's mutual, you'll see the match screen. In the 14–17 feed the button says Be friends.",
+  "Слева от «Дальше». Возвращает случайно пролистанную анкету или отменяет лайк, до 20 шагов назад.": "Left of Next. Brings back a profile you skipped by mistake or cancels a like, up to 20 steps back.",
+  "Три категории": "Three categories",
+  "«Помощь и сборы», «Передержка» и «Ищут дом». Листайте влево и вправо, стрелками на экране или клавишами ← →.":
+    "Help and fundraising, Foster and Need a home. Swipe left and right, use the on-screen arrows or the ← → keys.",
+  "Кнопка «Помочь»": "Help button",
+  "Открывает Telegram автора или группы и форму заявки: её получат волонтёры в Telegram. Помогать можно с 18 лет.":
+    "Opens the author's or group's Telegram and a request form that volunteers get on Telegram. Helping is for 18+.",
+  "Своё объявление": "Your own post",
+  "Кнопка «Объявление» сверху: фото, описание и ваш Telegram. В сборах переключайте «Сбор открыт» и «Сбор закрыт».":
+    "The Post button at the top: photos, description and your Telegram. For fundraisers, switch between Fundraising open and closed.",
+  "Профиль, затем «Поддержка»: помощь, жалобы и идеи. В любой анкете есть «Пожаловаться на анкету». Оператор отвечает прямо в чате.":
+    "Profile, then Support: help, complaints and ideas. Every profile has Report profile. An operator replies right in the chat.",
+  "Для рекламодателей: ссылка на экране входа и в профиле. Помощник отвечает про форматы, цены и аудиторию, аккаунт не нужен.":
+    "For advertisers: a link on the sign-in screen and in your profile. The assistant covers formats, prices and audience, no account needed.",
+  "Кнопка на экране входа: почта и пароль не нужны, останется указать дату рождения и подтвердить фото.":
+    "A button on the sign-in screen: no email or password, you'll just add your date of birth and verify your photo.",
+  "Указывается один раз и сама не меняется. С 14 до 17 лет открыта только «Дружба 14–17», с 18 лет знакомства. Исправить дату можно через поддержку.":
+    "Set once and can't be changed by you. Ages 14–17 only get Friends 14–17, dating starts at 18. Support can fix the date.",
+  "Язык и тема": "Language and theme",
+  "Русский или English, тёмная или светлая тема: в профиле. На экране входа есть кнопки EN и смены темы.": "Russian or English, dark or light theme: in your profile. The sign-in screen has EN and theme buttons.",
+  "Барсик": "Barsik", "Луна": "Luna", "38 000 ₽": "38,000 ₽", "Дружить": "Be friends", "Новый друг": "New friend", "Войти через Telegram": "Sign in with Telegram",
   "Сайт COFI запрашивает вход через ваш аккаунт Telegram. Он получит ваше имя, username и фото профиля.": "COFI wants to sign you in with your Telegram account. It will get your name, username and profile photo.",
   "Имя в Telegram": "Telegram name", "Принять": "Accept",
   "Это имитация окна Telegram: в демо по ссылке настоящий Telegram недоступен. В приложении здесь откроется официальное окно Telegram.": "This imitates the Telegram window: real Telegram isn't available in the link demo. In the app the official Telegram window opens here.",

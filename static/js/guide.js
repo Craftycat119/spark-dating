@@ -15,7 +15,31 @@ const SCENES = [
   { who: "igor", title: "Свайп вверх", text: "Дальше. Анкета уходит, общие интересы осыпаются", run: "skip" },
   { who: "vera", title: "Нажмите на фото", text: "Откроется анкета: фото, описание, все интересы", run: "open" },
   { who: "max", title: "Взаимная симпатия", text: "Если вы понравились друг другу, открывается чат", run: "match" },
+  { who: "igor", title: "Кнопка «Вернуть»", text: "Пролистали случайно? Анкета вернётся, лайк можно отменить", run: "undo" },
+  { who: null, title: "Лента «Животные»", text: "Листайте влево и вправо, а кнопка «Помочь» свяжет с волонтёрами", run: "pets" },
 ];
+
+const PETS = [
+  { name: "Барсик", cat: "Помощь и сборы", meta: "Кошка · 3 года · Москва", goal: "38 000 ₽", text: "Нужна операция на лапе", fund: true },
+  { name: "Луна", cat: "Передержка", meta: "Собака · 2 года · Москва", goal: "", text: "Ищем передержку на две недели", fund: false },
+];
+
+function miniPets() {
+  const card = (p, cls = "") => `<article class="pet ${cls}">
+      <div class="pet-photos"><div class="track"><div class="pet-noimg">${icons.paw}</div></div>
+        <span class="pet-cat">${p.cat}</span>${p.fund ? '<span class="fund open">Сбор открыт</span>' : ""}</div>
+      <div class="pet-body"><h2 class="pet-name">${p.name}</h2><p class="muted small">${p.meta}</p>
+        ${p.goal ? `<p class="pet-goal">Цель сбора: <b>${p.goal}</b></p>` : ""}<p class="pet-desc">${p.text}</p></div></article>`;
+  return `
+    <div class="topbar"><span class="logo">cofi<span>°</span></span><span class="chip add-post">${icons.plus} Объявление</span></div>
+    <div class="feed-tabs"><a>Знакомства 18+</a><a class="on">${icons.paw} Животные</a></div>
+    <div class="pet-stage">${card(PETS[0])}</div>
+    <div class="pet-nav"><span class="icon-btn">${icons.back}</span><span class="btn help-btn fake-help">${icons.heart} Помочь</span><span class="icon-btn flip">${icons.back}</span></div>
+    <div class="mini-sheet help"><h2>Помочь: Луна</h2><p>Напишите автору в Telegram или оставьте заявку</p>
+      <span class="wide tg">Написать в Telegram</span><span class="wide">Отправить заявку</span></div>
+    <div class="finger" aria-hidden="true"></div>
+    <template data-next>${card(PETS[1], "from-right")}</template>`;
+}
 
 const wait = (ms, token) => new Promise((res, rej) => setTimeout(() => (token.stop ? rej(new Error("stop")) : res()), ms));
 
@@ -31,6 +55,7 @@ function miniPerson(p) {
     <div class="shared-lbl">У вас общего: <b>${p.tags.length}</b></div>
     <div class="thread"></div>
     <div class="btns">
+      <div class="bw"><span class="fake-btn undo">${icons.undo}</span><span>Вернуть</span></div>
       <div class="bw"><span class="fake-btn skip">${icons.x}</span><span>Дальше</span></div>
       <div class="bw"><span class="fake-btn like">${icons.heart}</span><span>Нравится</span></div>
     </div>
@@ -74,9 +99,36 @@ function player(root) {
     const s = SCENES[i];
     bars.forEach((b, k) => { b.className = k < i ? "done" : k === i ? "on" : ""; });
     caption.innerHTML = `<b>${s.title}</b><span>${s.text}</span>`;
+    if (s.run === "pets") {
+      screen.innerHTML = miniPets();
+      await wait(1000, token);
+      const f = $(".finger", screen);
+      await f.animate([{ opacity: 0, transform: "translate(278px,330px)" }, { opacity: 1, transform: "translate(278px,330px)", offset: 0.2 },
+        { opacity: 1, transform: "translate(68px,330px)", offset: 0.85 }, { opacity: 0, transform: "translate(68px,330px)" }], { duration: 900, easing: "cubic-bezier(.4,0,.2,1)" }).finished;
+      $(".pet-stage", screen).innerHTML = $("template[data-next]", screen).innerHTML;
+      await wait(1200, token);
+      await finger(640, 640, 700);
+      $(".fake-help", screen).classList.add("press");
+      $(".mini-sheet.help", screen).classList.add("show");
+      await wait(2400, token);
+      return;
+    }
     screen.innerHTML = miniPerson(PEOPLE[s.who]);
     const thread = mountThread($(".thread", screen), PEOPLE[s.who].tags);
     await wait(900, token);
+    if (s.run === "undo") {
+      await finger(520, 330, 900);
+      $(".fake-btn.skip", screen).classList.add("press");
+      await thread.play("skip");
+      $(".person", screen).style.opacity = "0.15";
+      await wait(500, token);
+      await finger(560, 560, 700, 100);
+      $(".fake-btn.undo", screen).classList.add("press");
+      screen.innerHTML = miniPerson(PEOPLE[s.who]);
+      mountThread($(".thread", screen), PEOPLE[s.who].tags);
+      await wait(1800, token);
+      return;
+    }
     if (s.run === "like" || s.run === "match") {
       await finger(330, 520, 900);
       $(".fake-btn.like", screen).classList.add("press");
@@ -122,13 +174,31 @@ function player(root) {
   return () => (token.stop = true);
 }
 
-const FEATURES = [
-  ["hand-arrow-down", "Свайп вниз: нравится", "Или кнопка с сердцем. Если симпатия взаимная, появится экран «Взаимно»."],
-  ["hand-arrow-up", "Свайп вверх: дальше", "Или кнопка с крестиком. На компьютере работают стрелки ↓ и ↑."],
-  ["user-circle", "Нажмите на фото", "Откроется подробная анкета: все фото, описание и интересы. Оранжевым отмечено общее."],
-  ["chats-circle", "Чат только после пары", "Написать можно тому, с кем симпатия взаимная. В чате текст, фото и видео, голосовые, кружочки, стикеры и звонки."],
-  ["sparkle", "Подбор по интересам", "Сначала вы видите людей с наибольшим совпадением, при равенстве ближайших. Интересы меняются в профиле."],
-  ["shield-check", "Настоящие люди", "Главное фото каждого проверено сканером лица: человек на камере совпадает с фото."],
+const SECTIONS = [
+  ["Ленты и жесты", [
+    ["stack", "Три ленты", "«Знакомства 18+», «Дружба 14–17» и «Животные» переключаются вкладками сверху. Подростки и взрослые никогда не видят друг друга."],
+    ["hand-arrow-down", "Свайп вниз: нравится", "Или кнопка с сердцем. Если симпатия взаимная, появится экран «Взаимно». В ленте 14–17 кнопка называется «Дружить»."],
+    ["hand-arrow-up", "Свайп вверх: дальше", "Или кнопка с крестиком. На компьютере работают стрелки ↓ и ↑."],
+    ["arrow-counter-clockwise", "Кнопка «Вернуть»", "Слева от «Дальше». Возвращает случайно пролистанную анкету или отменяет лайк, до 20 шагов назад."],
+    ["user-circle", "Нажмите на фото", "Откроется подробная анкета: все фото, описание и интересы. Оранжевым отмечено общее."],
+    ["sparkle", "Подбор по интересам", "Сначала вы видите людей с наибольшим совпадением, при равенстве ближайших. Интересы меняются в профиле."],
+  ]],
+  ["Животные", [
+    ["paw-print", "Три категории", "«Помощь и сборы», «Передержка» и «Ищут дом». Листайте влево и вправо, стрелками на экране или клавишами ← →."],
+    ["hand-heart", "Кнопка «Помочь»", "Открывает Telegram автора или группы и форму заявки: её получат волонтёры в Telegram. Помогать можно с 18 лет."],
+    ["plus-circle", "Своё объявление", "Кнопка «Объявление» сверху: фото, описание и ваш Telegram. В сборах переключайте «Сбор открыт» и «Сбор закрыт»."],
+  ]],
+  ["Общение и помощь", [
+    ["chats-circle", "Чат только после пары", "Написать можно тому, с кем симпатия взаимная. В чате текст, фото и видео, голосовые, кружочки, стикеры и звонки."],
+    ["headset", "Поддержка", "Профиль, затем «Поддержка»: помощь, жалобы и идеи. В любой анкете есть «Пожаловаться на анкету». Оператор отвечает прямо в чате."],
+    ["megaphone", "Реклама в COFI", "Для рекламодателей: ссылка на экране входа и в профиле. Помощник отвечает про форматы, цены и аудиторию, аккаунт не нужен."],
+  ]],
+  ["Аккаунт", [
+    ["telegram-logo", "Вход через Telegram", "Кнопка на экране входа: почта и пароль не нужны, останется указать дату рождения и подтвердить фото."],
+    ["identification-card", "Дата рождения", "Указывается один раз и сама не меняется. С 14 до 17 лет открыта только «Дружба 14–17», с 18 лет знакомства. Исправить дату можно через поддержку."],
+    ["shield-check", "Настоящие люди", "Главное фото каждого проверено сканером лица: человек на камере совпадает с фото."],
+    ["globe", "Язык и тема", "Русский или English, тёмная или светлая тема: в профиле. На экране входа есть кнопки EN и смены темы."],
+  ]],
 ];
 
 export function renderGuide(main, { loggedIn, onDemo }) {
@@ -146,9 +216,11 @@ export function renderGuide(main, { loggedIn, onDemo }) {
         <button class="icon-btn reel-toggle"></button>
       </div>
     </section>
-    <div class="features">${FEATURES.map(([icon, title, text]) => `
-      <div class="feature"><i class="ph ph-${icon}" aria-hidden="true"></i><div><b>${title}</b><p>${text}</p></div></div>`).join("")}
-    </div>
+    ${SECTIONS.map(([heading, items]) => `
+      <h2 class="guide-section">${heading}</h2>
+      <div class="features">${items.map(([icon, title, text]) => `
+        <div class="feature"><i class="ph ph-${icon}" aria-hidden="true"></i><div><b>${title}</b><p>${text}</p></div></div>`).join("")}
+      </div>`).join("")}
     <div class="stack" style="margin-top:28px">
       ${loggedIn ? `<a class="btn block" href="#/feed">К анкетам</a>`
         : `<button class="btn block" data-demo>Открыть демо без регистрации</button><a class="btn ghost block" href="#/">Создать аккаунт</a>`}
