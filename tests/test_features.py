@@ -81,8 +81,14 @@ def test_animals_feed_and_help():
 def test_support_and_ads_threads():
     boss = make_user("boss@example.com")
     user = make_user("u@x.io")
-    t = user.post("/api/support/threads", json={"topic": "support", "category": "complaint", "text": "Спам в чате"}).json()
-    assert [m["author"] for m in t["messages"]] == ["user", "bot"]
+    t = user.post("/api/support/threads", json={"topic": "support", "category": "complaint"}).json()
+    assert [m["author"] for m in t["messages"]] == ["bot"]                 # сначала приветствие
+    assert "Расскажите" in t["messages"][0]["text"] and "принято" not in t["messages"][0]["text"]
+    user.post(f"/api/support/threads/{t['id']}/messages", json={"text": "Спам в чате"})
+    msgs = user.get(f"/api/support/threads/{t['id']}").json()["messages"]
+    assert [m["author"] for m in msgs] == ["bot", "user", "bot"] and "принято" in msgs[2]["text"]
+    user.post(f"/api/support/threads/{t['id']}/messages", json={"text": "Ещё скриншот"})
+    assert len(user.get(f"/api/support/threads/{t['id']}").json()["messages"]) == 4  # «принято» только один раз
     assert user.get("/api/support/threads").json()[0]["category"] == "complaint"
     assert boss.post(f"/api/admin/support/{t['id']}/reply", json={"text": "Разберёмся"}).status_code == 200
     assert user.get(f"/api/support/threads/{t['id']}").json()["messages"][-1]["author"] == "staff"

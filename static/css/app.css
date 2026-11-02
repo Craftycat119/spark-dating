@@ -683,3 +683,7 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .pet { cursor: pointer; }
 .pet-view .match-strip b { font-size: 19px; }
 .animals .pet-photos .track { aspect-ratio: 16 / 11; }
+/* прозрачный край нижней панели анкеты не должен перехватывать нажатия */
+.profile-actions { pointer-events: none; }
+.profile-actions > * { pointer-events: auto; }
+.profile-body { padding-bottom: 200px; }

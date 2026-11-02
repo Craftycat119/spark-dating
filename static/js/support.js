@@ -36,10 +36,7 @@ export async function renderSupportHub({ screen, go, back = "#/settings" }) {
 /** Открыть жалобу на анкету и сразу перейти в чат с поддержкой. */
 export async function reportUser(user, go) {
   try {
-    const t = await api.post("/api/support/threads", {
-      topic: "support", category: "complaint", about_user_id: user.id,
-      text: `Жалоба на анкету: ${user.name} (№${user.id}). Причина: `,
-    });
+    const t = await api.post("/api/support/threads", { topic: "support", category: "complaint", about_user_id: user.id });
     go(`#/support/${t.id}`);
   } catch (ex) { toast(ex.message, { error: true }); }
 }

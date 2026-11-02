@@ -558,16 +558,19 @@ route("POST", "/api/support/threads", async (b) => {
     status: "open", about_user_id: b.about_user_id, created_at: now(), updated_at: now() };
   S.threads.push(t);
   if (t.topic === "ads") smsg(t, "bot", T.ads_greeting);
+  else {
+    const about = b.about_user_id ? S.users[b.about_user_id] : null;
+    smsg(t, "bot", about ? T.report_greeting.replace("{name}", about.name) : T.greetings[t.category] || T.greetings.help);
+  }
   if ((b.text || "").trim()) userMsg(t, b.text);
-  else if (t.topic === "support") smsg(t, "bot", T.support_greeting.replace("{id}", t.id));
   save();
   return threadOut(t);
 });
 function userMsg(t, text) {
   smsg(t, "user", text.trim());
   if (t.topic === "ads") smsg(t, "bot", adsAnswer(text) || T.handoff);
-  else if (!S.smsgs.some((m) => m.thread_id === t.id && m.author === "bot")) smsg(t, "bot", T.support_greeting.replace("{id}", t.id));
   else if (S.smsgs.filter((m) => m.thread_id === t.id && m.author === "user").length === 1) {
+    smsg(t, "bot", T.support_greeting.replace("{id}", t.id));
     // в демо «оператор» отвечает сам, чтобы было видно, как это выглядит
     setTimeout(() => {
       const m = smsg(t, "staff", "Здравствуйте! Это демо, здесь отвечает автоматический оператор. В приложении ответит живой сотрудник из админ-панели.");

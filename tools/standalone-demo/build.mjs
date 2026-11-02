@@ -29,6 +29,7 @@ print(json.dumps({
   "animals": [dict(zip(("category","name","species","age_text","description","fundraising_goal","color"), a)) for a in cli.ANIMALS],
   "support": {
     "ads_greeting": support.ADS_GREETING, "support_greeting": support.SUPPORT_GREETING, "handoff": support.HANDOFF,
+    "greetings": support.GREETINGS, "report_greeting": support.REPORT_GREETING,
     "formats": support.ads_answer("формат", None), "price": support.ads_answer("цена", None), "lead": support.ads_answer("заявка", None),
   },
 }, ensure_ascii=False))

@@ -27,6 +27,13 @@ ADS_GREETING = (
     "Здравствуйте! Я помощник COFI по рекламе. Расскажу о форматах, аудитории и условиях. "
     "Выберите вопрос ниже или напишите свой, а менеджер подключится к этому чату."
 )
+# Сначала бот здоровается и просит описать суть, а «принято» пишет только после сообщения пользователя
+GREETINGS = {
+    "help": "Здравствуйте! Это поддержка COFI. Опишите, пожалуйста, ваш вопрос: что случилось и на каком экране.",
+    "complaint": "Здравствуйте! Расскажите, на кого или на что вы хотите пожаловаться и что произошло. Если это анкета, укажите имя.",
+    "suggestion": "Здравствуйте! Спасибо, что помогаете сделать COFI лучше. Напишите вашу идею или предложение.",
+}
+REPORT_GREETING = "Здравствуйте! Вы жалуетесь на анкету «{name}». Расскажите, пожалуйста, что произошло."
 SUPPORT_GREETING = "Спасибо! Обращение №{id} принято. Оператор ответит прямо здесь, обычно в течение часа."
 HANDOFF = "Передал ваш вопрос менеджеру. Ответ придёт в этот чат, а если оставите контакт, продублируем туда."
 
@@ -137,7 +144,8 @@ def create_thread(data: ThreadIn, request: Request, response: Response, db: Sess
     if data.text.strip():
         handle_user_message(db, t, data.text)
     elif data.topic == "support":
-        _add(db, t, "bot", SUPPORT_GREETING.format(id=t.id))
+        about = db.get(User, data.about_user_id) if data.about_user_id else None
+        _add(db, t, "bot", REPORT_GREETING.format(name=about.name) if about else GREETINGS[category])
     return _thread_out(t, db)
 
 
@@ -179,6 +187,6 @@ def handle_user_message(db: Session, t: SupportThread, text: str) -> dict:
     if t.topic == "ads":
         answer = ads_answer(text, db)
         _add(db, t, "bot", answer or HANDOFF)
-    elif first and not db.scalar(select(SupportMessage.id).where(SupportMessage.thread_id == t.id, SupportMessage.author == "bot")):
+    elif first:
         _add(db, t, "bot", SUPPORT_GREETING.format(id=t.id))
     return msg_out(m)
