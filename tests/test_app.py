@@ -20,7 +20,7 @@ def test_feed_requires_complete_profile():
 def test_underage_rejected():
     c = new_client()
     register(c, "kid@x.io")
-    assert c.put("/api/profile", json={"birth_date": birth_for_age(12).isoformat()}).status_code == 422
+    assert c.put("/api/profile", json={"birth_date": birth_for_age(11).isoformat()}).status_code == 422
 
 
 def test_feed_ranks_by_common_interests_then_distance():

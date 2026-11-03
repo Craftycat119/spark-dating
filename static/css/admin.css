@@ -70,3 +70,9 @@ dl.kv dd { margin: 0; word-break: break-word; }
   #view { padding: 20px 16px; overflow-x: auto; }
   dl.kv { grid-template-columns: 1fr; }
 }
+
+.pet-form summary { list-style: none; display: inline-flex; cursor: pointer; }
+.pet-form summary::-webkit-details-marker { display: none; }
+.pet-form label.chip { cursor: pointer; gap: 6px; }
+.pet-form label.chip input { accent-color: var(--orange); }
+.btn.tiny { min-height: 32px; padding: 0 12px; font-size: 13px; }

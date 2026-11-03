@@ -266,7 +266,7 @@ route("PUT", "/api/profile", (b) => {
     const y = years({ birth_date: b.birth_date });
     if (y < DATA.min_age) deny(422, `COFI доступен с ${DATA.min_age} лет`);
     u.birth_date = b.birth_date;
-    if (group(u) === "teen") { u.goals = u.goals.filter((g) => DATA.teen_goals.includes(g)); u.looking_for = "any"; }
+    if (group(u) === "teen") u.goals = u.goals.filter((g) => DATA.teen_goals.includes(g));
     // боты своей возрастной группы, которые «уже лайкнули», как у гостя демо
     for (const o of Object.values(S.users)) {
       if (o.is_bot && o.likes_you && group(o) === group(u) && !S.swipes.some((s) => s.from === o.id && s.to === u.id)) S.swipes.push({ from: o.id, to: u.id, liked: true });
@@ -281,7 +281,7 @@ route("PUT", "/api/profile", (b) => {
     u.interests = v;
   }
   if (b.goals !== undefined) {
-    if (group(u) === "teen" && b.goals.some((g) => !DATA.teen_goals.includes(g))) deny(422, "В 14–17 лет доступна только дружба");
+    if (group(u) === "teen" && b.goals.some((g) => !DATA.teen_goals.includes(g))) deny(422, "До 18 лет доступна только дружба");
     if (!b.goals.length) deny(422, "Выберите, что вы ищете");
     u.goals = [...new Set(b.goals)];
   }
@@ -454,7 +454,7 @@ route("POST", "/api/feed/undo", async (b) => {
     verified: true, interests: o.interests, goals: o.goals, photos_count: o.photos.length, match: score, common, distance_km: Math.round(km(u, o) * 10) / 10 } };
 });
 
-// ---------- Животные ----------
+// ---------- Питомцы ----------
 const CAT_TITLE = { charity: "Помощь и сборы", foster: "Передержка", adoption: "Ищет хозяина" };
 const tgUrl = (c) => { const m = (c || "").trim().match(/^(?:@|https?:\/\/t\.me\/|t\.me\/)?([A-Za-z0-9_+/-]{3,64})\/?$/); return m ? `https://t.me/${m[1]}` : null; };
 function ensurePets() {
@@ -488,7 +488,7 @@ route("GET", "/api/animals/(\\d+)", async (_, [pid]) => {
 });
 route("POST", "/api/animals", async (fd) => {
   const u = requireMe();
-  if (group(u) !== "adult") deny(403, "Публиковать объявления и отправлять заявки можно с 18 лет");
+  deny(403, "Объявления добавляет администрация COFI");
   ensurePets();
   if (!CAT_TITLE[fd.get("category")]) deny(422, "Выберите категорию");
   if (!(fd.get("name") || "").trim()) deny(422, "Укажите кличку или название");
@@ -513,7 +513,7 @@ route("PATCH", "/api/animals/(\\d+)", async (b, [pid]) => {
 });
 route("POST", "/api/animals/(\\d+)/help", (_, [pid]) => {
   const u = requireMe();
-  if (group(u) !== "adult") deny(403, "Публиковать объявления и отправлять заявки можно с 18 лет");
+  if (group(u) !== "adult") deny(403, "Отправлять заявки можно с 18 лет");
   const p = (S.pets || []).find((x) => x.id === +pid);
   if (!p) deny(404, "Объявление не найдено");
   if (p.category === "charity" && !p.fundraising_open) deny(409, "Сбор уже закрыт, спасибо!");
@@ -545,7 +545,7 @@ function adsAnswer(text) {
     const counts = {};
     people.forEach((u) => u.interests.forEach((i) => (counts[i] = (counts[i] || 0) + 1)));
     const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k} (${v})`).join(", ");
-    return `Сейчас в COFI ${people.length} анкет с подтверждённым фото, из них ${people.length} старше 18 лет. Популярные интересы: ${top}. Подростковая лента (14–17) для рекламы закрыта.`;
+    return `Сейчас в COFI ${people.length} анкет с подтверждённым фото, из них ${people.length} старше 18 лет. Популярные интересы: ${top}. Лента «Дружба» (до 18 лет) для рекламы закрыта.`;
   }
   if (/заявк|менеджер|связ|контакт|звон|request|manager|contact|call/.test(x)) return T.lead;
   return null;

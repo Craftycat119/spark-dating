@@ -72,7 +72,7 @@ def get_feed(limit: int = 10, user: User = Depends(current_user), db: Session = 
             continue
         if other.age_group != user.age_group:
             continue  # подростки и взрослые никогда не видят друг друга
-        if user.age_group == "adult" and not compatible(user.gender, user.looking_for, other.gender, other.looking_for):
+        if not compatible(user.gender, user.looking_for, other.gender, other.looking_for):
             continue
         d = haversine_km(user.lat, user.lon, other.lat, other.lon)
         if d > radius:

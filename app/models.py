@@ -210,7 +210,7 @@ class UserPhoto(Base):
 
 
 class AnimalPost(Base):
-    """Объявление в ленте «Животные»."""
+    """Объявление в ленте «Питомцы»."""
 
     __tablename__ = "animal_posts"
 

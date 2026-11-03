@@ -23,7 +23,7 @@ def test_teens_and_adults_are_isolated():
 def test_birth_date_rules():
     c = new_client()
     register(c, "kid@x.io")
-    assert c.put("/api/profile", json={"birth_date": birth_for_age(13).isoformat()}).status_code == 422
+    assert c.put("/api/profile", json={"birth_date": birth_for_age(11).isoformat()}).status_code == 422
     assert c.put("/api/profile", json={"birth_date": birth_for_age(15).isoformat()}).status_code == 200
     # поменять самому нельзя, чтобы не «повзрослеть» ради взрослой ленты
     r = c.put("/api/profile", json={"birth_date": birth_for_age(19).isoformat()})
@@ -51,7 +51,7 @@ def test_undo_skip_and_like():
 
 
 def test_animals_feed_and_help():
-    owner = make_user("owner@x.io", name="Волонтёр")
+    owner = make_user("boss@example.com", name="Волонтёр")  # объявления добавляет только админ
     helper = make_user("helper@x.io")
     teen = make_user("teen@x.io", age=15, goals=("Дружба",))
     r = owner.post("/api/animals", data={"category": "charity", "name": "Барсик", "contact": "@barsik_help",
@@ -61,6 +61,7 @@ def test_animals_feed_and_help():
     post = r.json()
     assert post["contact_url"] == "https://t.me/barsik_help" and post["fundraising_open"] is True
     owner.post("/api/animals", data={"category": "adoption", "name": "Рыжик", "contact": "t.me/+GroupInvite"})
+    assert helper.post("/api/animals", data={"category": "foster", "name": "X", "contact": "@x"}).status_code == 403
     assert teen.post("/api/animals", data={"category": "foster", "name": "X", "contact": "@x"}).status_code == 403
     assert owner.post("/api/animals", data={"category": "foster", "name": "X", "contact": "не телеграм!"}).status_code == 422
 
@@ -107,7 +108,7 @@ def test_support_and_ads_threads():
 
 
 def test_animal_details():
-    owner = make_user("owner@x.io", name="Волонтёр")
+    owner = make_user("boss@example.com", name="Волонтёр")
     other = make_user("o@x.io")
     pid = owner.post("/api/animals", data={"category": "foster", "name": "Луна", "contact": "@luna",
                                            "description": "Длинное описание"}).json()["id"]
@@ -118,3 +119,11 @@ def test_animal_details():
     owner.patch(f"/api/animals/{pid}", json={"active": False})
     assert other.get(f"/api/animals/{pid}").status_code == 404   # снятое видит только автор
     assert owner.get(f"/api/animals/{pid}").status_code == 200
+
+
+def test_teens_choose_who_they_look_for():
+    boy = make_user("boy@x.io", name="Миша", age=13, gender="male", looking_for="female", goals=("Дружба",))
+    make_user("girl@x.io", name="Катя", age=12, gender="female", looking_for="any", goals=("Дружба",))
+    make_user("boy2@x.io", name="Петя", age=14, gender="male", looking_for="any", goals=("Дружба",))
+    assert boy.get("/api/profile").json()["looking_for"] == "female"
+    assert [c["name"] for c in boy.get("/api/feed").json()["cards"]] == ["Катя"]

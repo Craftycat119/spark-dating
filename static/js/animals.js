@@ -1,17 +1,17 @@
-// Лента «Животные»: листаем вперёд и назад, вместо лайков одна кнопка «Помочь»
+// Лента «Питомцы»: листаем вперёд и назад, вместо лайков одна кнопка «Помочь».
+// Объявления добавляет администрация через админ-панель.
 import { api } from "./api.js";
 import { icons } from "./icons.js";
 import { $, $$, esc, h, toast } from "./ui.js";
 
 const CATS = [["", "Все"], ["charity", "Помощь и сборы"], ["foster", "Передержка"], ["adoption", "Ищут дом"]];
 const CAT_TITLE = { charity: "Помощь и сборы", foster: "Передержка", adoption: "Ищет хозяина" };
-const SPECIES = ["Кошка", "Собака", "Другое"];
 
 export function feedTabs(active, me) {
-  const people = me.age_group === "teen" ? "Дружба 14–17" : "Знакомства 18+";
+  const people = me.age_group === "teen" ? "Дружба" : "Знакомства";
   return `<div class="feed-tabs" role="tablist">
     <a href="#/feed" role="tab" class="${active === "people" ? "on" : ""}">${people}</a>
-    <a href="#/animals" role="tab" class="${active === "animals" ? "on" : ""}">${icons.paw} Животные</a></div>`;
+    <a href="#/animals" role="tab" class="${active === "animals" ? "on" : ""}">${icons.paw} Питомцы</a></div>`;
 }
 
 export async function renderAnimals({ screen, state, go }) {
@@ -19,7 +19,7 @@ export async function renderAnimals({ screen, state, go }) {
   let items = [], index = 0;
   const adult = state.me.age_group === "adult";
   const root = screen(`
-    <div class="topbar"><span class="logo">cofi<span>°</span></span>${adult ? `<a class="chip add-post" href="#/animals/new">${icons.plus} Объявление</a>` : ""}</div>
+    <div class="topbar"><span class="logo">cofi<span>°</span></span></div>
     ${feedTabs("animals", state.me)}
     <div class="cat-chips">${CATS.map(([k, l]) => `<button class="chip" data-cat="${k}" aria-pressed="${k === category}">${l}</button>`).join("")}</div>
     <div class="pet-stage"><div class="skeleton" style="position:relative;height:420px"></div></div>
@@ -49,7 +49,7 @@ export async function renderAnimals({ screen, state, go }) {
     if (!p) {
       nav.hidden = true;
       count.textContent = "";
-      stage.innerHTML = `<div class="empty"><h1>Пока пусто</h1><p class="lead">В этой категории ещё нет объявлений.${adult ? " Разместите первое: кнопка «Объявление» сверху." : ""}</p></div>`;
+      stage.innerHTML = `<div class="empty"><h1>Пока пусто</h1><p class="lead">В этой категории ещё нет объявлений.</p></div>`;
       return;
     }
     nav.hidden = false;
@@ -238,60 +238,4 @@ function helpSheet(p, adult) {
     } catch (ex) { toast(ex.message, { error: true }); }
   });
   document.body.append(el);
-}
-
-export function renderAnimalForm({ screen, go }) {
-  let category = "charity", species = "Кошка";
-  const files = [];
-  const root = screen(`
-    <div class="guide-top"><a class="icon-btn" href="#/animals" aria-label="Назад">${icons.back}</a><span class="logo">cofi<span>°</span></span><span style="width:44px"></span></div>
-    <h1>Новое объявление</h1>
-    <form class="stack" style="margin-top:18px">
-      <div class="field"><span>Категория</span><div class="choice-grid" style="grid-template-columns:repeat(3,1fr)">
-        ${Object.entries(CAT_TITLE).map(([k, l]) => `<button type="button" class="chip" data-c="${k}" aria-pressed="${k === category}">${l}</button>`).join("")}</div></div>
-      <label class="field"><span>Кличка или название</span><input class="input" name="name" maxlength="64" required></label>
-      <div class="field"><span>Кто это</span><div class="choice-grid" style="grid-template-columns:repeat(3,1fr)">
-        ${SPECIES.map((s) => `<button type="button" class="chip" data-s="${s}" aria-pressed="${s === species}">${s}</button>`).join("")}</div></div>
-      <div class="row" style="align-items:flex-start">
-        <label class="field" style="flex:1"><span>Возраст</span><input class="input" name="age_text" maxlength="32" placeholder="2 года"></label>
-        <label class="field" style="flex:1"><span>Город</span><input class="input" name="city" maxlength="64"></label>
-      </div>
-      <label class="field"><span>Описание</span><textarea class="input" name="description" maxlength="3000" placeholder="Характер, здоровье, что нужно: лечение, корм, временный дом"></textarea></label>
-      <label class="field" data-goal><span>Цель сбора</span><input class="input" name="fundraising_goal" maxlength="64" placeholder="Например, 40 000 ₽ на операцию"></label>
-      <label class="field"><span>Telegram для связи</span><input class="input" name="contact" maxlength="128" required placeholder="@username или ссылка t.me/… на группу"></label>
-      <p class="hint">Сюда придут заявки от тех, кто захочет помочь.</p>
-      <div class="field"><span>Фото, до 5</span><div class="gallery-edit" data-photos></div><input type="file" accept="image/*" multiple hidden></div>
-      <p class="error-text" hidden></p>
-      <button class="btn block">Опубликовать</button>
-    </form>`, { nav: false });
-  const form = $("form", root);
-  const input = $("input[type=file]", root);
-  const err = $(".error-text", root);
-  const drawPhotos = () => {
-    $("[data-photos]", root).innerHTML = files.map((f, i) => `<div class="ph-cell"><img src="${URL.createObjectURL(f)}" alt=""><button type="button" class="del" data-del="${i}" aria-label="Убрать фото">${icons.x}</button></div>`).join("")
-      + (files.length < 5 ? `<button type="button" class="ph-cell add" data-add aria-label="Добавить фото">${icons.plus}</button>` : "");
-    $("[data-add]", root)?.addEventListener("click", () => input.click());
-    $$("[data-del]", root).forEach((b) => (b.onclick = () => { files.splice(+b.dataset.del, 1); drawPhotos(); }));
-  };
-  input.onchange = () => { files.push(...[...input.files].slice(0, 5 - files.length)); input.value = ""; drawPhotos(); };
-  drawPhotos();
-  const syncGoal = () => ($("[data-goal]", root).hidden = category !== "charity");
-  $$("[data-c]", root).forEach((b) => (b.onclick = () => { category = b.dataset.c; $$("[data-c]", root).forEach((x) => x.setAttribute("aria-pressed", String(x === b))); syncGoal(); }));
-  $$("[data-s]", root).forEach((b) => (b.onclick = () => { species = b.dataset.s; $$("[data-s]", root).forEach((x) => x.setAttribute("aria-pressed", String(x === b))); }));
-  syncGoal();
-  form.onsubmit = async (e) => {
-    e.preventDefault();
-    err.hidden = true;
-    const fd = new FormData();
-    fd.append("category", category);
-    fd.append("species", species);
-    for (const k of ["name", "age_text", "city", "description", "contact"]) fd.append(k, form[k].value);
-    if (category === "charity") fd.append("fundraising_goal", form.fundraising_goal.value);
-    files.forEach((f) => fd.append("files", f));
-    try {
-      await api.post("/api/animals", fd);
-      toast("Объявление опубликовано");
-      go("#/animals");
-    } catch (ex) { err.textContent = ex.message; err.hidden = false; }
-  };
 }

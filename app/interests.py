@@ -1,8 +1,8 @@
 """Опрос при регистрации и подбор пары по интересам."""
 from __future__ import annotations
 
-GENDERS = {"male": "Мужчина", "female": "Женщина"}
-LOOKING_FOR = {"male": "Мужчин", "female": "Женщин", "any": "Всех"}
+GENDERS = {"male": "Парень", "female": "Девушка"}
+LOOKING_FOR = {"male": "Парня", "female": "Девушку", "any": "Всех"}
 
 # Вопросы опроса. key="goals" хранится отдельно, остальные ответы — общий список интересов.
 SURVEY: list[dict] = [

@@ -70,9 +70,8 @@ def update_profile(data: ProfileIn, user: User = Depends(current_user), db: Sess
         user.birth_date = data.birth_date
         user.age = years
         if user.age_group == "teen":
-            # подросткам только дружба: убираем «свидания» и предпочтения по полу
+            # до 18 лет только дружба: убираем «свидания» и «серьёзные отношения»
             user.goals = [g for g in user.goals if g in TEEN_GOALS]
-            user.looking_for = "any"
     if data.language in ("ru", "en"):
         user.language = data.language
     if data.bio is not None:
@@ -84,7 +83,7 @@ def update_profile(data: ProfileIn, user: User = Depends(current_user), db: Sess
     if data.looking_for is not None:
         if data.looking_for not in LOOKING_FOR:
             raise HTTPException(422, "Укажите, кого ищете")
-        user.looking_for = "any" if user.age_group == "teen" else data.looking_for
+        user.looking_for = data.looking_for
     if data.interests is not None:
         interests = clean(data.interests, INTERESTS)
         if len(interests) < MIN_INTERESTS:
@@ -93,7 +92,7 @@ def update_profile(data: ProfileIn, user: User = Depends(current_user), db: Sess
     if data.goals is not None:
         goals = clean(data.goals, GOALS)
         if user.age_group == "teen" and any(g not in TEEN_GOALS for g in goals):
-            raise HTTPException(422, "В 14–17 лет доступна только дружба")
+            raise HTTPException(422, "До 18 лет доступна только дружба")
         if not goals:
             raise HTTPException(422, "Выберите, что вы ищете")
         user.goals = goals

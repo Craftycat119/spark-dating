@@ -1,6 +1,6 @@
-"""Лента «Животные»: помощь и сборы, передержка, поиск хозяина.
+"""Лента «Питомцы»: помощь и сборы, передержка, поиск хозяина.
 
-Объявления может публиковать только взрослый (18+). Смотреть ленту могут все.
+Объявления добавляет только администрация (через админ-панель). Смотреть ленту могут все.
 Кнопка «Помочь» ведёт в Telegram автора или группы, а заявка уходит туда же через бота.
 """
 from __future__ import annotations
@@ -59,7 +59,7 @@ def list_posts(category: str = "", offset: int = 0, limit: int = 20, me: User = 
 
 def _require_adult(me: User) -> None:
     if me.age_group != "adult":
-        raise HTTPException(403, "Публиковать объявления и отправлять заявки можно с 18 лет")
+        raise HTTPException(403, "Отправлять заявки можно с 18 лет")
 
 
 @router.get("/{post_id}")
@@ -89,7 +89,8 @@ def create_post(
     me: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
-    _require_adult(me)
+    if not me.is_admin:
+        raise HTTPException(403, "Объявления добавляет администрация COFI")
     if category not in CATEGORIES:
         raise HTTPException(422, "Выберите категорию")
     if not name.strip():

@@ -6,7 +6,7 @@ import { runScanner } from "./scanner.js";
 import { PACKS } from "./stickers.js";
 import { mountThread } from "./threads.js";
 import { renderGuide } from "./guide.js";
-import { feedTabs, renderAnimalForm, renderAnimals } from "./animals.js";
+import { feedTabs, renderAnimals } from "./animals.js";
 import { renderAds, renderSupportHub, renderThread, reportUser } from "./support.js";
 import { currentHash, navigate, onRoute } from "./router.js";
 import { getThemePref, resolvedTheme, setTheme } from "./theme.js";
@@ -96,7 +96,7 @@ function route() {
   if (step && !["settings", "support"].includes(name)) return renderOnboarding(step);
   const ctx = { screen, state, go };
   switch (name) {
-    case "animals": return arg === "new" ? renderAnimalForm(ctx) : renderAnimals(ctx);
+    case "animals": return renderAnimals(ctx);
     case "support": return arg ? renderThread({ screen, threadId: Number(arg) }) : renderSupportHub(ctx);
     case "chats": return renderChats();
     case "chat": return renderChats().then(() => openChat(Number(arg)));
@@ -160,8 +160,8 @@ function startDemo() {
     <div class="bottom-sheet">
       <h2>Какое демо открыть</h2>
       <p class="muted">Подростки и взрослые в COFI никогда не пересекаются, поэтому ленты разные.</p>
-      <button class="row-link" data-age="adult"><span><b>Мне 18 или больше</b><br><span class="muted small">Знакомства 18+, животные, 10 анкет</span></span>${icons.arrow}</button>
-      <button class="row-link" data-age="teen"><span><b>Мне 14–17</b><br><span class="muted small">Дружба 14–17 без знакомств, 6 анкет</span></span>${icons.arrow}</button>
+      <button class="row-link" data-age="adult"><span><b>Мне 18 или больше</b><br><span class="muted small">Знакомства и питомцы, 10 анкет</span></span>${icons.arrow}</button>
+      <button class="row-link" data-age="teen"><span><b>Мне 12–17</b><br><span class="muted small">Дружба без знакомств, 6 анкет</span></span>${icons.arrow}</button>
       <button class="btn ghost block" data-close>Отмена</button>
     </div></div>`);
   $("[data-close]", el).onclick = () => el.remove();
@@ -176,7 +176,7 @@ function startDemo() {
     el.remove();
     afterLogin();
     go("#/feed");
-    toast(teen ? "Это демо 14–17: только дружба. Свайп вниз, чтобы добавить в друзья" : "Это демо: свайп вниз, чтобы лайкнуть. Некоторые боты уже лайкнули вас", { timeout: 6000 });
+    toast(teen ? "Это демо ленты «Дружба»: свайп вниз, чтобы добавить в друзья" : "Это демо: свайп вниз, чтобы лайкнуть. Некоторые боты уже лайкнули вас", { timeout: 6000 });
   }));
   document.body.append(el);
 }
@@ -435,9 +435,9 @@ function stepAbout() {
       <h1>Знакомимся</h1>
       <label class="field"><span>Имя</span><input class="input" name="name" maxlength="64" value="${esc(me.name)}" autocomplete="given-name" required></label>
       <label class="field"><span>Дата рождения</span><input class="input" name="birth" type="date" value="${me.birth_date ?? ""}" ${me.birth_date ? "disabled" : ""} required max="${new Date().toISOString().slice(0, 10)}"></label>
-      <p class="hint">COFI доступен с 14 лет. До 18 лет открыта только лента «Дружба 14–17», без знакомств. Дату нельзя будет изменить самостоятельно.</p>
+      <p class="hint">COFI доступен с 12 лет. До 18 лет открыта только лента «Дружба», без знакомств. Дату нельзя будет изменить самостоятельно.</p>
       <div class="field"><span>Я</span>${choiceGroup("gender", state.config.genders, me.gender)}</div>
-      <div class="field" data-looking><span>Кого ищу</span>${choiceGroup("looking_for", state.config.looking_for, me.looking_for)}</div>
+      <div class="field"><span>Кого ищу</span>${choiceGroup("looking_for", state.config.looking_for, me.looking_for)}</div>
       <label class="field"><span>Коротко о себе</span><textarea class="input" name="bio" maxlength="500" placeholder="Например: варю фильтр-кофе, по субботам бегаю в парке">${esc(me.bio)}</textarea></label>
       <p class="error-text" hidden></p>
       <button class="btn block">Дальше</button>
@@ -445,21 +445,10 @@ function stepAbout() {
   bindChoice(root, "gender", (v) => (pick.gender = v));
   bindChoice(root, "looking_for", (v) => (pick.looking_for = v));
   const form = $("form", root);
-  const teen = () => {
-    const v = form.birth.value;
-    if (!v) return false;
-    const b = new Date(v), n = new Date();
-    const y = n.getFullYear() - b.getFullYear() - (n < new Date(n.getFullYear(), b.getMonth(), b.getDate()) ? 1 : 0);
-    return y < 18;
-  };
-  const syncTeen = () => ($("[data-looking]", root).hidden = teen());
-  form.birth.addEventListener("change", syncTeen);
-  syncTeen();
   form.onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target;
     const err = $(".error-text", root);
-    if (teen()) pick.looking_for = "any"; // в 14–17 только дружба, без предпочтений по полу
     if (!f.birth.value) { err.textContent = "Укажите дату рождения"; err.hidden = false; return; }
     if (!pick.gender || !pick.looking_for) { err.textContent = "Выберите пол и кого ищете"; err.hidden = false; return; }
     try {
@@ -480,7 +469,7 @@ function renderSurvey({ editing = false } = {}) {
   const draw = () => {
     let q = survey[i];
     if (q.key === "goals" && state.me.age_group === "teen") {
-      q = { ...q, options: state.config.teen_goals, hint: "В 14–17 лет COFI только для дружбы" };
+      q = { ...q, options: state.config.teen_goals, hint: "До 18 лет COFI только для дружбы" };
     }
     const set = q.key === "goals" ? answers.goals : answers.interests;
     const last = i === survey.length - 1;
@@ -1266,10 +1255,10 @@ function renderSettings() {
       <h3>О себе</h3>
       <label class="field"><span>Имя</span><input class="input" name="name" maxlength="64" value="${esc(me.name)}"></label>
       <div class="field"><span>Дата рождения</span>
-        <div class="readonly">${me.birth_date ? new Date(me.birth_date).toLocaleDateString(getLang() === "en" ? "en-GB" : "ru-RU") : "—"} · ${me.age_group === "teen" ? "лента «Дружба 14–17»" : "лента 18+"}</div>
+        <div class="readonly">${me.birth_date ? new Date(me.birth_date).toLocaleDateString(getLang() === "en" ? "en-GB" : "ru-RU") : "—"}</div>
         <span class="hint">Изменить дату можно только через <a href="#/support">поддержку</a></span></div>
       <div class="field"><span>Я</span>${choiceGroup("gender", state.config.genders, me.gender)}</div>
-      ${me.age_group === "teen" ? "" : `<div class="field"><span>Кого ищу</span>${choiceGroup("looking_for", state.config.looking_for, me.looking_for)}</div>`}
+      <div class="field"><span>Кого ищу</span>${choiceGroup("looking_for", state.config.looking_for, me.looking_for)}</div>
       <label class="field"><span>Описание</span><textarea class="input" name="bio" maxlength="500">${esc(me.bio)}</textarea></label>
       <label class="field"><span>Искать в радиусе <b id="dist-val">${me.max_distance_km}</b> км</span>
         <input type="range" name="dist" min="1" max="300" value="${Math.min(me.max_distance_km, 300)}"></label>
@@ -1297,8 +1286,13 @@ function renderSettings() {
     <div class="section stack">
       <a class="row-link" href="#/guide"><span><b>Как пользоваться</b><br><span class="muted small">Жесты, пары, чат и звонки</span></span>${icons.arrow}</a>
       <a class="row-link" href="#/support"><span><b>Поддержка</b><br><span class="muted small">Помощь, жалобы и предложения</span></span>${icons.headset}</a>
-      ${me.age_group === "adult" ? `<a class="row-link" href="#/ads"><span><b>Реклама в COFI</b><br><span class="muted small">Чат с помощником для рекламодателей</span></span>${icons.megaphone}</a>` : ""}
     </div>
+
+    <a class="section ad-offer" href="#/ads">
+      <span class="ad-offer-icon">${icons.megaphone}</span>
+      <span><b>Реклама в COFI</b><br>Нативные карточки в ленте, баннеры в чатах и благотворительные спецпроекты с лентой «Питомцы». Помощник расскажет об условиях.</span>
+      ${icons.arrow}
+    </a>
 
     <div class="section stack">
       <h3>Аккаунт</h3>

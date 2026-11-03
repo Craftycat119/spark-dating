@@ -25,17 +25,17 @@ export const EN = {
   "Знакомимся": "Let's get to know you", "Имя": "Name", "Дата рождения": "Date of birth", "Я": "I am", "Кого ищу": "Looking for",
   "Коротко о себе": "About you", "Дальше": "Next", "Назад": "Back", "Готово": "Done", "Отмена": "Cancel",
   "Например: варю фильтр-кофе, по субботам бегаю в парке": "For example: I brew filter coffee and run in the park on Saturdays",
-  "COFI доступен с 14 лет. До 18 лет открыта только лента «Дружба 14–17», без знакомств. Дату нельзя будет изменить самостоятельно.":
-    "COFI is for ages 14 and up. Under 18 you only get the Friends 14–17 feed, no dating. You can't change this date yourself later.",
+  "COFI доступен с 12 лет. До 18 лет открыта только лента «Дружба», без знакомств. Дату нельзя будет изменить самостоятельно.":
+    "COFI is for ages 12 and up. Under 18 you only get the Friends feed, no dating. You can't change this date yourself later.",
   "Укажите дату рождения": "Enter your date of birth", "Выберите пол и кого ищете": "Choose your gender and who you're looking for",
-  "Мужчина": "Man", "Женщина": "Woman", "Мужчин": "Men", "Женщин": "Women", "Всех": "Everyone",
+  "Парень": "Guy", "Девушка": "Girl", "Парня": "A guy", "Девушку": "A girl", "Всех": "Everyone",
   "Пара вопросов о вас": "A few questions about you", "Интересы": "Interests", "Пропустить вопрос": "Skip question",
   "Выберите хотя бы один вариант": "Choose at least one option", "Интересы сохранены": "Interests saved",
   "Что вы ищете": "What are you looking for", "Можно несколько вариантов": "You can pick several",
   "Чем любите заниматься": "What do you like doing", "Выберите то, на что правда тратите время": "Pick what you actually spend time on",
   "Какая музыка звучит у вас в наушниках": "What's playing in your headphones", "Кино и сериалы": "Movies and shows",
   "Идеальные выходные": "Perfect weekend", "Что для вас важно": "What matters to you",
-  "В 14–17 лет COFI только для дружбы": "At 14–17 COFI is for friendship only",
+  "До 18 лет COFI только для дружбы": "Under 18 COFI is for friendship only",
   "Серьёзные отношения": "Serious relationship", "Свидания": "Dates", "Дружба": "Friendship", "Компания для хобби": "Hobby buddies", "Просто общение": "Just chatting",
   "Спортзал": "Gym", "Бег": "Running", "Йога": "Yoga", "Велосипед": "Cycling", "Танцы": "Dancing", "Плавание": "Swimming",
   "Сноуборд и лыжи": "Snowboard and ski", "Фотография": "Photography", "Рисование": "Drawing", "Играю на инструменте": "Playing an instrument",
@@ -66,7 +66,7 @@ export const EN = {
     "We show people near you. Others only see the distance in kilometres, never your exact address.",
   // лента
   "Ленты": "Feeds", "Чаты": "Chats", "Профиль": "Profile", "Разделы": "Sections",
-  "Знакомства 18+": "Dating 18+", "Дружба 14–17": "Friends 14–17",
+  "Знакомства": "Dating", "Питомцы": "Pets", "Лента «Питомцы»": "Pets feed",
   "Нравится": "Like", "Вернуть": "Undo", "Отменить лайк": "Undo like", "Вернуть последнюю анкету": "Bring back the last profile",
   "Лайк отменён": "Like cancelled", "Анкета возвращена": "Profile restored",
   "Свайп вниз: нравится, вверх: дальше. Нажмите на фото, чтобы открыть анкету": "Swipe down to like, up to skip. Tap the photo to open the profile",
@@ -150,8 +150,8 @@ export const EN = {
   "Какие форматы рекламы?": "What ad formats are there?", "Сколько стоит?": "How much does it cost?", "Какая аудитория?": "What's the audience?", "Оставить заявку": "Leave a request",
   "Здравствуйте! Я помощник COFI по рекламе. Расскажу о форматах, аудитории и условиях. Выберите вопрос ниже или напишите свой, а менеджер подключится к этому чату.":
     "Hello! I'm the COFI advertising assistant. I can tell you about formats, audience and terms. Pick a question below or type your own, and a manager will join this chat.",
-  "Форматы: 1) нативная карточка в ленте между анкетами, 2) баннер в списке чатов, 3) спецпроект: ваш бренд в опросе интересов или в ленте «Животные» (благотворительные интеграции). Реклама показывается только взрослой аудитории.":
-    "Formats: 1) a native card in the feed between profiles, 2) a banner in the chat list, 3) a special project: your brand in the interest survey or the Animals feed (charity integrations). Ads are shown to adults only.",
+  "Форматы: 1) нативная карточка в ленте между анкетами, 2) баннер в списке чатов, 3) спецпроект: ваш бренд в опросе интересов или в ленте «Питомцы» (благотворительные интеграции). Реклама показывается только взрослой аудитории.":
+    "Formats: 1) a native card in the feed between profiles, 2) a banner in the chat list, 3) a special project: your brand in the interest survey or the Pets feed (charity integrations). Ads are shown to adults only.",
   "Стоимость зависит от формата, гео и срока. Напишите бюджет и задачу, и менеджер пришлёт медиакит с ценами в течение рабочего дня.":
     "Pricing depends on format, location and duration. Share your budget and goal, and a manager will send a media kit with prices within one business day.",
   "Оставьте, пожалуйста, телефон, почту или Telegram и название компании. Менеджер свяжется с вами.": "Please leave a phone, email or Telegram and your company name. A manager will get in touch.",
@@ -184,13 +184,13 @@ export const EN = {
   "Аккаунт с этой почтой уже существует — войдите": "An account with this email exists, please sign in",
   "Подтвердите почту — мы отправили код": "Confirm your email, we sent a code",
   "Дату рождения можно изменить только через поддержку": "Your date of birth can only be changed via support",
-  "Проверьте дату рождения": "Check your date of birth", "В 14–17 лет доступна только дружба": "At 14–17 only friendship is available",
+  "Проверьте дату рождения": "Check your date of birth", "До 18 лет доступна только дружба": "Under 18 only friendship is available",
   "Укажите имя": "Enter your name", "Укажите пол": "Choose your gender", "Укажите, кого ищете": "Choose who you're looking for",
   "Выберите, что вы ищете": "Choose what you're looking for", "Анкета не найдена": "Profile not found", "Анкета больше не доступна": "This profile is no longer available",
   "Нечего отменять": "Nothing to undo", "У вас уже есть переписка. Удалить пару можно в чате": "You already have a conversation. You can unmatch in the chat",
   "Заполните анкету и подтвердите фото": "Complete your profile and verify your photo", "Разрешите доступ к геопозиции": "Allow location access",
   "Чат не найден": "Chat not found", "Пустое сообщение": "Empty message", "Нельзя лайкнуть себя": "You can't like yourself",
-  "Публиковать объявления и отправлять заявки можно с 18 лет": "Posting and sending requests is for 18+",
+  "Отправлять заявки можно с 18 лет": "Sending requests is for 18+", "Объявления добавляет администрация COFI": "Posts are added by the COFI team",
   "Укажите Telegram: @username или ссылку t.me/…": "Enter a Telegram: @username or a t.me/… link", "Выберите категорию": "Choose a category",
   "Укажите кличку или название": "Enter a name", "Объявление не найдено": "Post not found", "Сбор уже закрыт, спасибо!": "Fundraising is closed, thank you!",
   "Сбор бывает только в категории «Помощь и сборы»": "Fundraising is only for the Help and fundraising category",
@@ -211,7 +211,21 @@ export const EN = {
   "Дружба 14–17 без знакомств, 6 анкет": "Friends 14–17, no dating, 6 profiles",
   "Это демо 14–17: только дружба. Свайп вниз, чтобы добавить в друзья": "This is the 14–17 demo: friendship only. Swipe down to add a friend",
   "Это демо: свайп вниз, чтобы лайкнуть. Некоторые боты уже лайкнули вас": "This is a demo: swipe down to like. Some bots have already liked you",
-  "Вход через Telegram": "Sign in with Telegram",
+  "Вход через Telegram": "Sign in with Telegram", "Демо": "Demo",
+  "Мне 12–17": "I'm 12–17", "Знакомства и питомцы, 10 анкет": "Dating and pets, 10 profiles", "Дружба без знакомств, 6 анкет": "Friendship, no dating, 6 profiles",
+  "Это демо ленты «Дружба»: свайп вниз, чтобы добавить в друзья": "This is the Friends demo: swipe down to add a friend",
+  "Нативные карточки в ленте, баннеры в чатах и благотворительные спецпроекты с лентой «Питомцы». Помощник расскажет об условиях.":
+    "Native cards in the feed, banners in chats and charity projects with the Pets feed. The assistant will explain the terms.",
+  "«Знакомства» (с 18 лет), «Дружба» (до 18 лет) и «Питомцы» переключаются вкладками сверху. Подростки и взрослые никогда не видят друг друга.":
+    "Dating (18+), Friends (under 18) and Pets switch with the tabs at the top. Teens and adults never see each other.",
+  "Или кнопка с сердцем. Если симпатия взаимная, появится экран «Взаимно». В ленте «Дружба» кнопка называется «Дружить».":
+    "Or the heart button. If it's mutual, you'll see the match screen. In the Friends feed the button says Be friends.",
+  "Подробная карточка": "Full details",
+  "Нажмите на объявление: все фото, полное описание, цель сбора и сколько человек уже откликнулось. Объявления проверяет и добавляет администрация COFI.":
+    "Tap a post: all photos, the full description, the fundraising goal and how many people responded. Posts are checked and added by the COFI team.",
+  "Указывается один раз и сама не меняется. С 12 до 17 лет открыта только «Дружба», с 18 лет знакомства. Исправить дату можно через поддержку.":
+    "Set once and can't be changed by you. Ages 12–17 only get Friends, dating starts at 18. Support can fix the date.",
+  "Стерилизация бездомных животных": "Sterilising stray animals", "20 000 ₽": "20,000 ₽",
   "Здравствуйте! Это демо, здесь отвечает автоматический оператор. В приложении ответит живой сотрудник из админ-панели.": "Hello! This is a demo, an automatic operator replies here. In the app a real staff member answers from the admin panel.",
   "Здравствуйте! Это поддержка COFI. Опишите, пожалуйста, ваш вопрос: что случилось и на каком экране.": "Hello! This is COFI support. Please describe your question: what happened and on which screen.",
   "Здравствуйте! Расскажите, на кого или на что вы хотите пожаловаться и что произошло. Если это анкета, укажите имя.": "Hello! Tell us who or what you'd like to report and what happened. If it's a profile, include the name.",
@@ -281,8 +295,8 @@ export const PATTERNS = [
   [/^Можно добавить не больше (\d+) фото$/, "You can add up to $1 photos"],
   [/^Не больше (\d+) фото$/, "Up to $1 photos"],
   [/^Файл больше (\d+) МБ$/, "File is larger than $1 MB"],
-  [/^Сейчас в COFI (\d+) анкет с подтверждённым фото, из них (\d+) старше 18 лет\. Популярные интересы: (.+)\. Подростковая лента \(14–17\) для рекламы закрыта\.$/,
-    (_, a, b, c) => `COFI has ${a} profiles with a verified photo, ${b} of them 18+. Popular interests: ${c.split(", ").map((x) => x.replace(/^(.+) \((\d+)\)$/, (m, k, v) => `${w(k)} (${v})`)).join(", ")}. The teen feed (14–17) is closed to ads.`],
+  [/^Сейчас в COFI (\d+) анкет с подтверждённым фото, из них (\d+) старше 18 лет\. Популярные интересы: (.+)\. Лента «Дружба» \(до 18 лет\) для рекламы закрыта\.$/,
+    (_, a, b, c) => `COFI has ${a} profiles with a verified photo, ${b} of them 18+. Popular interests: ${c.split(", ").map((x) => x.replace(/^(.+) \((\d+)\)$/, (m, k, v) => `${w(k)} (${v})`)).join(", ")}. The Friends feed (under 18) is closed to ads.`],
   [/^Спасибо! Обращение №(\d+) принято\. Оператор ответит прямо здесь, обычно в течение часа\.$/, "Thanks! Request #$1 received. An operator will reply right here, usually within an hour."],
   [/^Жалоба на анкету: (.+) \(№(\d+)\)\. Причина:$/, "Report on profile: $1 (#$2). Reason:"],
   [/^Здравствуйте! Вы жалуетесь на анкету «(.+)»\. Расскажите, пожалуйста, что произошло\.$/, "Hello! You're reporting the profile \"$1\". Please tell us what happened."],

@@ -31,7 +31,7 @@ def user_profile(user_id: int, me: User = Depends(current_user), db: Session = D
     if conv is None:
         if not other or not me.is_complete:
             raise HTTPException(404, "Анкета не найдена")
-        if me.age_group == "adult" and not compatible(me.gender, me.looking_for, other.gender, other.looking_for):
+        if not compatible(me.gender, me.looking_for, other.gender, other.looking_for):
             raise HTTPException(404, "Анкета не найдена")
     else:
         other = db.get(User, user_id)

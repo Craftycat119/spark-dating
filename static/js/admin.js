@@ -286,21 +286,78 @@ on("support", (d) => {
   else toast(`Новое сообщение в обращении №${d.thread_id}`);
 });
 
-// ---------- Животные ----------
+// ---------- Питомцы: объявления добавляет только администрация ----------
+const PET_CATS = { charity: "Помощь и сборы", foster: "Передержка", adoption: "Ищет хозяина" };
+
 async function animals() {
-  view.innerHTML = `<h1>Животные</h1><div id="pets"><div class="spinner"></div></div>`;
+  view.innerHTML = `<h1>Питомцы</h1>
+    <details class="pet-form">
+      <summary class="btn">${icons.plus} Добавить объявление</summary>
+      <form class="stack" style="max-width:640px;margin-top:16px">
+        <div class="row" style="gap:8px;flex-wrap:wrap">${Object.entries(PET_CATS).map(([k, l], i) =>
+          `<label class="chip"><input type="radio" name="category" value="${k}" ${i ? "" : "checked"}> ${l}</label>`).join("")}</div>
+        <div class="row" style="gap:10px;align-items:flex-start">
+          <label class="field" style="flex:2"><span>Кличка или название</span><input class="input" name="name" maxlength="64" required></label>
+          <label class="field" style="flex:1"><span>Кто это</span><select class="input" name="species"><option>Кошка</option><option>Собака</option><option>Другое</option></select></label>
+        </div>
+        <div class="row" style="gap:10px;align-items:flex-start">
+          <label class="field" style="flex:1"><span>Возраст</span><input class="input" name="age_text" maxlength="32" placeholder="2 года"></label>
+          <label class="field" style="flex:1"><span>Город</span><input class="input" name="city" maxlength="64" value="Москва"></label>
+          <label class="field" style="flex:1" data-goal><span>Цель сбора</span><input class="input" name="fundraising_goal" maxlength="64" placeholder="20 000 ₽"></label>
+        </div>
+        <label class="field"><span>Описание</span><textarea class="input" name="description" rows="6" maxlength="3000"></textarea></label>
+        <label class="field"><span>Telegram для заявок</span><input class="input" name="contact" maxlength="128" required placeholder="@username или t.me/… группы"></label>
+        <label class="field"><span>Фото, до 5</span><input type="file" name="photos" accept="image/*" multiple></label>
+        <button class="btn">Опубликовать</button>
+      </form>
+    </details>
+    <div id="pets" style="margin-top:22px"><div class="spinner"></div></div>`;
+  const form = $(".pet-form form", view);
+  const syncGoal = () => ($("[data-goal]", form).hidden = form.category.value !== "charity");
+  $$("input[name=category]", form).forEach((r) => (r.onchange = syncGoal));
+  syncGoal();
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const files = [...form.photos.files];
+    if (files.length > 5) return toast("Не больше 5 фото", { error: true });
+    const fd = new FormData();
+    for (const k of ["category", "name", "species", "age_text", "city", "description", "contact"]) fd.append(k, form[k].value);
+    if (form.category.value === "charity") fd.append("fundraising_goal", form.fundraising_goal.value);
+    files.forEach((f) => fd.append("files", f));
+    try {
+      await api.post("/api/animals", fd);
+      toast("Объявление опубликовано");
+      form.reset();
+      syncGoal();
+      loadPets();
+    } catch (ex) { toast(ex.message, { error: true }); }
+  };
+  loadPets();
+}
+
+async function loadPets() {
   const list = await api.get("/api/admin/animals");
-  $("#pets").innerHTML = list.length ? `<table class="grid"><thead><tr><th></th><th>Кличка</th><th>Категория</th><th>Автор</th><th>Telegram</th><th>Заявки</th><th>Статус</th><th></th></tr></thead><tbody>
+  const box = $("#pets");
+  if (!box) return;
+  box.innerHTML = list.length ? `<table class="grid"><thead><tr><th></th><th>Кличка</th><th>Категория</th><th>Telegram</th><th>Заявки</th><th>Сбор</th><th>Публикация</th><th></th></tr></thead><tbody>
     ${list.map((p) => `<tr><td>${p.photos[0] ? `<img src="${esc(p.photos[0])}" alt="">` : ""}</td><td><b>${esc(p.name)}</b><br><span class="muted small">${dt(p.created_at)}</span></td>
-      <td>${esc(p.category)}${p.fundraising_open === null ? "" : p.fundraising_open ? ' <span class="tag ok">сбор открыт</span>' : ' <span class="tag">сбор закрыт</span>'}</td>
-      <td>${esc(p.author.name)} #${p.author.id}</td><td>${esc(p.contact)}</td><td>${p.requests}</td>
-      <td>${p.active ? '<span class="tag ok">опубликовано</span>' : '<span class="tag warn">снято</span>'}</td>
-      <td><button class="btn danger" data-del="${p.id}" style="min-height:34px;padding:0 12px;font-size:13px">Удалить</button></td></tr>`).join("")}</tbody></table>`
-    : '<p class="muted">Объявлений пока нет.</p>';
-  $$("[data-del]", view).forEach((b) => (b.onclick = async () => {
+      <td>${esc(p.category)}</td><td>${esc(p.contact)}</td><td>${p.requests}</td>
+      <td>${p.fundraising_open === null ? "—" : `<button class="btn ${p.fundraising_open ? "quiet" : "dark"} tiny" data-fund="${p.id}" data-open="${p.fundraising_open}">${p.fundraising_open ? "Открыт: закрыть" : "Закрыт: открыть"}</button>`}</td>
+      <td><button class="btn quiet tiny" data-active="${p.id}" data-on="${p.active}">${p.active ? "Снять" : "Вернуть"}</button></td>
+      <td><button class="btn danger tiny" data-del="${p.id}">Удалить</button></td></tr>`).join("")}</tbody></table>`
+    : '<p class="muted">Объявлений пока нет. Добавьте первое кнопкой выше.</p>';
+  $$("[data-fund]", box).forEach((b) => (b.onclick = async () => {
+    await api.patch(`/api/animals/${b.dataset.fund}`, { fundraising_open: b.dataset.open !== "true" });
+    loadPets();
+  }));
+  $$("[data-active]", box).forEach((b) => (b.onclick = async () => {
+    await api.patch(`/api/animals/${b.dataset.active}`, { active: b.dataset.on !== "true" });
+    loadPets();
+  }));
+  $$("[data-del]", box).forEach((b) => (b.onclick = async () => {
     if (!(await confirmDialog("Удалить объявление вместе с фото?", "Удалить"))) return;
     await api.del(`/api/admin/animals/${b.dataset.del}`);
-    animals();
+    loadPets();
   }));
 }
 

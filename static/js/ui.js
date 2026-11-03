@@ -17,7 +17,31 @@ export function h(html) {
 
 export function toast(text, { error = false, image = null, onClick = null, timeout = 4000 } = {}) {
   const el = h(`<div class="toast ${error ? "error" : ""}" role="status">${image ? `<img src="${esc(image)}" alt="">` : ""}<div>${esc(text)}</div></div>`);
-  el.onclick = () => { onClick?.(); el.remove(); };
+  // смахнуть уведомление вверх, чтобы убрать
+  let y0 = null, dy = 0;
+  el.addEventListener("pointerdown", (e) => { y0 = e.clientY; dy = 0; el.setPointerCapture(e.pointerId); el.style.transition = "none"; });
+  el.addEventListener("pointermove", (e) => {
+    if (y0 === null) return;
+    dy = Math.min(0, e.clientY - y0);
+    el.style.transform = `translateY(${dy}px)`;
+    el.style.opacity = String(1 + dy / 120);
+  });
+  const release = () => {
+    if (y0 === null) return;
+    y0 = null;
+    el.style.transition = "transform .25s, opacity .25s";
+    if (dy < -30) {
+      el.style.transform = "translateY(-120%)";
+      el.style.opacity = "0";
+      setTimeout(() => el.remove(), 250);
+    } else {
+      el.style.transform = "";
+      el.style.opacity = "";
+    }
+  };
+  el.addEventListener("pointerup", release);
+  el.addEventListener("pointercancel", release);
+  el.onclick = () => { if (dy < -5) return; onClick?.(); el.remove(); };
   document.getElementById("toasts").append(el);
   setTimeout(() => el.remove(), timeout);
 }
