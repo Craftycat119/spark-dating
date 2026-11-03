@@ -720,6 +720,6 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
   .feed .btns .undo { width: 46px; height: 46px; margin-top: 6px; }
   .feed .rest { -webkit-line-clamp: 1; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
 }
-/* нитка: горизонтальный свайп = ответ, вертикаль = прокрутка */
-.feed .thread { touch-action: pan-y; cursor: grab; transition: transform .3s var(--ease), opacity .3s; }
+/* нитка: свайп вверх/вниз = ответ, как по фото */
+.feed .thread { touch-action: none; cursor: grab; transition: transform .3s var(--ease), opacity .3s; }
 .feed .thread.dragging { cursor: grabbing; user-select: none; }

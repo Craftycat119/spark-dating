@@ -650,7 +650,7 @@ async function renderFeed() {
     <div class="topbar"><span class="row" style="gap:8px"><span class="logo">cofi<span>°</span></span>${state.me.is_demo ? '<span class="demo-pill">демо</span>' : ""}</span><span class="counter"></span></div>
     ${feedTabs("people", state.me)}
     <div class="deck" aria-live="polite"><div class="skeleton" style="position:relative;height:420px"></div></div>
-    <p class="swipe-hint" hidden>Фото: свайп вниз нравится, вверх дальше. Нитка: вправо нравится, влево дальше. Нажмите на фото, чтобы открыть анкету</p>
+    <p class="swipe-hint" hidden>Свайп по фото или нитке вниз: нравится, вверх: дальше. Нажмите на фото, чтобы открыть анкету</p>
     <div class="btns" hidden>
       <div class="bw undo-wrap"><button class="undo" aria-label="Вернуть" disabled>${icons.undo}</button><span class="undo-label">Вернуть</span></div>
       <div class="bw"><button class="skip" aria-label="Дальше">${icons.x}</button><span>Дальше</span></div>
@@ -707,7 +707,6 @@ async function renderFeed() {
     }
     btns.hidden = hint.hidden = false;
     counter.textContent = `${seen + 1} из ${Math.max(total, seen + 1)} рядом`;
-    const rest = c.interests.filter((x) => !c.common.includes(x));
     deck.replaceChildren(h(`<div>
       <article class="person enter">
         <button class="ava" aria-label="Открыть анкету: ${esc(c.name)}">
@@ -722,7 +721,6 @@ async function renderFeed() {
         ? `У вас общего: <b>${c.common.length} ${plural(c.common.length, "интерес", "интереса", "интересов")}</b> · совпадение ${c.match}%`
         : "Общих интересов пока нет, но можно познакомиться"}</div>
       <div class="thread"></div>
-      ${rest.length ? `<p class="rest">Ещё интересы: ${esc(rest.slice(0, 8).join(", "))}</p>` : ""}
     </div>`));
     $(".ava", deck).onclick = () => { if (!swiped) openProfile(c.id, { onDecide: decide }); };
     thread = mountThread($(".thread", deck), c.common.slice(0, 5));
@@ -769,66 +767,50 @@ async function renderFeed() {
   $(".skip", btns).onclick = () => decide(false);
   $(".like", btns).onclick = () => decide(true);
 
-  // Свайп по фото: вниз — нравится, вверх — дальше.
-  // Свайп по нитке с интересами: вправо — нравится, влево — дальше.
-  // Вертикальное движение по нитке и по остальному экрану — обычная прокрутка (touch-action: pan-y),
-  // поэтому браузер сам отдаёт его скроллу и присылает pointercancel.
+  // Свайп по фото или по нитке с интересами: вниз — нравится, вверх — дальше.
+  // Остальная часть экрана прокручивается пальцем как обычно и на анкету не отвечает.
   let g = null, swiped = false;
   const glow = (v) => (v > 30 ? "0 0 0 6px rgba(242, 98, 31, .55)" : v < -30 ? "0 0 0 6px rgba(243, 233, 223, .25)" : "");
   const resetG = () => {
     if (!g) return;
-    g.el.style.transition = g.el.style.transform = g.el.style.boxShadow = g.el.style.opacity = "";
+    g.el.style.transition = g.el.style.transform = g.el.style.opacity = "";
     g.el.classList.remove("dragging");
+    const ava = $(".ava", deck);
+    if (ava) ava.style.transform = ava.style.boxShadow = "";
     g = null;
   };
   deck.addEventListener("pointerdown", (e) => {
     if (busy || e.button > 0) return;
-    const ava = e.target.closest(".ava"), th = e.target.closest(".thread");
-    if (!ava && !th) return;
-    g = { el: ava || th, axis: ava ? "y" : "x", x0: e.clientX, y0: e.clientY, id: e.pointerId, active: false };
+    const el = e.target.closest(".ava, .thread");
+    if (!el) return;
+    g = { el, y0: e.clientY, id: e.pointerId };
     swiped = false;
-    if (ava) ava.setPointerCapture(e.pointerId);
+    el.setPointerCapture(e.pointerId);
+    el.classList.add("dragging");
   });
   deck.addEventListener("pointermove", (e) => {
     if (!g || e.pointerId !== g.id) return;
-    const dx = e.clientX - g.x0, dy = e.clientY - g.y0;
-    if (g.axis === "x" && !g.active) {
-      // нитка: ждём, пока станет ясно направление; вертикаль — отпускаем жест прокрутке
-      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) return resetG();
-      if (Math.abs(dx) < 10) return;
-      g.active = true;
-      g.el.setPointerCapture(e.pointerId);
-      g.el.classList.add("dragging");
-    }
-    if (g.axis === "y") {
-      const v = Math.max(-90, Math.min(90, dy));
-      if (Math.abs(v) > 6) swiped = true;
-      g.el.style.transform = `translateY(${v * 0.5}px) scale(${1 - Math.abs(v) / 900})`;
-      g.el.style.boxShadow = glow(v);
-    } else {
-      const v = Math.max(-160, Math.min(160, dx));
-      swiped = true;
-      g.el.style.transition = "none";
-      g.el.style.transform = `translateX(${v * 0.6}px) rotate(${v / 40}deg)`;
-      g.el.style.opacity = String(1 - Math.abs(v) / 500);
-    }
+    const v = Math.max(-90, Math.min(90, e.clientY - g.y0));
+    if (Math.abs(v) > 6) swiped = true;
     const ava = $(".ava", deck);
-    if (g.axis === "x" && ava) ava.style.boxShadow = glow(dx);
+    if (g.el === ava) ava.style.transform = `translateY(${v * 0.5}px) scale(${1 - Math.abs(v) / 900})`;
+    else {
+      g.el.style.transition = "none";
+      g.el.style.transform = `translateY(${v * 0.5}px)`;
+      g.el.style.opacity = String(1 - Math.abs(v) / 300);
+    }
+    if (ava) ava.style.boxShadow = glow(v);
   });
   const endSwipe = (e) => {
     if (!g || e.pointerId !== g.id) return;
-    const { axis, active } = g;
-    const d = axis === "y" ? e.clientY - g.y0 : e.clientX - g.x0;
+    const d = e.clientY - g.y0;
     resetG();
-    const ava = $(".ava", deck);
-    if (ava) ava.style.boxShadow = "";
-    if (axis === "x" && !active) return;
     if (d > 70) decide(true);
     else if (d < -70) decide(false);
     setTimeout(() => (swiped = false), 50); // чтобы свайп не открыл анкету как нажатие
   };
   deck.addEventListener("pointerup", endSwipe);
-  deck.addEventListener("pointercancel", (e) => { const ava = $(".ava", deck); if (ava) ava.style.boxShadow = ""; resetG(); });
+  deck.addEventListener("pointercancel", resetG);
   const keys = (e) => {
     if (!document.body.contains(deck)) return document.removeEventListener("keydown", keys);
     if (e.target.closest("input, textarea") || $(".profile-view")) return;
