@@ -292,6 +292,7 @@ export const PATTERNS = [
   [/^Помочь: ?$/, "Help:"],
   [/^Режим разработки, почта не настроена\. Код:$/, "Dev mode, email isn't set up. Code:"],
   [/^Новый код можно запросить через (\d+) с$/, "You can request a new code in $1 s"],
+  [/^Код уже отправлен на эту почту. Новый код можно запросить через (\d+) с$/, "The code has already been sent to this email. You can request a new one in $1 s"],
   [/^Отметьте ещё (\d+), чтобы мы могли подбирать пары$/, "Pick $1 more so we can find matches"],
   [/^Выберите хотя бы (\d+) интереса$/, "Choose at least $1 interests"],
   [/^COFI доступен с (\d+) лет$/, "COFI is for ages $1 and up"],

@@ -265,6 +265,7 @@ ${sheet}`, { nav: false, cls: "auth" });
       if (mode === "register") {
         const r = await api.post("/api/auth/register", { email, password });
         renderCode(email, r.dev_code);
+        if (r.status === "code_pending") toast(`Код уже отправлен на эту почту. ${r.detail}`);
       } else {
         state.me = await api.post("/api/auth/login", { email, password });
         afterLogin();

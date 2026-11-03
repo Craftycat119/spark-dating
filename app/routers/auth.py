@@ -118,7 +118,14 @@ def register(data: Credentials, request: Request, background: BackgroundTasks, d
         db.add(user)
     user.password_hash = hash_password(data.password)
     db.commit()
-    return _issue_code(db, email, "verify", background)
+    try:
+        return _issue_code(db, email, "verify", background)
+    except HTTPException as ex:
+        # Вернулись «Назад» с экрана кода и снова нажали «Создать аккаунт»: письмо уже ушло,
+        # пускаем на экран кода, старый код по-прежнему действует
+        if ex.status_code != 429:
+            raise
+        return {"status": "code_pending", "email": email, "detail": ex.detail}
 
 
 @router.post("/resend-code")
