@@ -84,13 +84,15 @@ function onboardingStep(me) {
   return null;
 }
 
+let nextAuthMode = "login"; // какую вкладку открыть на экране входа при следующем показе
+
 function route() {
   closeChat();
   $(".profile-view")?.remove();
   const page = currentHash().split("/")[1];
   if (page === "guide") return showGuide();
   if (page === "ads") return renderAds({ screen, go, loggedIn: !!state.me });
-  if (!state.me) return renderAuth();
+  if (!state.me) { const m = nextAuthMode; nextAuthMode = "login"; return renderAuth(m); }
   const step = onboardingStep(state.me);
   const [, name, arg] = currentHash().split("/");
   if (step && !["settings", "support"].includes(name)) return renderOnboarding(step);
@@ -327,7 +329,8 @@ const codeBoxesHtml = `<div class="code-boxes">${'<input class="input" inputmode
 
 function renderCode(email, devCode) {
   const root = screen(`
-    <div class="stack" style="margin-top:24px">
+    ${backBtn()}
+    <div class="stack">
       <h1>Проверьте почту</h1>
       <p class="muted">Мы отправили 6-значный код на <b style="color:var(--text)">${esc(email)}</b>. На эту почту будут приходить новости о метчах и обновлениях.</p>
       ${devCode ? `<p class="hint">Режим разработки, почта не настроена. Код: <b>${esc(devCode)}</b></p>` : ""}
@@ -356,11 +359,13 @@ function renderCode(email, devCode) {
     } catch (ex) { toast(ex.message, { error: true }); }
   };
   $("#back", root).onclick = () => renderAuth("register");
+  bindBack(root, () => renderAuth("register"));
 }
 
 function renderForgot(prefill = "") {
   const root = screen(`
-    <div class="stack" style="margin-top:24px">
+    ${backBtn()}
+    <div class="stack">
       <h1>Новый пароль</h1>
       <p class="muted">Пришлём код на почту, после чего вы зададите новый пароль.</p>
       <form class="stack" id="f1">
@@ -395,15 +400,40 @@ function renderForgot(prefill = "") {
     } catch (ex) { toast(ex.message, { error: true }); }
   };
   $("#back", root).onclick = () => renderAuth("login");
+  bindBack(root, () => renderAuth("login"));
 }
 
 // ---------------- Онбординг ----------------
 
 const STEP_ORDER = ["about", "survey", "photo", "scan", "location"];
 
+/** Кнопка «Назад» над шагом регистрации. */
+const backBtn = (label = "Назад") => `<button type="button" class="back-btn" data-step-back>${icons.back}<span>${label}</span></button>`;
+
+function bindBack(root, fn) {
+  $("[data-step-back]", root)?.addEventListener("click", fn);
+}
+
+/** Выйти из незавершённой регистрации и вернуться к выбору способа: почта или Telegram. */
+async function changeSignupMethod() {
+  try { await api.post("/api/auth/logout"); } catch {}
+  disconnectSocket();
+  state.me = null;
+  nextAuthMode = "register";
+  go("#/");
+}
+
+const STEP_BACK = {
+  about: changeSignupMethod,
+  survey: () => stepAbout(),
+  photo: () => renderSurvey({ fromEnd: true }),
+  scan: () => stepPhoto(),
+  location: () => stepScan(),
+};
+
 function stepsBar(step) {
   const i = STEP_ORDER.indexOf(step);
-  return `<div class="steps" aria-label="Шаг ${i + 1} из ${STEP_ORDER.length}">${STEP_ORDER.map((_, j) => `<i class="${j <= i ? "done" : ""}"></i>`).join("")}</div>`;
+  return `${backBtn(step === "about" ? "Сменить способ входа" : "Назад")}<div class="steps" aria-label="Шаг ${i + 1} из ${STEP_ORDER.length}">${STEP_ORDER.map((_, j) => `<i class="${j <= i ? "done" : ""}"></i>`).join("")}</div>`;
 }
 
 async function nextStep() {
@@ -442,6 +472,7 @@ function stepAbout() {
       <p class="error-text" hidden></p>
       <button class="btn block">Дальше</button>
     </form>`, { nav: false });
+  bindBack(root, STEP_BACK.about);
   bindChoice(root, "gender", (v) => (pick.gender = v));
   bindChoice(root, "looking_for", (v) => (pick.looking_for = v));
   const form = $("form", root);
@@ -461,10 +492,10 @@ function stepAbout() {
 }
 
 /** Опрос: по вопросу на экран, можно выбирать несколько вариантов. */
-function renderSurvey({ editing = false } = {}) {
+function renderSurvey({ editing = false, fromEnd = false } = {}) {
   const survey = state.config.survey;
   const answers = { goals: new Set(state.me.goals), interests: new Set(state.me.interests) };
-  let i = 0;
+  let i = fromEnd ? survey.length - 1 : 0;
 
   const draw = () => {
     let q = survey[i];
@@ -494,6 +525,7 @@ function renderSurvey({ editing = false } = {}) {
     const err = $(".error-text", root);
     const fail = (m) => { err.textContent = m; err.hidden = false; };
     $("[data-back]", root)?.addEventListener("click", () => { i--; draw(); });
+    bindBack(root, () => (i > 0 ? (i--, draw()) : STEP_BACK.survey()));
     $("[data-skip]", root)?.addEventListener("click", () => { i++; draw(); });
     $("[data-next]", root).onclick = async () => {
       if (q.key === "goals" && !answers.goals.size) return fail("Выберите хотя бы один вариант");
@@ -548,6 +580,7 @@ function stepPhoto() {
       <input type="file" accept="image/*" hidden>
       <p class="error-text" hidden></p>
     </div>`, { nav: false });
+  bindBack(root, STEP_BACK.photo);
   photoPicker(root, nextStep);
 }
 
@@ -563,6 +596,7 @@ function stepScan() {
       <button class="btn ghost block" id="change">Выбрать другое фото</button>
       <input type="file" accept="image/*" hidden>
     </div>`, { nav: false });
+  bindBack(root, STEP_BACK.scan);
   const startBtn = $("#start", root);
   const err = $("#scan-error", root);
   startBtn.onclick = async () => {
@@ -612,7 +646,8 @@ function stepLocation() {
       <p class="error-text" hidden></p>
       <button class="btn block">${icons.pin} Разрешить геопозицию</button>
     </div>`, { nav: false });
-  const btn = $(".btn", root);
+  bindBack(root, STEP_BACK.location);
+  const btn = $(".btn.block", root);
   btn.onclick = async () => {
     btn.disabled = true;
     try {

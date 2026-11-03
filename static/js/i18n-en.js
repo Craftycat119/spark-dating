@@ -16,7 +16,7 @@ export const EN = {
   "Через Telegram почта и пароль не нужны, только подтверждение фото.": "With Telegram you don't need an email or password, only a photo check.",
   "Проверьте почту": "Check your email", "Мы отправили 6-значный код на": "We sent a 6-digit code to",
   "На эту почту будут приходить новости о метчах и обновлениях.": "Match news and updates will go to this address.",
-  "Отправить код ещё раз": "Resend code", "Изменить почту": "Change email", "Цифра кода": "Code digit",
+  "Отправить код ещё раз": "Resend code", "Изменить почту": "Change email", "Сменить способ входа": "Change sign-in method", "Цифра кода": "Code digit",
   "Новый пароль": "New password", "Пришлём код на почту, после чего вы зададите новый пароль.": "We'll email you a code, then you'll set a new password.",
   "Получить код": "Get code", "Код из письма": "Code from the email", "Не меньше 8 символов, заглавная буква и цифра.": "At least 8 characters, a capital letter and a digit.",
   "Сохранить пароль и войти": "Save password and sign in", "Вернуться ко входу": "Back to sign in",

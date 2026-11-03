@@ -723,3 +723,7 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 /* нитка: свайп вверх/вниз = ответ, как по фото */
 .feed .thread { touch-action: none; cursor: grab; transition: transform .3s var(--ease), opacity .3s; }
 .feed .thread.dragging { cursor: grabbing; user-select: none; }
+/* «Назад» на шагах регистрации */
+.back-btn { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; margin: 4px 0 16px -6px; padding: 8px 14px 8px 8px; border-radius: 999px; background: var(--surface); color: var(--text); font: 600 14px/1 inherit; font-family: inherit; }
+.back-btn i { font-size: 18px; }
+.back-btn:active { transform: scale(.96); }
