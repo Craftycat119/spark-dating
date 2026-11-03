@@ -696,3 +696,27 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .ad-offer-icon { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: rgba(26, 15, 11, .14); }
 .ad-offer-icon .ph { font-size: 24px; }
 .row-link { color: var(--text); text-decoration: none; }
+
+/* ---------- Лента: прокрутка пальцем и кнопки всегда на виду ---------- */
+.feed .deck { touch-action: pan-y; user-select: auto; flex: none; }
+.feed .ava { touch-action: none; cursor: grab; transition: transform .25s var(--ease), box-shadow .2s; }
+.feed .swipe-hint { margin-top: 6px; }
+/* кнопки ответа закреплены над нижним меню: экран можно мотать, они не прячутся */
+.feed .btns, .animals .pet-nav {
+  position: sticky; z-index: 6;
+  bottom: calc(80px + env(safe-area-inset-bottom));
+  margin: 8px -16px 0; padding: 14px 16px 10px;
+  background: linear-gradient(to bottom, transparent, var(--bg) 26%);
+}
+.feed .btns .bw span { text-shadow: 0 1px 6px var(--bg); }
+/* невысокие экраны (Telegram, маленькие телефоны): компактнее, чтобы анкета помещалась */
+@media (max-height: 820px) {
+  .feed .ava { width: 128px; height: 128px; font-size: 48px; }
+  .feed .pname { margin-top: 12px; font-size: 24px; }
+  .feed .pbio { margin-top: 8px; font-size: 14px; -webkit-line-clamp: 2; }
+  .feed .shared-lbl { margin-top: 12px; }
+  .feed .thread { height: 124px; }
+  .feed .btns button { width: 58px; height: 58px; }
+  .feed .btns .undo { width: 46px; height: 46px; margin-top: 6px; }
+  .feed .rest { -webkit-line-clamp: 1; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+}

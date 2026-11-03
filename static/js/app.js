@@ -650,12 +650,12 @@ async function renderFeed() {
     <div class="topbar"><span class="row" style="gap:8px"><span class="logo">cofi<span>°</span></span>${state.me.is_demo ? '<span class="demo-pill">демо</span>' : ""}</span><span class="counter"></span></div>
     ${feedTabs("people", state.me)}
     <div class="deck" aria-live="polite"><div class="skeleton" style="position:relative;height:420px"></div></div>
+    <p class="swipe-hint" hidden>Свайп по фото вниз: нравится, вверх: дальше. Нажмите на фото, чтобы открыть анкету</p>
     <div class="btns" hidden>
       <div class="bw undo-wrap"><button class="undo" aria-label="Вернуть" disabled>${icons.undo}</button><span class="undo-label">Вернуть</span></div>
       <div class="bw"><button class="skip" aria-label="Дальше">${icons.x}</button><span>Дальше</span></div>
       <div class="bw"><button class="like" aria-label="${teenLike()}">${icons.heart}</button><span>${teenLike()}</span></div>
-    </div>
-    <p class="swipe-hint" hidden>Свайп вниз: нравится, вверх: дальше. Нажмите на фото, чтобы открыть анкету</p>`, { cls: "feed" });
+    </div>`, { cls: "feed" });
   const deck = $(".deck", root);
   const btns = $(".btns", root);
   const hint = $(".swipe-hint", root);
@@ -724,7 +724,7 @@ async function renderFeed() {
       <div class="thread"></div>
       ${rest.length ? `<p class="rest">Ещё интересы: ${esc(rest.slice(0, 8).join(", "))}</p>` : ""}
     </div>`));
-    $(".ava", deck).onclick = () => openProfile(c.id, { onDecide: decide });
+    $(".ava", deck).onclick = () => { if (!swiped) openProfile(c.id, { onDecide: decide }); };
     thread = mountThread($(".thread", deck), c.common.slice(0, 5));
   }
 
@@ -769,17 +769,35 @@ async function renderFeed() {
   $(".skip", btns).onclick = () => decide(false);
   $(".like", btns).onclick = () => decide(true);
 
-  // Свайп по вертикали: вниз — нравится, вверх — дальше (как в макете)
-  let y0 = null;
-  deck.addEventListener("pointerdown", (e) => { if (!e.target.closest(".ava")) y0 = e.clientY; });
-  deck.addEventListener("pointerup", (e) => {
-    if (y0 === null) return;
+  // Свайп по фото: вниз — нравится, вверх — дальше (как в макете).
+  // Остальная часть экрана прокручивается пальцем как обычно и на анкету не отвечает.
+  let y0 = null, ava = null, swiped = false;
+  deck.addEventListener("pointerdown", (e) => {
+    ava = e.target.closest(".ava");
+    if (!ava || busy) return;
+    y0 = e.clientY;
+    swiped = false;
+    ava.setPointerCapture(e.pointerId);
+  });
+  deck.addEventListener("pointermove", (e) => {
+    if (y0 === null || !ava) return;
+    const dy = Math.max(-90, Math.min(90, e.clientY - y0));
+    if (Math.abs(dy) > 6) swiped = true;
+    ava.style.transform = `translateY(${dy * 0.5}px) scale(${1 - Math.abs(dy) / 900})`;
+    ava.style.boxShadow = dy > 30 ? "0 0 0 6px rgba(242, 98, 31, .55)" : dy < -30 ? "0 0 0 6px rgba(243, 233, 223, .25)" : "";
+  });
+  const endSwipe = (e) => {
+    if (y0 === null || !ava) return;
     const dy = e.clientY - y0;
     y0 = null;
-    if (dy > 80) decide(true);
-    else if (dy < -80) decide(false);
-  });
-  deck.addEventListener("pointercancel", () => (y0 = null));
+    ava.style.transform = "";
+    ava.style.boxShadow = "";
+    if (dy > 70) decide(true);
+    else if (dy < -70) decide(false);
+    setTimeout(() => (swiped = false), 50); // чтобы свайп не открыл анкету как нажатие
+  };
+  deck.addEventListener("pointerup", endSwipe);
+  deck.addEventListener("pointercancel", () => { y0 = null; if (ava) { ava.style.transform = ""; ava.style.boxShadow = ""; } });
   const keys = (e) => {
     if (!document.body.contains(deck)) return document.removeEventListener("keydown", keys);
     if (e.target.closest("input, textarea") || $(".profile-view")) return;
