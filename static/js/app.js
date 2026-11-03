@@ -650,7 +650,7 @@ async function renderFeed() {
     <div class="topbar"><span class="row" style="gap:8px"><span class="logo">cofi<span>°</span></span>${state.me.is_demo ? '<span class="demo-pill">демо</span>' : ""}</span><span class="counter"></span></div>
     ${feedTabs("people", state.me)}
     <div class="deck" aria-live="polite"><div class="skeleton" style="position:relative;height:420px"></div></div>
-    <p class="swipe-hint" hidden>Свайп по фото вниз: нравится, вверх: дальше. Нажмите на фото, чтобы открыть анкету</p>
+    <p class="swipe-hint" hidden>Фото: свайп вниз нравится, вверх дальше. Нитка: вправо нравится, влево дальше. Нажмите на фото, чтобы открыть анкету</p>
     <div class="btns" hidden>
       <div class="bw undo-wrap"><button class="undo" aria-label="Вернуть" disabled>${icons.undo}</button><span class="undo-label">Вернуть</span></div>
       <div class="bw"><button class="skip" aria-label="Дальше">${icons.x}</button><span>Дальше</span></div>
@@ -769,35 +769,66 @@ async function renderFeed() {
   $(".skip", btns).onclick = () => decide(false);
   $(".like", btns).onclick = () => decide(true);
 
-  // Свайп по фото: вниз — нравится, вверх — дальше (как в макете).
-  // Остальная часть экрана прокручивается пальцем как обычно и на анкету не отвечает.
-  let y0 = null, ava = null, swiped = false;
+  // Свайп по фото: вниз — нравится, вверх — дальше.
+  // Свайп по нитке с интересами: вправо — нравится, влево — дальше.
+  // Вертикальное движение по нитке и по остальному экрану — обычная прокрутка (touch-action: pan-y),
+  // поэтому браузер сам отдаёт его скроллу и присылает pointercancel.
+  let g = null, swiped = false;
+  const glow = (v) => (v > 30 ? "0 0 0 6px rgba(242, 98, 31, .55)" : v < -30 ? "0 0 0 6px rgba(243, 233, 223, .25)" : "");
+  const resetG = () => {
+    if (!g) return;
+    g.el.style.transition = g.el.style.transform = g.el.style.boxShadow = g.el.style.opacity = "";
+    g.el.classList.remove("dragging");
+    g = null;
+  };
   deck.addEventListener("pointerdown", (e) => {
-    ava = e.target.closest(".ava");
-    if (!ava || busy) return;
-    y0 = e.clientY;
+    if (busy || e.button > 0) return;
+    const ava = e.target.closest(".ava"), th = e.target.closest(".thread");
+    if (!ava && !th) return;
+    g = { el: ava || th, axis: ava ? "y" : "x", x0: e.clientX, y0: e.clientY, id: e.pointerId, active: false };
     swiped = false;
-    ava.setPointerCapture(e.pointerId);
+    if (ava) ava.setPointerCapture(e.pointerId);
   });
   deck.addEventListener("pointermove", (e) => {
-    if (y0 === null || !ava) return;
-    const dy = Math.max(-90, Math.min(90, e.clientY - y0));
-    if (Math.abs(dy) > 6) swiped = true;
-    ava.style.transform = `translateY(${dy * 0.5}px) scale(${1 - Math.abs(dy) / 900})`;
-    ava.style.boxShadow = dy > 30 ? "0 0 0 6px rgba(242, 98, 31, .55)" : dy < -30 ? "0 0 0 6px rgba(243, 233, 223, .25)" : "";
+    if (!g || e.pointerId !== g.id) return;
+    const dx = e.clientX - g.x0, dy = e.clientY - g.y0;
+    if (g.axis === "x" && !g.active) {
+      // нитка: ждём, пока станет ясно направление; вертикаль — отпускаем жест прокрутке
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) return resetG();
+      if (Math.abs(dx) < 10) return;
+      g.active = true;
+      g.el.setPointerCapture(e.pointerId);
+      g.el.classList.add("dragging");
+    }
+    if (g.axis === "y") {
+      const v = Math.max(-90, Math.min(90, dy));
+      if (Math.abs(v) > 6) swiped = true;
+      g.el.style.transform = `translateY(${v * 0.5}px) scale(${1 - Math.abs(v) / 900})`;
+      g.el.style.boxShadow = glow(v);
+    } else {
+      const v = Math.max(-160, Math.min(160, dx));
+      swiped = true;
+      g.el.style.transition = "none";
+      g.el.style.transform = `translateX(${v * 0.6}px) rotate(${v / 40}deg)`;
+      g.el.style.opacity = String(1 - Math.abs(v) / 500);
+    }
+    const ava = $(".ava", deck);
+    if (g.axis === "x" && ava) ava.style.boxShadow = glow(dx);
   });
   const endSwipe = (e) => {
-    if (y0 === null || !ava) return;
-    const dy = e.clientY - y0;
-    y0 = null;
-    ava.style.transform = "";
-    ava.style.boxShadow = "";
-    if (dy > 70) decide(true);
-    else if (dy < -70) decide(false);
+    if (!g || e.pointerId !== g.id) return;
+    const { axis, active } = g;
+    const d = axis === "y" ? e.clientY - g.y0 : e.clientX - g.x0;
+    resetG();
+    const ava = $(".ava", deck);
+    if (ava) ava.style.boxShadow = "";
+    if (axis === "x" && !active) return;
+    if (d > 70) decide(true);
+    else if (d < -70) decide(false);
     setTimeout(() => (swiped = false), 50); // чтобы свайп не открыл анкету как нажатие
   };
   deck.addEventListener("pointerup", endSwipe);
-  deck.addEventListener("pointercancel", () => { y0 = null; if (ava) { ava.style.transform = ""; ava.style.boxShadow = ""; } });
+  deck.addEventListener("pointercancel", (e) => { const ava = $(".ava", deck); if (ava) ava.style.boxShadow = ""; resetG(); });
   const keys = (e) => {
     if (!document.body.contains(deck)) return document.removeEventListener("keydown", keys);
     if (e.target.closest("input, textarea") || $(".profile-view")) return;

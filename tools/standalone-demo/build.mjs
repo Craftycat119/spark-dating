@@ -62,7 +62,8 @@ const index = readFileSync(resolve(root, "static/index.html"), "utf8");
 const svgDefs = index.match(/<svg width="0"[\s\S]*?<\/svg>/)[0];
 const themeScript = index.match(/<script>\/\* тема[\s\S]*?<\/script>/)[0];
 
-const html = `<title>COFI демо</title>
+const html = `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>COFI демо</title>
 <meta name="theme-color" content="#120c09">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

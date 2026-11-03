@@ -69,7 +69,8 @@ export const EN = {
   "Знакомства": "Dating", "Питомцы": "Pets", "Лента «Питомцы»": "Pets feed",
   "Нравится": "Like", "Вернуть": "Undo", "Отменить лайк": "Undo like", "Вернуть последнюю анкету": "Bring back the last profile",
   "Лайк отменён": "Like cancelled", "Анкета возвращена": "Profile restored",
-  "Свайп по фото вниз: нравится, вверх: дальше. Нажмите на фото, чтобы открыть анкету": "Swipe the photo down to like, up to skip. Tap the photo to open the profile",
+  "Фото: свайп вниз нравится, вверх дальше. Нитка: вправо нравится, влево дальше. Нажмите на фото, чтобы открыть анкету": "Photo: swipe down to like, up to skip. Thread: right to like, left to skip. Tap the photo to open the profile",
+  "Свайп по нитке вправо или влево": "Swipe the thread right or left", "Вправо: нравится, влево: дальше. Вертикальное движение по нитке просто листает экран.": "Right: like, left: skip. Moving up or down on the thread just scrolls the screen.",
   "Общих интересов пока нет, но можно познакомиться": "No shared interests yet, but you can still say hi",
   "Рядом пока никого": "Nobody nearby yet", "Открыть профиль": "Open profile", "Нужна геопозиция": "Location needed",
   "Без неё не получится найти людей рядом.": "We need it to find people near you.", "Разрешить": "Allow",
@@ -213,7 +214,7 @@ export const EN = {
   "Это демо: свайп вниз, чтобы лайкнуть. Некоторые боты уже лайкнули вас": "This is a demo: swipe down to like. Some bots have already liked you",
   "Вход через Telegram": "Sign in with Telegram",
   "Свайп по фото вниз: нравится": "Swipe the photo down: like", "Свайп по фото вверх: дальше": "Swipe the photo up: skip",
-  "Или кнопка с крестиком. Остальную часть экрана можно спокойно листать пальцем: на анкету это не отвечает. На компьютере работают стрелки ↓ и ↑.":
+  "Или кнопка с крестиком. Остальную часть экрана можно спокойно листать пальцем вверх и вниз: на анкету это не отвечает. На компьютере работают стрелки ↓ и ↑.":
     "Or the cross button. You can scroll the rest of the screen freely, it won't answer the profile. On a computer use the ↓ and ↑ keys.", "Демо": "Demo",
   "Мне 12–17": "I'm 12–17", "Знакомства и питомцы, 10 анкет": "Dating and pets, 10 profiles", "Дружба без знакомств, 6 анкет": "Friendship, no dating, 6 profiles",
   "Это демо ленты «Дружба»: свайп вниз, чтобы добавить в друзья": "This is the Friends demo: swipe down to add a friend",
