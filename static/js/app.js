@@ -650,7 +650,7 @@ async function renderFeed() {
     <div class="topbar"><span class="row" style="gap:8px"><span class="logo">cofi<span>°</span></span>${state.me.is_demo ? '<span class="demo-pill">демо</span>' : ""}</span><span class="counter"></span></div>
     ${feedTabs("people", state.me)}
     <div class="deck" aria-live="polite"><div class="skeleton" style="position:relative;height:420px"></div></div>
-    <p class="swipe-hint" hidden>Свайп по фото или нитке вниз: нравится, вверх: дальше. Нажмите на фото, чтобы открыть анкету</p>
+    <p class="swipe-hint" hidden>Свайп по нитке вниз: нравится, вверх: дальше. Нажмите на фото, чтобы открыть анкету</p>
     <div class="btns" hidden>
       <div class="bw undo-wrap"><button class="undo" aria-label="Вернуть" disabled>${icons.undo}</button><span class="undo-label">Вернуть</span></div>
       <div class="bw"><button class="skip" aria-label="Дальше">${icons.x}</button><span>Дальше</span></div>
@@ -767,8 +767,8 @@ async function renderFeed() {
   $(".skip", btns).onclick = () => decide(false);
   $(".like", btns).onclick = () => decide(true);
 
-  // Свайп по фото или по нитке с интересами: вниз — нравится, вверх — дальше.
-  // Остальная часть экрана прокручивается пальцем как обычно и на анкету не отвечает.
+  // Свайп по нитке с интересами: вниз — нравится, вверх — дальше.
+  // Остальная часть экрана (и фото) прокручивается пальцем как обычно и на анкету не отвечает.
   let g = null, swiped = false;
   const glow = (v) => (v > 30 ? "0 0 0 6px rgba(242, 98, 31, .55)" : v < -30 ? "0 0 0 6px rgba(243, 233, 223, .25)" : "");
   const resetG = () => {
@@ -776,12 +776,12 @@ async function renderFeed() {
     g.el.style.transition = g.el.style.transform = g.el.style.opacity = "";
     g.el.classList.remove("dragging");
     const ava = $(".ava", deck);
-    if (ava) ava.style.transform = ava.style.boxShadow = "";
+    if (ava) ava.style.boxShadow = "";
     g = null;
   };
   deck.addEventListener("pointerdown", (e) => {
     if (busy || e.button > 0) return;
-    const el = e.target.closest(".ava, .thread");
+    const el = e.target.closest(".thread");
     if (!el) return;
     g = { el, y0: e.clientY, id: e.pointerId };
     swiped = false;
@@ -793,12 +793,9 @@ async function renderFeed() {
     const v = Math.max(-90, Math.min(90, e.clientY - g.y0));
     if (Math.abs(v) > 6) swiped = true;
     const ava = $(".ava", deck);
-    if (g.el === ava) ava.style.transform = `translateY(${v * 0.5}px) scale(${1 - Math.abs(v) / 900})`;
-    else {
-      g.el.style.transition = "none";
-      g.el.style.transform = `translateY(${v * 0.5}px)`;
-      g.el.style.opacity = String(1 - Math.abs(v) / 300);
-    }
+    g.el.style.transition = "none";
+    g.el.style.transform = `translateY(${v * 0.5}px)`;
+    g.el.style.opacity = String(1 - Math.abs(v) / 300);
     if (ava) ava.style.boxShadow = glow(v);
   });
   const endSwipe = (e) => {

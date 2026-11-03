@@ -699,7 +699,7 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 
 /* ---------- Лента: прокрутка пальцем и кнопки всегда на виду ---------- */
 .feed .deck { touch-action: pan-y; user-select: auto; flex: none; }
-.feed .ava { touch-action: none; cursor: grab; transition: transform .25s var(--ease), box-shadow .2s; }
+.feed .ava { transition: box-shadow .2s; }
 .feed .swipe-hint { margin-top: 6px; }
 /* кнопки ответа закреплены над нижним меню: экран можно мотать, они не прячутся */
 .feed .btns, .animals .pet-nav {

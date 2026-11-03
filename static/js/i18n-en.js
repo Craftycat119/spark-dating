@@ -69,8 +69,7 @@ export const EN = {
   "Знакомства": "Dating", "Питомцы": "Pets", "Лента «Питомцы»": "Pets feed",
   "Нравится": "Like", "Вернуть": "Undo", "Отменить лайк": "Undo like", "Вернуть последнюю анкету": "Bring back the last profile",
   "Лайк отменён": "Like cancelled", "Анкета возвращена": "Profile restored",
-  "Свайп по фото или нитке вниз: нравится, вверх: дальше. Нажмите на фото, чтобы открыть анкету": "Swipe the photo or thread down to like, up to skip. Tap the photo to open the profile",
-  "Свайп по нитке вниз или вверх": "Swipe the thread down or up", "Работает так же, как по фото. Чтобы листать экран, ведите пальцем мимо фото и нитки.": "Works just like the photo. To scroll, move your finger outside the photo and the thread.",
+  "Свайп по нитке вниз: нравится, вверх: дальше. Нажмите на фото, чтобы открыть анкету": "Swipe the thread down to like, up to skip. Tap the photo to open the profile",
   "Общих интересов пока нет, но можно познакомиться": "No shared interests yet, but you can still say hi",
   "Рядом пока никого": "Nobody nearby yet", "Открыть профиль": "Open profile", "Нужна геопозиция": "Location needed",
   "Без неё не получится найти людей рядом.": "We need it to find people near you.", "Разрешить": "Allow",
@@ -213,17 +212,17 @@ export const EN = {
   "Это демо 14–17: только дружба. Свайп вниз, чтобы добавить в друзья": "This is the 14–17 demo: friendship only. Swipe down to add a friend",
   "Это демо: свайп вниз, чтобы лайкнуть. Некоторые боты уже лайкнули вас": "This is a demo: swipe down to like. Some bots have already liked you",
   "Вход через Telegram": "Sign in with Telegram",
-  "Свайп по фото вниз: нравится": "Swipe the photo down: like", "Свайп по фото вверх: дальше": "Swipe the photo up: skip",
-  "Или кнопка с крестиком. Остальную часть экрана можно спокойно листать пальцем: на анкету это не отвечает. На компьютере работают стрелки ↓ и ↑.":
-    "Or the cross button. You can scroll the rest of the screen freely, it won't answer the profile. On a computer use the ↓ and ↑ keys.", "Демо": "Demo",
+  "Свайп по нитке вниз: нравится": "Swipe the thread down: like", "Свайп по нитке вверх: дальше": "Swipe the thread up: skip",
+  "Или кнопка с крестиком. Остальную часть экрана, включая фото, можно спокойно листать пальцем: на анкету это не отвечает. На компьютере работают стрелки ↓ и ↑.":
+    "Or the cross button. You can scroll the rest of the screen, photo included, freely, it won't answer the profile. On a computer use the ↓ and ↑ keys.", "Демо": "Demo",
   "Мне 12–17": "I'm 12–17", "Знакомства и питомцы, 10 анкет": "Dating and pets, 10 profiles", "Дружба без знакомств, 6 анкет": "Friendship, no dating, 6 profiles",
   "Это демо ленты «Дружба»: свайп вниз, чтобы добавить в друзья": "This is the Friends demo: swipe down to add a friend",
   "Нативные карточки в ленте, баннеры в чатах и благотворительные спецпроекты с лентой «Питомцы». Помощник расскажет об условиях.":
     "Native cards in the feed, banners in chats and charity projects with the Pets feed. The assistant will explain the terms.",
   "«Знакомства» (с 18 лет), «Дружба» (до 18 лет) и «Питомцы» переключаются вкладками сверху. Подростки и взрослые никогда не видят друг друга.":
     "Dating (18+), Friends (under 18) and Pets switch with the tabs at the top. Teens and adults never see each other.",
-  "Или кнопка с сердцем. Если симпатия взаимная, появится экран «Взаимно». В ленте «Дружба» кнопка называется «Дружить».":
-    "Or the heart button. If it's mutual, you'll see the match screen. In the Friends feed the button says Be friends.",
+  "Нитка с бусинами общих интересов. Или кнопка с сердцем. Если симпатия взаимная, появится экран «Взаимно». В ленте «Дружба» кнопка называется «Дружить».":
+    "The thread with shared-interest beads. Or the heart button. If it's mutual, you'll see the match screen. In the Friends feed the button says Be friends.",
   "Подробная карточка": "Full details",
   "Нажмите на объявление: все фото, полное описание, цель сбора и сколько человек уже откликнулось. Объявления проверяет и добавляет администрация COFI.":
     "Tap a post: all photos, the full description, the fundraising goal and how many people responded. Posts are checked and added by the COFI team.",
