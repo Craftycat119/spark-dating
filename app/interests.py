@@ -61,8 +61,6 @@ SURVEY: list[dict] = [
 ]
 
 GOALS = set(SURVEY[0]["options"])
-# Подросткам доступны только дружеские цели
-from .ages import TEEN_GOALS  # noqa: E402
 INTERESTS = {opt for q in SURVEY[1:] for opt in q["options"]}
 MIN_INTERESTS = 3
 

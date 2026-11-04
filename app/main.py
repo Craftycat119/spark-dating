@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import face_verify
+from . import face_verify, telegram_bot
 from .config import BASE_DIR, settings
 from .ages import MIN_AGE, TEEN_GOALS
 from .interests import GENDERS, LOOKING_FOR, MIN_INTERESTS, SURVEY
@@ -38,7 +38,9 @@ async def lifespan(_app: FastAPI):
         log.error("SECRET_KEY не задан! Установите его в .env перед запуском в продакшене.")
     if face_verify.is_dev_mode():
         log.warning("FACE_MODE=dev — проверка лица ОТКЛЮЧЕНА. Не используйте в продакшене.")
+    telegram_bot.start()
     yield
+    telegram_bot.stop()
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
@@ -64,7 +66,7 @@ def public_config():
         "genders": GENDERS,
         "looking_for": LOOKING_FOR,
         "min_interests": MIN_INTERESTS,
-        "telegram_bot_username": settings.telegram_bot_username if settings.telegram_bot_token else None,
+        "telegram_bot_username": telegram_bot.bot_username() if settings.telegram_bot_token else None,
         "ice_servers": settings.ice_servers,
         "face_dev_mode": face_verify.is_dev_mode(),
     }

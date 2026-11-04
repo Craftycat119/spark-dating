@@ -7,6 +7,7 @@ import { PACKS } from "./stickers.js";
 import { mountThread } from "./threads.js";
 import { renderGuide } from "./guide.js";
 import { feedTabs, renderAnimals } from "./animals.js";
+import { takePhoto } from "./camera.js";
 import { renderAds, renderSupportHub, renderThread, reportUser } from "./support.js";
 import { currentHash, navigate, onRoute } from "./router.js";
 import { getThemePref, resolvedTheme, setTheme } from "./theme.js";
@@ -178,7 +179,7 @@ function startDemo() {
     el.remove();
     afterLogin();
     go("#/feed");
-    toast(teen ? "Это демо ленты «Дружба»: свайп вниз, чтобы добавить в друзья" : "Это демо: свайп вниз, чтобы лайкнуть. Некоторые боты уже лайкнули вас", { timeout: 6000 });
+    toast(teen ? "Это демо ленты «Дружба»: свайп по нитке вниз, чтобы добавить в друзья" : "Это демо: свайп по нитке вниз, чтобы лайкнуть. Некоторые боты уже лайкнули вас", { timeout: 6000 });
   }));
   document.body.append(el);
 }
@@ -190,7 +191,6 @@ function themeIcon() {
 // ---------------- Вход и регистрация ----------------
 
 function renderAuth(mode = "login") {
-  const tg = state.config.telegram_bot_username;
   const sheet = `
     <div class="panel stack sheet">
       <div class="tabs" role="tablist">
@@ -206,8 +206,9 @@ function renderAuth(mode = "login") {
         <button class="btn block" type="submit">${mode === "login" ? "Войти" : "Создать аккаунт"}</button>
         ${mode === "login" ? `<button type="button" class="link" id="forgot" style="align-self:flex-start">Забыли пароль?</button>` : ""}
       </form>
-      ${tg ? `<div class="divider">или</div><div id="tg-login" style="display:flex;justify-content:center;min-height:48px"></div>
-        <p class="hint" style="text-align:center">Через Telegram почта и пароль не нужны, только подтверждение фото.</p>` : ""}
+      <div class="divider">или</div>
+      <button type="button" class="btn tg block" id="tg-login">${icons.send} Войти через Telegram</button>
+      <p class="hint" style="text-align:center">Через Telegram почта и пароль не нужны, только подтверждение фото.</p>
     </div>`;
   // Повторный вызов (переключение вкладок) меняет только панель, 3D-сцена остаётся
   let root = $(".screen.auth");
@@ -281,24 +282,49 @@ ${sheet}`, { nav: false, cls: "auth" });
 
   $("#forgot", root)?.addEventListener("click", () => renderForgot(form.email.value.trim()));
 
-  if (tg) {
-    window.onTelegramAuth = async (user) => {
-      try {
-        state.me = await api.post("/api/auth/telegram", user);
+  $("#tg-login", root).onclick = telegramLogin;
+}
+
+/** Вход через бота: ссылка t.me/<бот>?start=login_…, человек жмёт «Войти» в Telegram, страница ждёт подтверждения. */
+async function telegramLogin() {
+  let start;
+  try {
+    start = await api.post("/api/auth/telegram/start");
+  } catch (ex) {
+    return toast(ex.message, { error: true, timeout: 6000 });
+  }
+  const el = h(`<div class="overlay sheet-overlay" role="dialog" aria-label="Вход через Telegram">
+    <div class="bottom-sheet tg-sheet">
+      <div class="tg-head"><span class="tg-logo">${icons.send}</span><b>Telegram</b></div>
+      <h2>Подтвердите вход в Telegram</h2>
+      <p class="muted">Откройте бота COFI, нажмите «Запустить», затем «Войти». Эта страница войдёт сама.</p>
+      <a class="btn tg block" href="${esc(start.url)}" target="_blank" rel="noopener">${icons.send} Открыть Telegram</a>
+      <p class="hint tg-wait"><span class="spinner"></span> Ждём подтверждения…</p>
+      <button class="btn ghost block" data-close>Отмена</button>
+    </div></div>`);
+  let active = true;
+  const close = () => { active = false; el.remove(); };
+  $("[data-close]", el).onclick = close;
+  document.body.append(el);
+  const deadline = Date.now() + start.expires_in * 1000;
+  while (active && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 2000));
+    if (!active) return;
+    try {
+      const r = await api.post("/api/auth/telegram/poll", { token: start.token });
+      if (r.status === "ok") {
+        close();
+        state.me = r.user;
         afterLogin();
         go("#/feed");
-      } catch (ex) { toast(ex.message, { error: true }); }
-    };
-    const s = document.createElement("script");
-    s.async = true;
-    s.src = "https://telegram.org/js/telegram-widget.js?22";
-    s.dataset.telegramLogin = tg;
-    s.dataset.size = "large";
-    s.dataset.radius = "24";
-    s.dataset.onauth = "onTelegramAuth(user)";
-    s.dataset.requestAccess = "write";
-    $("#tg-login", root).append(s);
+        return;
+      }
+    } catch (ex) {
+      close();
+      return toast(ex.message, { error: true });
+    }
   }
+  if (active) { close(); toast("Время на подтверждение вышло, попробуйте ещё раз", { error: true }); }
 }
 
 function codeInputs(container, onComplete) {
@@ -548,10 +574,7 @@ function photoPicker(root, onUploaded) {
   const drop = $(".photo-drop", root);
   const input = $("input[type=file]", root);
   const err = $(".error-text", root);
-  drop.onclick = () => input.click();
-  drop.onkeydown = (e) => (e.key === "Enter" || e.key === " ") && input.click();
-  input.onchange = async () => {
-    const file = input.files[0];
+  const upload = async (file) => {
     if (!file) return;
     drop.style.backgroundImage = `url(${URL.createObjectURL(file)})`;
     drop.classList.add("has");
@@ -568,8 +591,11 @@ function photoPicker(root, onUploaded) {
       err.textContent = ex.message;
       err.hidden = false;
     }
-    input.value = "";
   };
+  drop.onclick = () => input.click();
+  drop.onkeydown = (e) => (e.key === "Enter" || e.key === " ") && input.click();
+  input.onchange = () => { upload(input.files[0]); input.value = ""; };
+  $("[data-camera]", root).onclick = async () => upload(await takePhoto());
 }
 
 function stepPhoto() {
@@ -577,7 +603,8 @@ function stepPhoto() {
     <div class="stack">
       <h1>Ваше фото</h1>
       <p class="muted">Нужно фото, где хорошо видно лицо, и только ваше. Следующим шагом сверим его с камерой.</p>
-      <div class="photo-drop" role="button" tabindex="0"><div>${icons.camera}Выбрать фото</div></div>
+      <div class="photo-drop" role="button" tabindex="0"><div>${icons.image}Загрузить из галереи</div></div>
+      <button type="button" class="btn ghost block" data-camera>${icons.camera} Сделать фото сейчас</button>
       <input type="file" accept="image/*" hidden>
       <p class="error-text" hidden></p>
     </div>`, { nav: false });

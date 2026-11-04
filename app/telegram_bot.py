@@ -1,0 +1,165 @@
+"""Вход через Telegram-бота по ссылке t.me/<бот>?start=login_<токен>.
+
+Сайт выдаёт одноразовый токен, человек открывает бота и нажимает «Войти», бот подтверждает
+токен, а страница забирает вход опросом. Работает на localhost и не требует /setdomain.
+Бот читает сообщения через long polling (getUpdates) в фоновом потоке, вебхук не нужен.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import secrets
+import threading
+import time
+import urllib.error
+import urllib.request
+from dataclasses import dataclass, field
+
+from .config import settings
+
+log = logging.getLogger("cofi.telegram")
+LOGIN_TTL = 600  # секунд на подтверждение входа
+
+
+@dataclass
+class PendingLogin:
+    created: float
+    device: str
+    status: str = "pending"  # pending → confirmed | declined
+    user: dict = field(default_factory=dict)
+
+
+_pending: dict[str, PendingLogin] = {}
+_lock = threading.Lock()
+_bot_username: str = settings.telegram_bot_username
+_thread: threading.Thread | None = None
+_stop = threading.Event()
+
+
+def api(method: str, payload: dict | None = None, timeout: float = 15) -> dict:
+    req = urllib.request.Request(
+        f"https://api.telegram.org/bot{settings.telegram_bot_token}/{method}",
+        data=json.dumps(payload or {}).encode(), headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read())
+
+
+def bot_username() -> str:
+    return _bot_username
+
+
+def _cleanup(now: float) -> None:
+    for token in [t for t, p in _pending.items() if now - p.created > LOGIN_TTL]:
+        del _pending[token]
+
+
+def new_login(device: str) -> dict:
+    token = secrets.token_urlsafe(18)
+    now = time.time()
+    with _lock:
+        _cleanup(now)
+        _pending[token] = PendingLogin(created=now, device=device[:120])
+    return {"token": token, "url": f"https://t.me/{_bot_username}?start=login_{token}", "expires_in": LOGIN_TTL}
+
+
+def take_login(token: str) -> PendingLogin | None:
+    """Статус входа. Подтверждённый или отклонённый вход выдаётся один раз и удаляется."""
+    with _lock:
+        _cleanup(time.time())
+        p = _pending.get(token)
+        if p and p.status != "pending":
+            del _pending[token]
+        return p
+
+
+def handle_update(upd: dict) -> list[tuple[str, dict]]:
+    """Обрабатывает одно обновление бота и возвращает вызовы API, которые нужно сделать.
+    Вынесено отдельно, чтобы проверять логику без сети."""
+    calls: list[tuple[str, dict]] = []
+    if msg := upd.get("message"):
+        chat_id = msg["chat"]["id"]
+        text = (msg.get("text") or "").strip()
+        if text.startswith("/start login_"):
+            token = text.removeprefix("/start login_").strip()
+            with _lock:
+                p = _pending.get(token)
+            if not p or p.status != "pending":
+                calls.append(("sendMessage", {"chat_id": chat_id, "text": "Ссылка для входа устарела. Нажмите «Войти через Telegram» на сайте ещё раз."}))
+            else:
+                calls.append(("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": f"Войти в {settings.app_name}?\n\nУстройство: {p.device or 'браузер'}\n\n"
+                            "Если вы не нажимали «Войти через Telegram» на сайте сами, нажмите «Отмена».",
+                    "reply_markup": {"inline_keyboard": [[
+                        {"text": "✅ Войти", "callback_data": f"ok:{token}"},
+                        {"text": "Отмена", "callback_data": f"no:{token}"},
+                    ]]},
+                }))
+        elif text.startswith("/start"):
+            calls.append(("sendMessage", {"chat_id": chat_id, "text": f"Это бот {settings.app_name}. "
+                          "Чтобы войти, нажмите «Войти через Telegram» на сайте. Сюда же приходят заявки «Помочь» по питомцам."}))
+    elif cb := upd.get("callback_query"):
+        action, _, token = (cb.get("data") or "").partition(":")
+        frm = cb.get("from") or {}
+        with _lock:
+            p = _pending.get(token)
+            ok = bool(p and p.status == "pending")
+            if ok:
+                p.status = "confirmed" if action == "ok" else "declined"
+                p.user = {"id": frm.get("id"), "first_name": frm.get("first_name") or "", "username": frm.get("username")}
+        if not ok:
+            reply = "Ссылка устарела, начните вход на сайте заново."
+        elif action == "ok":
+            reply = "Готово! Вернитесь в браузер, вход выполнен."
+        else:
+            reply = "Вход отменён."
+        calls.append(("answerCallbackQuery", {"callback_query_id": cb["id"]}))
+        if m := cb.get("message"):
+            calls.append(("editMessageText", {"chat_id": m["chat"]["id"], "message_id": m["message_id"], "text": reply}))
+    return calls
+
+
+def _loop() -> None:
+    offset = 0
+    while not _stop.is_set():
+        try:
+            res = api("getUpdates", {"offset": offset, "timeout": 25, "allowed_updates": ["message", "callback_query"]}, timeout=35)
+            for upd in res.get("result", []):
+                offset = upd["update_id"] + 1
+                for method, payload in handle_update(upd):
+                    try:
+                        api(method, payload)
+                    except Exception:  # noqa: BLE001
+                        log.exception("Telegram %s не выполнен", method)
+        except urllib.error.HTTPError as ex:
+            if ex.code == 409:  # бот уже запущен в другом месте или включён вебхук
+                log.error("Telegram: этот бот уже получает обновления в другом месте (вебхук или второй сервер)")
+            _stop.wait(10)
+        except Exception:  # noqa: BLE001 — нет сети: пробуем позже
+            _stop.wait(5)
+
+
+def start() -> None:
+    """Запускает бота в фоне, если задан TELEGRAM_BOT_TOKEN."""
+    global _thread, _bot_username
+    if not settings.telegram_bot_token or _thread:
+        return
+    try:
+        me = api("getMe")["result"]
+        _bot_username = me["username"]
+        api("deleteWebhook")
+    except Exception:  # noqa: BLE001
+        log.error("Telegram: не удалось подключиться к боту. Проверьте TELEGRAM_BOT_TOKEN и интернет")
+        if not _bot_username:
+            return
+    _stop.clear()
+    _thread = threading.Thread(target=_loop, name="telegram-bot", daemon=True)
+    _thread.start()
+    log.info("Telegram-бот @%s запущен: вход через Telegram включён", _bot_username)
+
+
+def stop() -> None:
+    global _thread
+    _stop.set()
+    _thread = None

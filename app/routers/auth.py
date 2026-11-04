@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import demo, emailer
+from .. import demo, emailer, telegram_bot
 from ..config import settings
 from ..database import get_db
 from ..deps import COOKIE_NAME, client_ip, current_user, start_session
@@ -22,7 +22,6 @@ from ..security import (
     verify_password,
 )
 from ..serializers import own_profile
-from ..telegram_auth import verify_telegram_auth
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -50,7 +49,7 @@ class ResetIn(BaseModel):
     password: str
 
 
-def _issue_code(db: Session, email: str, purpose: str, background: BackgroundTasks) -> dict:
+def _issue_code(db: Session, email: str, purpose: str) -> dict:
     last = db.scalar(
         select(EmailCode)
         .where(EmailCode.email == email, EmailCode.purpose == purpose)
@@ -70,10 +69,13 @@ def _issue_code(db: Session, email: str, purpose: str, background: BackgroundTas
         )
     )
     db.commit()
-    background.add_task(emailer.send_code, email, code, purpose)
+    # Код отправляем сразу, а не в фоне: если почта не настроена или сломалась, человек узнает об этом здесь
+    sent = emailer.send_code(email, code, purpose)
     result: dict = {"status": "code_sent", "email": email}
-    if settings.dev_mode and not settings.smtp_host:
-        result["dev_code"] = code  # удобно при локальной разработке без SMTP
+    if settings.dev_mode and (not settings.smtp_host or not sent):
+        result["dev_code"] = code  # локальный запуск: код на экране и в терминале
+    elif not sent:
+        raise HTTPException(502, "Не удалось отправить письмо с кодом. Попробуйте позже или войдите через Telegram")
     return result
 
 
@@ -96,7 +98,7 @@ def _check_code(db: Session, email: str, code: str, purpose: str) -> None:
 
 
 @router.post("/register")
-def register(data: Credentials, request: Request, background: BackgroundTasks, db: Session = Depends(get_db)):
+def register(data: Credentials, request: Request, db: Session = Depends(get_db)):
     email = normalize_email(data.email)
     if not is_valid_email(email):
         raise HTTPException(422, "Некорректная почта")
@@ -119,7 +121,7 @@ def register(data: Credentials, request: Request, background: BackgroundTasks, d
     user.password_hash = hash_password(data.password)
     db.commit()
     try:
-        return _issue_code(db, email, "verify", background)
+        return _issue_code(db, email, "verify")
     except HTTPException as ex:
         # Вернулись «Назад» с экрана кода и снова нажали «Создать аккаунт»: письмо уже ушло,
         # пускаем на экран кода, старый код по-прежнему действует
@@ -129,12 +131,12 @@ def register(data: Credentials, request: Request, background: BackgroundTasks, d
 
 
 @router.post("/resend-code")
-def resend_code(data: EmailOnly, background: BackgroundTasks, db: Session = Depends(get_db)):
+def resend_code(data: EmailOnly, db: Session = Depends(get_db)):
     email = normalize_email(data.email)
     user = db.scalar(select(User).where(User.email == email))
     if not user or user.email_verified:
         raise HTTPException(400, "Нечего подтверждать")
-    return _issue_code(db, email, "verify", background)
+    return _issue_code(db, email, "verify")
 
 
 @router.post("/verify-email")
@@ -151,7 +153,7 @@ def verify_email(data: CodeIn, request: Request, response: Response, db: Session
 
 
 @router.post("/login")
-def login(data: Credentials, request: Request, response: Response, background: BackgroundTasks, db: Session = Depends(get_db)):
+def login(data: Credentials, request: Request, response: Response, db: Session = Depends(get_db)):
     email = normalize_email(data.email)
     user = db.scalar(select(User).where(User.email == email))
     if not user or not verify_password(data.password, user.password_hash):
@@ -160,7 +162,7 @@ def login(data: Credentials, request: Request, response: Response, background: B
         raise HTTPException(403, "Аккаунт заблокирован")
     if not user.email_verified:
         try:
-            extra = _issue_code(db, email, "verify", background)
+            extra = _issue_code(db, email, "verify")
         except HTTPException:
             extra = {}
         raise HTTPException(403, {"code": "email_not_verified", "message": "Подтвердите почту — мы отправили код", **extra})
@@ -171,11 +173,11 @@ def login(data: Credentials, request: Request, response: Response, background: B
 
 
 @router.post("/forgot-password")
-def forgot_password(data: EmailOnly, background: BackgroundTasks, db: Session = Depends(get_db)):
+def forgot_password(data: EmailOnly, db: Session = Depends(get_db)):
     email = normalize_email(data.email)
     user = db.scalar(select(User).where(User.email == email))
     if user and user.email_verified:
-        return _issue_code(db, email, "reset", background)
+        return _issue_code(db, email, "reset")
     # Не раскрываем, есть ли такой аккаунт
     return {"status": "code_sent", "email": email}
 
@@ -198,21 +200,36 @@ def reset_password(data: ResetIn, request: Request, response: Response, db: Sess
     return own_profile(user)
 
 
-@router.post("/telegram")
-def telegram_login(data: dict, request: Request, response: Response, db: Session = Depends(get_db)):
-    if not settings.telegram_bot_token:
-        raise HTTPException(503, "Вход через Telegram не настроен")
-    if not verify_telegram_auth(data, settings.telegram_bot_token):
-        raise HTTPException(401, "Telegram не подтвердил вход")
+class TelegramPoll(BaseModel):
+    token: str
 
-    tg_id = int(data["id"])
-    user = db.scalar(select(User).where(User.telegram_id == tg_id))
+
+@router.post("/telegram/start")
+def telegram_start(request: Request):
+    """Начать вход через бота: ссылка t.me/<бот>?start=login_<токен>."""
+    if not settings.telegram_bot_token or not telegram_bot.bot_username():
+        raise HTTPException(503, "Вход через Telegram не настроен: администратору нужно указать TELEGRAM_BOT_TOKEN в .env")
+    return telegram_bot.new_login(_device_label(request.headers.get("user-agent", "")))
+
+
+@router.post("/telegram/poll")
+def telegram_poll(data: TelegramPoll, request: Request, response: Response, db: Session = Depends(get_db)):
+    p = telegram_bot.take_login(data.token)
+    if not p:
+        raise HTTPException(410, "Ссылка для входа устарела, нажмите «Войти через Telegram» ещё раз")
+    if p.status == "pending":
+        return {"status": "pending"}
+    if p.status == "declined":
+        raise HTTPException(403, "Вход отменён в Telegram")
+
+    tg = p.user
+    user = db.scalar(select(User).where(User.telegram_id == tg["id"]))
     if not user:
         user = User(
-            telegram_id=tg_id,
-            telegram_username=data.get("username"),
+            telegram_id=tg["id"],
+            telegram_username=tg.get("username"),
             auth_provider="telegram",
-            name=(data.get("first_name") or "")[:64],
+            name=(tg.get("first_name") or "")[:64],
             registration_ip=client_ip(request),
             registration_user_agent=request.headers.get("user-agent", "")[:512],
         )
@@ -221,9 +238,18 @@ def telegram_login(data: dict, request: Request, response: Response, db: Session
     elif user.is_banned:
         raise HTTPException(403, "Аккаунт заблокирован")
     else:
-        user.telegram_username = data.get("username") or user.telegram_username
+        user.telegram_username = tg.get("username") or user.telegram_username
     start_session(db, user, request, response)
-    return own_profile(user)
+    return {"status": "ok", "user": own_profile(user)}
+
+
+def _device_label(ua: str) -> str:
+    """Коротко, с какого устройства входят: показываем в боте перед подтверждением."""
+    os_name = next((n for k, n in [("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android"), ("Windows", "Windows"),
+                                     ("Mac OS", "macOS"), ("Linux", "Linux")] if k in ua), "")
+    browser = next((n for k, n in [("YaBrowser", "Яндекс Браузер"), ("Edg/", "Edge"), ("OPR/", "Opera"), ("Firefox", "Firefox"),
+                                     ("Chrome", "Chrome"), ("Safari", "Safari")] if k in ua), "браузер")
+    return f"{browser}, {os_name}" if os_name else browser
 
 
 class DemoIn(BaseModel):

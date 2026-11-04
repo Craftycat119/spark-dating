@@ -1,7 +1,7 @@
 import { api, connectSocket, on } from "./api.js";
 import "./theme.js";
 import { icons } from "./icons.js";
-import { $, $$, confirmDialog, esc, h, toast } from "./ui.js";
+import { $, $$, confirmDialog, esc, toast } from "./ui.js";
 
 const view = $("#view");
 const drawer = $("#drawer");
@@ -287,7 +287,7 @@ on("support", (d) => {
 });
 
 // ---------- Питомцы: объявления добавляет только администрация ----------
-const PET_CATS = { charity: "Помощь и сборы", foster: "Передержка", adoption: "Ищет хозяина" };
+const PET_CATS = { adoption: "Ищет хозяина", foster: "Передержка", charity: "Помощь и сборы" };
 
 async function animals() {
   view.innerHTML = `<h1>Питомцы</h1>

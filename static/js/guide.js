@@ -1,7 +1,7 @@
 // Инструкция: анимированный «ролик» на настоящих компонентах ленты + короткое описание функций
 import { icons } from "./icons.js";
 import { mountThread } from "./threads.js";
-import { $, $$, esc, h } from "./ui.js";
+import { $, $$, esc } from "./ui.js";
 
 const PEOPLE = {
   alina: { name: "Алина", age: 26, km: 1, bio: "Плёнка, бег по набережной и пуровер по субботам.", tags: ["Кофейни", "Бег", "Техно", "Фотография"] },

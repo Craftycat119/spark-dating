@@ -7,6 +7,7 @@ import ssl
 from email.message import EmailMessage
 from html import escape
 
+from . import outlook_oauth
 from .config import settings
 
 log = logging.getLogger("spark.email")
@@ -46,7 +47,11 @@ def send_email(to: str, subject: str, text: str, html: str | None = None) -> boo
         else:
             with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20) as s:
                 s.starttls(context=ssl.create_default_context())
-                if settings.smtp_user:
+                if settings.smtp_auth == "outlook":
+                    auth = f"user={settings.smtp_user}\x01auth=Bearer {outlook_oauth.access_token()}\x01\x01"
+                    s.ehlo()
+                    s.auth("XOAUTH2", lambda _=None: auth, initial_response_ok=True)
+                elif settings.smtp_user:
                     s.login(settings.smtp_user, settings.smtp_password)
                 s.send_message(msg)
         return True

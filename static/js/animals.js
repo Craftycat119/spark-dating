@@ -4,7 +4,7 @@ import { api } from "./api.js";
 import { icons } from "./icons.js";
 import { $, $$, esc, h, toast } from "./ui.js";
 
-const CATS = [["", "Все"], ["charity", "Помощь и сборы"], ["foster", "Передержка"], ["adoption", "Ищут дом"]];
+const CATS = [["", "Все"], ["adoption", "Ищут дом"], ["foster", "Передержка"], ["charity", "Помощь и сборы"]];
 const CAT_TITLE = { charity: "Помощь и сборы", foster: "Передержка", adoption: "Ищет хозяина" };
 
 export function feedTabs(active, me) {

@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw
 from sqlalchemy import select
 
 from . import storage
+from .config import settings
 from .ages import birth_for_age
 from .interests import GOALS, SURVEY
 from .database import SessionLocal, init_db
@@ -129,6 +130,9 @@ def main() -> None:
     s.add_argument("--lon", type=float, default=37.6173)
     s.add_argument("--count", type=int, default=12)
     sub.add_parser("download-models")
+    sub.add_parser("outlook-login", help="подключить личную почту Outlook.com для отправки кодов")
+    t = sub.add_parser("test-email", help="отправить пробное письмо")
+    t.add_argument("to")
     args = parser.parse_args()
 
     init_db()
@@ -139,6 +143,15 @@ def main() -> None:
     elif args.cmd == "download-models":
         download_models()
         print("Готово")
+    elif args.cmd == "outlook-login":
+        from .outlook_oauth import login_interactive
+
+        login_interactive()
+    elif args.cmd == "test-email":
+        from .emailer import send_email
+
+        ok = send_email(args.to, "COFI: проверка почты", "Если вы читаете это письмо, отправка кодов работает.")
+        print("Письмо отправлено" if ok and settings.smtp_host else "Не отправлено, подробности выше в логе")
 
 
 if __name__ == "__main__":

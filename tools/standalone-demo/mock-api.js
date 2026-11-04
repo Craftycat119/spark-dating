@@ -234,20 +234,31 @@ route("POST", "/api/auth/reset-password", (b) => {
   acc.verified = true;
   return loginAs(b.email.toLowerCase());
 });
-// Вход через Telegram: в демо приходит имитация данных виджета (настоящий Telegram на странице по ссылке недоступен)
-route("POST", "/api/auth/telegram", async (b) => {
+// Вход через Telegram: в демо окно бота имитируется (guards.js), настоящий Telegram на странице по ссылке недоступен
+const tgLogins = {};
+window.__cofiTgConfirm = (token, user) => { if (tgLogins[token]) tgLogins[token] = user; };
+route("POST", "/api/auth/telegram/start", () => {
+  const token = Math.random().toString(36).slice(2);
+  tgLogins[token] = "pending";
+  return { token, url: `#tg-demo:${token}`, expires_in: 600 };
+});
+route("POST", "/api/auth/telegram/poll", async (b) => {
+  const u = tgLogins[b.token];
+  if (!u) deny(410, "Ссылка для входа устарела, нажмите «Войти через Telegram» ещё раз");
+  if (u === "pending") return { status: "pending" };
+  delete tgLogins[b.token];
   await ensureBots();
-  const key = `tg:${b.id}`;
+  const key = `tg:${u.id}`;
   if (!S.accounts[key]) {
     const uid = id();
-    S.users[uid] = { id: uid, is_demo: true, provider: "telegram", telegram_username: b.username || null, name: (b.first_name || "").slice(0, 64),
+    S.users[uid] = { id: uid, is_demo: true, provider: "telegram", telegram_username: u.username || null, name: (u.first_name || "").slice(0, 64),
       age: null, birth_date: null, gender: null, looking_for: null, bio: "", goals: [], interests: [], lat: DATA.center[0], lon: DATA.center[1],
       max_distance_km: 50, photo_url: null, photos: [], photo_verified: false };
     S.accounts[key] = { userId: uid, verified: true };
   }
   S.me = S.accounts[key].userId;
   save();
-  return ownProfile(me());
+  return { status: "ok", user: ownProfile(me()) };
 });
 route("POST", "/api/auth/logout", () => { S.me = null; save(); return { status: "ok" }; });
 
@@ -455,7 +466,8 @@ route("POST", "/api/feed/undo", async (b) => {
 });
 
 // ---------- Питомцы ----------
-const CAT_TITLE = { charity: "Помощь и сборы", foster: "Передержка", adoption: "Ищет хозяина" };
+const CAT_TITLE = { adoption: "Ищет хозяина", foster: "Передержка", charity: "Помощь и сборы" };
+const CAT_ORDER = Object.keys(CAT_TITLE);
 const tgUrl = (c) => { const m = (c || "").trim().match(/^(?:@|https?:\/\/t\.me\/|t\.me\/)?([A-Za-z0-9_+/-]{3,64})\/?$/); return m ? `https://t.me/${m[1]}` : null; };
 function ensurePets() {
   if (S.pets && S.pets.some((p) => p.photos.length >= 3)) return;
@@ -476,7 +488,7 @@ route("GET", "/api/animals", async (_, __, url) => {
   const u = requireMe();
   ensurePets();
   const cat = new URLSearchParams(url.split("?")[1] || "").get("category") || "";
-  const list = S.pets.filter((p) => p.active && (!cat || p.category === cat)).sort((a, b) => b.id - a.id);
+  const list = S.pets.filter((p) => p.active && (!cat || p.category === cat)).sort((a, b) => CAT_ORDER.indexOf(a.category) - CAT_ORDER.indexOf(b.category) || b.id - a.id);
   return { total: list.length, items: await Promise.all(list.map((p) => petOut(p, u))), categories: CAT_TITLE };
 });
 route("GET", "/api/animals/(\\d+)", async (_, [pid]) => {

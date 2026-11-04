@@ -25,6 +25,7 @@ export const icons = {
   pin: i("map-pin"),
   more: i("dots-three"),
   camera: i("camera"),
+  image: i("image"),
   flip: i("camera-rotate"),
   arrow: i("arrow-right"),
   sparkle: i("sparkle", true),
@@ -35,6 +36,5 @@ export const icons = {
   flag: i("flag"),
   headset: i("headset"),
   megaphone: i("megaphone"),
-  globe: i("globe"),
   moon: i("moon"),
 };

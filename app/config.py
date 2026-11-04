@@ -56,9 +56,13 @@ class Settings:
     smtp_password: str = os.environ.get("SMTP_PASSWORD", "")
     smtp_from: str = os.environ.get("SMTP_FROM", "")
     smtp_ssl: bool = _bool("SMTP_SSL", False)  # True для порта 465
+    # password — логин и пароль (Яндекс, Mail.ru, Gmail с паролем приложения);
+    # outlook — личный Outlook.com/Hotmail через вход Microsoft (OAuth2), см. app/outlook_oauth.py
+    smtp_auth: str = os.environ.get("SMTP_AUTH", "password").strip().lower()
+    outlook_client_id: str = os.environ.get("OUTLOOK_CLIENT_ID", "").strip()
     code_ttl_minutes: int = int(os.environ.get("CODE_TTL_MINUTES", "15"))
 
-    # Telegram Login Widget
+    # Telegram-бот: вход на сайт и заявки «Помочь»
     telegram_bot_token: str = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     telegram_bot_username: str = os.environ.get("TELEGRAM_BOT_USERNAME", "")
     # Куда бот присылает заявки «Помочь» по животным: id группы или человека (бот должен быть добавлен / запущен)

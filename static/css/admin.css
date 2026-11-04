@@ -13,7 +13,7 @@ body.admin::before { display: none; }
 
 .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-box); overflow: hidden; }
 .kpis div { background: var(--bg); padding: 18px; border: 0; }
-.kpis b { display: block; font: 700 34px var(--pixel); color: var(--orange); }
+.kpis b { display: block; font: 700 34px var(--num); font-variant-numeric: tabular-nums; color: var(--orange); }
 .kpis span { color: var(--muted); font-size: 14px; }
 .feed-bars { margin-top: 28px; display: grid; gap: 10px; max-width: 560px; }
 .feed-bars .fill { background: var(--orange); }

@@ -12,7 +12,7 @@ from ..database import get_db
 from ..deps import current_user
 from ..geo import bounding_box, haversine_km
 from ..interests import compatible, match_score
-from ..models import Conversation, Notification, Swipe, User
+from ..models import Conversation, Message, Notification, Swipe, User
 from ..realtime import notify
 from ..serializers import photo_url, public_card
 
@@ -155,8 +155,6 @@ def undo(data: UndoIn, user: User = Depends(current_user), db: Session = Depends
     a, b = sorted((user.id, data.user_id))
     conv = db.scalar(select(Conversation).where(Conversation.user_a_id == a, Conversation.user_b_id == b))
     if swipe.liked and conv is not None and conv.active:
-        from ..models import Message
-
         has_messages = db.scalar(select(Message.id).where(Message.conversation_id == conv.id, Message.kind != "call").limit(1))
         if has_messages:
             raise HTTPException(409, "У вас уже есть переписка. Удалить пару можно в чате")
@@ -166,6 +164,8 @@ def undo(data: UndoIn, user: User = Depends(current_user), db: Session = Depends
     db.delete(swipe)
     db.commit()
     target = db.get(User, data.user_id)
+    if target is None:  # анкету удалили, пока она была в истории
+        raise HTTPException(404, "Анкета больше не доступна")
     score, common = match_score(user.interests, user.goals, target.interests, target.goals)
     d = haversine_km(user.lat, user.lon, target.lat, target.lon) if user.lat is not None and target.lat is not None else None
     return {"undone": "like" if was_like else "skip", "card": public_card(target, score, common, d)}

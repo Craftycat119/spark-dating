@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from .. import storage, telegram_notify
@@ -20,7 +20,9 @@ from ..serializers import media_url
 
 router = APIRouter(prefix="/api/animals", tags=["animals"])
 
-CATEGORIES = {"charity": "Помощь и сборы", "foster": "Передержка", "adoption": "Ищет хозяина"}
+# Порядок важен: так идут вкладки и объявления в ленте «Все»
+CATEGORIES = {"adoption": "Ищет хозяина", "foster": "Передержка", "charity": "Помощь и сборы"}
+CATEGORY_ORDER = case({k: i for i, k in enumerate(CATEGORIES)}, value=AnimalPost.category, else_=len(CATEGORIES))
 MAX_PHOTOS = 5
 
 
@@ -52,7 +54,7 @@ def list_posts(category: str = "", offset: int = 0, limit: int = 20, me: User = 
     q = select(AnimalPost).where(AnimalPost.active.is_(True))
     if category in CATEGORIES:
         q = q.where(AnimalPost.category == category)
-    rows = db.scalars(q.order_by(AnimalPost.id.desc()).offset(max(offset, 0)).limit(max(1, min(limit, 50)))).all()
+    rows = db.scalars(q.order_by(CATEGORY_ORDER, AnimalPost.id.desc()).offset(max(offset, 0)).limit(max(1, min(limit, 50)))).all()
     total = len(db.scalars(q).all())
     return {"total": total, "items": [post_out(p, me) for p in rows], "categories": CATEGORIES}
 
@@ -65,8 +67,6 @@ def _require_adult(me: User) -> None:
 @router.get("/{post_id}")
 def get_post(post_id: int, me: User = Depends(current_user), db: Session = Depends(get_db)):
     """Подробная карточка: всё из ленты плюс число откликов."""
-    from sqlalchemy import func
-
     post = db.get(AnimalPost, post_id)
     if not post or (not post.active and post.author_id != me.id):
         raise HTTPException(404, "Объявление не найдено")

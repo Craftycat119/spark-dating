@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import logging
 import shutil
+from datetime import date
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
@@ -14,8 +16,7 @@ from ..database import get_db
 from ..deps import current_user
 from ..ages import MIN_AGE, TEEN_GOALS, years_between
 from ..interests import GENDERS, GOALS, INTERESTS, LOOKING_FOR, MIN_INTERESTS, clean
-from datetime import date
-from ..models import Conversation, Message, User, UserPhoto, utcnow
+from ..models import AnimalPost, Conversation, Message, User, UserPhoto, utcnow
 from ..serializers import own_profile
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
@@ -172,8 +173,6 @@ def verify_face(data: FramesIn, user: User = Depends(current_user), db: Session 
     if result.ok:
         center = data.frames.get("center")
         if center:
-            import base64
-
             try:
                 raw = base64.b64decode(center.split(",", 1)[-1])
                 storage.delete_file(user.selfie_path)
@@ -212,6 +211,9 @@ def delete_user_completely(db: Session, user: User) -> None:
         if chat_dir.exists():
             shutil.rmtree(chat_dir, ignore_errors=True)
         db.delete(c)
+    for post in db.scalars(select(AnimalPost).where(AnimalPost.author_id == user.id)):
+        for path in post.photos:
+            storage.delete_file(path)
     storage.delete_file(user.photo_path)
     storage.delete_file(user.selfie_path)
     for p in user.photos:

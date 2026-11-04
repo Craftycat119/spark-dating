@@ -2,7 +2,6 @@
 // Лайк — бусины стягиваются в сердце, пропуск — осыпаются вниз.
 import { esc } from "./ui.js";
 
-const NS = "http://www.w3.org/2000/svg";
 const r1 = (v) => Math.round(v * 10) / 10;
 
 function layout(n, W, CY, widths) {

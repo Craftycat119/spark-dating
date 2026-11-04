@@ -1,7 +1,7 @@
-// На странице по ссылке браузер не даёт камеру и микрофон, а виджет Telegram не загружается:
-// честно говорим об этом и показываем имитацию окна Telegram
+// На странице по ссылке браузер не даёт камеру и микрофон, а Telegram недоступен:
+// честно говорим об этом и показываем имитацию бота
 import { icons } from "../../static/js/icons.js";
-import { $, esc, h, toast } from "../../static/js/ui.js";
+import { $, h, toast } from "../../static/js/ui.js";
 
 const RULES = [
   ["[data-voice]", "Голосовые записываются в приложении. На странице по ссылке браузер не даёт доступ к микрофону"],
@@ -19,18 +19,19 @@ document.addEventListener("click", (e) => {
   }
 }, true);
 
-function telegramSheet() {
-  const el = h(`<div class="overlay sheet-overlay" role="dialog" aria-label="Вход через Telegram">
+// «Открыть Telegram» в окне входа: показываем имитацию бота вместо перехода на t.me
+function telegramSheet(token) {
+  const el = h(`<div class="overlay sheet-overlay" role="dialog" aria-label="Бот COFI в Telegram">
     <div class="bottom-sheet tg-sheet">
-      <div class="tg-head"><span class="tg-logo">${icons.send}</span><b>Telegram</b></div>
-      <h2>Вход через Telegram</h2>
-      <p class="muted">Сайт COFI запрашивает вход через ваш аккаунт Telegram. Он получит ваше имя, username и фото профиля.</p>
+      <div class="tg-head"><span class="tg-logo">${icons.send}</span><b>Telegram · бот COFI</b></div>
+      <h2>Войти в COFI?</h2>
+      <p class="muted">Так выглядит сообщение бота. Сайт получит ваше имя и username в Telegram.</p>
       <form class="stack">
         <label class="field"><span>Имя в Telegram</span><input class="input" name="first" value="Андрей" maxlength="64" required></label>
         <label class="field"><span>@username</span><input class="input" name="user" value="andrey_tg" maxlength="32"></label>
-        <button class="btn tg block">Принять</button>
+        <button class="btn tg block">✅ Войти</button>
       </form>
-      <p class="hint">Это имитация окна Telegram: в демо по ссылке настоящий Telegram недоступен. В приложении здесь откроется официальное окно Telegram.</p>
+      <p class="hint">Это имитация бота: в демо по ссылке настоящий Telegram недоступен. В приложении откроется чат с ботом COFI.</p>
       <button class="btn ghost block" data-close>Отмена</button>
     </div></div>`);
   $("[data-close]", el).onclick = () => el.remove();
@@ -38,17 +39,16 @@ function telegramSheet() {
     e.preventDefault();
     const f = e.target;
     el.remove();
-    window.onTelegramAuth?.({ id: 7000000 + Math.floor(Math.random() * 999999), first_name: f.first.value.trim(),
-      username: f.user.value.replace(/^@/, "").trim(), auth_date: Math.floor(Date.now() / 1000), hash: "demo" });
+    window.__cofiTgConfirm?.(token, { id: 7000000 + Math.floor(Math.random() * 999999), first_name: f.first.value.trim(),
+      username: f.user.value.replace(/^@/, "").trim() });
   };
   document.body.append(el);
 }
 
-// приложение вставляет официальный виджет в #tg-login; меняем его на нашу кнопку
-new MutationObserver(() => {
-  const box = document.getElementById("tg-login");
-  if (!box || box.dataset.demo) return;
-  box.dataset.demo = "1";
-  box.replaceChildren(h(`<button class="btn tg block" type="button">${icons.send} Войти через Telegram</button>`));
-  box.firstElementChild.onclick = telegramSheet;
-}).observe(document.documentElement, { childList: true, subtree: true });
+document.addEventListener("click", (e) => {
+  const a = e.target.closest?.('a[href^="#tg-demo:"]');
+  if (!a) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  telegramSheet(a.getAttribute("href").slice("#tg-demo:".length));
+}, true);

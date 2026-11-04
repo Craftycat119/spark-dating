@@ -67,7 +67,7 @@ const html = `<meta name="viewport" content="width=device-width, initial-scale=1
 <meta name="theme-color" content="#120c09">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;800&family=Pixelify+Sans:wght@500;700&family=Unbounded:wght@600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;800&family=Unbounded:wght@600;700&display=swap" rel="stylesheet">
 ${themeScript.replace('localStorage.getItem("theme")||"dark"', 'localStorage.getItem("theme")||"system"')}
 <style>
 ${phosphor}
