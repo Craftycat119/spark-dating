@@ -6,35 +6,103 @@
 
 Бэкенд — FastAPI + SQLite (SQLAlchemy), фронтенд — чистый JS без сборки, realtime — WebSocket, звонки — WebRTC.
 
-## Запуск
+## Запуск через командную строку
 
-Быстро: **Windows** — двойной клик по `Запуск.bat`, **macOS/Linux** — `./start.sh`. Скрипт сам создаст окружение, поставит зависимости, скачает модели и откроет http://localhost:8000.
+Нужен **Python 3.10–3.13** ([python.org](https://www.python.org/downloads/)). На Windows при установке отметьте **Add python.exe to PATH**.
+Проверка: `python --version` (на macOS/Linux `python3 --version`).
 
-Вручную:
+Все команды выполняются **из папки проекта**, в которой лежат `run.py` и `requirements.txt`.
+Если скачали zip, это папка `cofi` внутри архива, если клонировали с GitHub, это `spark-dating`.
 
-```bash
-cd spark-dating
-python -m venv venv && source venv/bin/activate      # Windows: venv\Scripts\activate
+### Windows: PowerShell (терминал PyCharm, VS Code)
+
+```powershell
+cd C:\путь\к\cofi                        # папка, где лежит run.py
+python -m venv venv                       # один раз: виртуальное окружение
+venv\Scripts\Activate.ps1                 # в начале строки появится (venv)
+pip install -r requirements.txt           # один раз: зависимости
+python run.py                             # сервер на http://localhost:8000
+```
+
+Если `Activate.ps1` пишет «выполнение сценариев отключено», один раз выполните
+`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` и повторите активацию.
+
+### Windows: командная строка (cmd)
+
+```bat
+cd /d C:\путь\к\cofi
+python -m venv venv
+venv\Scripts\activate.bat
 pip install -r requirements.txt
-python -m app.cli download-models                    # нейросети для проверки лица (~38 МБ)
-cp .env.example .env                                 # для локального запуска можно не делать
-python run.py                                        # → http://localhost:8000
+python run.py
 ```
 
-Без `.env` приложение работает в режиме разработки: письма с кодами печатаются в консоль,
-а код подтверждения показывается прямо на экране.
+Или просто двойной клик по `Запуск.bat`: он сделает всё то же самое и откроет браузер.
 
-Полезные команды:
+### macOS и Linux
 
 ```bash
-python -m app.cli make-admin you@mail.ru             # выдать права админа (или ADMIN_EMAILS в .env)
-python -m app.cli seed --lat 55.75 --lon 37.62       # 12 демо-анкет с интересами рядом с точкой (пароль Demo12345)
-FACE_MODE=dev python run.py                          # отключить сверку лица (для тестов без камеры)
-DEMO_REPLY_DELAY=0 python run.py                     # боты в демо отвечают мгновенно (по умолчанию пауза 2.5 с)
-pip install -r requirements-dev.txt && pytest        # тесты
+cd ~/путь/к/cofi
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python run.py
 ```
 
-> Камера, микрофон и геопозиция в браузере работают только на `localhost` или по **HTTPS**.
+Или одной командой: `./start.sh` (если не запускается, сначала `chmod +x start.sh`).
+
+### Открыть приложение
+
+- Приложение: http://localhost:8000
+- Админ-панель: http://localhost:8000/admin
+- Остановить сервер: `Ctrl+C` в терминале.
+
+При следующих запусках достаточно двух команд: активировать окружение (`venv\Scripts\Activate.ps1`,
+`venv\Scripts\activate.bat` или `source venv/bin/activate`) и выполнить `python run.py`.
+
+### Первый вход
+
+1. Нажмите **«Демо без регистрации»**, чтобы сразу посмотреть ленту с ботами (взрослую или для 12–17 лет).
+2. Или зарегистрируйтесь по почте. Почта для локального запуска не нужна: 6-значный код показывается
+   прямо на экране и печатается в терминале.
+3. Чтобы стать админом, остановите сервер и выполните `python -m app.cli make-admin ваша@почта.ру`,
+   затем снова `python run.py`.
+4. Проверка лица включает камеру браузера. Без камеры её можно отключить, см. `FACE_MODE=dev` ниже.
+
+Модели для проверки лица (~38 МБ) уже лежат в папке `models` в архиве. Если папки нет (клон с GitHub),
+скачайте их: `python -m app.cli download-models`.
+
+### Полезные команды
+
+Выполнять в той же папке с активированным окружением.
+
+| Что | Команда |
+|---|---|
+| Выдать права админа | `python -m app.cli make-admin you@mail.ru` |
+| 12 тестовых анкет рядом с Москвой (пароль `Demo12345`) | `python -m app.cli seed --lat 55.75 --lon 37.62` |
+| Другой порт | PowerShell: `$env:PORT=8080; python run.py` · cmd: `set PORT=8080`, затем `python run.py` · macOS/Linux: `PORT=8080 python run.py` |
+| Без проверки лица (нет камеры) | PowerShell: `$env:FACE_MODE="dev"; python run.py` · cmd: `set FACE_MODE=dev`, затем `python run.py` · macOS/Linux: `FACE_MODE=dev python run.py` |
+| Боты в демо отвечают сразу | так же, переменная `DEMO_REPLY_DELAY=0` |
+| Начать с чистой базы | остановить сервер и удалить папку `data` |
+| Тесты | `pip install -r requirements-dev.txt` и затем `pytest` |
+| Демо в один HTML-файл | открыть `cofi-demo.html` из архива двойным кликом, сервер не нужен |
+
+### Частые ошибки
+
+| Ошибка | Что сделать |
+|---|---|
+| `python` не найден / открывается Microsoft Store | Установите Python с python.org с галочкой «Add to PATH» или используйте `py` вместо `python`. |
+| `Не удается найти путь` при `cd` | Вы не в той папке. `dir` (Windows) или `ls` покажут содержимое: нужна папка, где виден `run.py`. |
+| `No module named fastapi` | Не активировано окружение или не выполнен `pip install -r requirements.txt`. |
+| `address already in use` / порт 8000 занят | Сервер уже запущен в другом окне, закройте его или запустите на другом порту. |
+| Камера или геопозиция не работают | Они работают только на `localhost` или по HTTPS. Откройте именно http://localhost:8000, а не IP-адрес. |
+| Код из письма не приходит | Для локального запуска это нормально: код показан на экране. Не копируйте `.env.example` в `.env`, пока не настроили SMTP: в нём `DEV_MODE=0`, и код перестанет показываться. |
+
+### Настройки (`.env`)
+
+Для локального запуска файл не нужен. Для настоящего сайта скопируйте `.env.example` в `.env`
+(`copy .env.example .env` на Windows, `cp .env.example .env` на macOS/Linux) и заполните: почту (SMTP), `SECRET_KEY`,
+`ADMIN_EMAILS`, бота Telegram. Подробнее в разделах ниже.
 
 ## Что умеет
 
@@ -64,7 +132,7 @@ pip install -r requirements-dev.txt && pytest        # тесты
 ## Структура
 
 ```
-spark-dating/
+cofi/ (или spark-dating/)
 ├── app/
 │   ├── main.py            FastAPI, раздача файлов с проверкой доступа
 │   ├── models.py          таблицы БД
