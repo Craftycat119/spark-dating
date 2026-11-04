@@ -119,6 +119,10 @@ def upload_photo(file: UploadFile = File(...), user: User = Depends(current_user
         except face_verify.FaceError as exc:
             storage.delete_file(rel)
             raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001 — сломались модели или OpenCV: говорим понятно, детали в терминале
+            storage.delete_file(rel)
+            log.exception("Проверка фото не запустилась")
+            raise HTTPException(500, "Проверка лица не запустилась, подробности в окне терминала с сервером") from exc
 
     storage.delete_file(user.photo_path)
     user.photo_path = rel

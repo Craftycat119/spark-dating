@@ -93,8 +93,12 @@ class FaceEngine:
             rec = self.models_dir / "face_recognition_sface_2021dec.onnx"
             if not det.exists() or not rec.exists():
                 download_models(self.models_dir)
-            self._detector = cv2.FaceDetectorYN.create(str(det), "", (320, 320), 0.8, 0.3, 5000)
-            self._recognizer = cv2.FaceRecognizerSF.create(str(rec), "")
+            # Модели читаем в память сами: OpenCV на Windows не открывает файлы, если в пути есть кириллица
+            # (например, C:\Users\Алёна\...), и падает при загрузке фото
+            empty = np.array([], np.uint8)
+            self._detector = cv2.FaceDetectorYN.create(
+                "onnx", np.frombuffer(det.read_bytes(), np.uint8), empty, (320, 320), 0.8, 0.3, 5000)
+            self._recognizer = cv2.FaceRecognizerSF.create("onnx", np.frombuffer(rec.read_bytes(), np.uint8), empty)
 
     def detect(self, img) -> np.ndarray:
         """Возвращает массив лиц (строки по 15 чисел YuNet), самые крупные — первыми."""

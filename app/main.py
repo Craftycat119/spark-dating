@@ -94,16 +94,25 @@ def media(rel: str, user: User = Depends(current_user), db: Session = Depends(ge
     return FileResponse(path, headers={"Cache-Control": "private, max-age=86400"})
 
 
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+class FreshStatic(StaticFiles):
+    """Браузер каждый раз сверяет файл с сервером (ETag), поэтому после обновления не показывает старую версию."""
+
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
+app.mount("/static", FreshStatic(directory=STATIC_DIR), name="static")
 
 
 @app.get("/admin")
 def admin_page():
-    return FileResponse(STATIC_DIR / "admin.html")
+    return FileResponse(STATIC_DIR / "admin.html", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/{path:path}")
 def spa(path: str, request: Request):
     if path.startswith(("api/", "media/", "ws")):
         raise HTTPException(404)
-    return FileResponse(STATIC_DIR / "index.html")
+    return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-cache"})

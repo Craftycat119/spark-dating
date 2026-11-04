@@ -31,9 +31,17 @@ function mount3d(el, shape) {
   if (!el) return;
   import("./puff3d.js")
     .then(({ mountPuff }) => {
-      if (!el.isConnected) return;
-      const fallback = el.querySelector(".wordmark");
-      if (mountPuff(el, { shape }) && fallback) fallback.remove();
+      // Экран меняется через View Transition: новый экран попадает на страницу не сразу.
+      // Ждём, пока он появится, иначе 3D не встанет и останется плоский логотип поверх текста.
+      const tryMount = (frames = 0) => {
+        if (!el.isConnected || !el.clientWidth) {
+          if (frames < 120) requestAnimationFrame(() => tryMount(frames + 1));
+          return;
+        }
+        const fallback = el.querySelector(".wordmark");
+        if (mountPuff(el, { shape }) && fallback) fallback.remove();
+      };
+      tryMount();
     })
     .catch(() => { /* без 3D всё работает */ });
 }
