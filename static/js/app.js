@@ -1144,8 +1144,26 @@ function previewText(m, meId) {
   return mine + (m.kind === "text" || m.kind === "sticker" ? m.text : t(map[m.kind] || ""));
 }
 
+/** Подключить уведомления в Telegram к аккаунту, созданному по почте. */
+async function linkTelegram() {
+  try {
+    const { url } = await api.post("/api/profile/telegram-link");
+    if (tgApp()?.initData !== undefined && tgApp()?.platform && tgApp().platform !== "unknown") tgApp().openTelegramLink(url);
+    else if (!window.open(url, "_blank")) location.href = url; // браузер заблокировал новое окно
+    toast("Нажмите «Запустить» в боте, и уведомления подключатся", { timeout: 6000 });
+  } catch (ex) { toast(ex.message, { error: true }); }
+}
+
+/** Почтой приходят только коды, поэтому без Telegram человек не узнает о сообщениях и звонках. */
+function telegramNudge() {
+  if (state.me.telegram_linked || state.me.is_demo || !state.config.telegram_bot_username) return "";
+  return `<div class="tg-nudge">${icons.send}<div><b>Подключите Telegram</b><span>В Telegram будут приходить сообщения и пропущенные звонки. На почту — только коды входа</span></div>
+    <button class="btn tg" data-tg-link>Подключить</button></div>`;
+}
+
 async function renderChats() {
-  const root = screen(`<h1>Чаты</h1><div id="chats"></div>`);
+  const root = screen(`<h1>Чаты</h1>${telegramNudge()}<div id="chats"></div>`);
+  $("[data-tg-link]", root)?.addEventListener("click", linkTelegram);
   let chats = [];
   try { chats = await api.get("/api/chats"); } catch (ex) { toast(ex.message, { error: true }); }
   state.unread = chats.reduce((s, c) => s + c.unread, 0);
@@ -1517,10 +1535,8 @@ function renderSettings() {
       <label class="field"><span>Искать в радиусе <b id="dist-val">${me.max_distance_km}</b> км</span>
         <input type="range" name="dist" min="1" max="300" value="${Math.min(me.max_distance_km, 300)}"></label>
       <button type="button" class="btn ghost" id="relocate">${icons.pin} Обновить геопозицию</button>
-      ${me.email ? `<label class="switch"><input type="checkbox" name="notify" ${me.email_notifications ? "checked" : ""}>
-        <span class="label">Письма о парах и обновлениях<small>${esc(me.email)}</small></span></label>` : ""}
       ${me.telegram_linked ? `<label class="switch"><input type="checkbox" name="tgnotify" ${me.tg_notifications ? "checked" : ""}>
-        <span class="label">Уведомления в Telegram<small>Сообщения, пары и звонки, когда вы не в приложении</small></span></label>`
+        <span class="label">Уведомления в Telegram<small>Непрочитанные сообщения, пропущенные звонки и пары, когда вы не в приложении</small></span></label>`
         : state.config.telegram_bot_username ? `<button type="button" class="btn ghost" id="tg-link">${icons.send} Подключить уведомления в Telegram</button>` : ""}
       <button class="btn block">Сохранить изменения</button>
     </form>
@@ -1583,7 +1599,6 @@ function renderSettings() {
       max_distance_km: Number(form.dist.value),
       ...pick,
     };
-    if (form.notify) data.email_notifications = form.notify.checked;
     if (form.tgnotify) data.tg_notifications = form.tgnotify.checked;
     try {
       state.me = await api.put("/api/profile", data);
@@ -1591,13 +1606,7 @@ function renderSettings() {
     } catch (ex) { toast(ex.message, { error: true }); }
   };
 
-  $("#tg-link", root)?.addEventListener("click", async () => {
-    try {
-      const { url } = await api.post("/api/profile/telegram-link");
-      if (!window.open(url, "_blank")) location.href = url; // браузер заблокировал новое окно
-      toast("Нажмите «Запустить» в боте, и уведомления подключатся", { timeout: 6000 });
-    } catch (ex) { toast(ex.message, { error: true }); }
-  });
+  $("#tg-link", root)?.addEventListener("click", linkTelegram);
 
   $("#relocate", root).onclick = async () => {
     try {

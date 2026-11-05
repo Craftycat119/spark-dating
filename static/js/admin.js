@@ -404,7 +404,7 @@ async function loadPets() {
 function mail() {
   view.innerHTML = `<h1>Рассылка</h1>
     <form class="stack" style="max-width:560px">
-      <p class="muted">Письмо уйдёт всем с подтверждённой почтой, кто не отключил рассылку в настройках. Пользователи Telegram без почты его не получат.</p>
+      <p class="muted">Сообщение придёт через Telegram-бота всем, у кого подключён Telegram и включены уведомления. На почту рассылки не отправляются: почтой уходят только коды входа.</p>
       <label class="field"><span>Тема</span><input class="input" name="subject" maxlength="200" required placeholder="Например: в COFI появились кружочки"></label>
       <label class="field"><span>Текст</span><textarea class="input" name="body" rows="10" required></textarea></label>
       <button class="btn">Отправить рассылку</button>
@@ -412,7 +412,7 @@ function mail() {
   $("form", view).onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target;
-    if (!(await confirmDialog("Отправить письмо всем подписчикам?", "Отправить"))) return;
+    if (!(await confirmDialog("Отправить сообщение всем в Telegram?", "Отправить"))) return;
     try {
       const r = await api.post("/api/admin/broadcast", { subject: f.subject.value, body: f.body.value });
       toast(`Рассылка поставлена в очередь: ${r.recipients} получателей`);

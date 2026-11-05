@@ -37,7 +37,6 @@ class ProfileIn(BaseModel):
     looking_for: str | None = None
     interests: list[str] | None = None
     goals: list[str] | None = None
-    email_notifications: bool | None = None
     tg_notifications: bool | None = None
     max_distance_km: int | None = None
     language: str | None = None
@@ -123,8 +122,6 @@ def update_profile(data: ProfileIn, user: User = Depends(current_user), db: Sess
         if not goals:
             raise HTTPException(422, "Выберите, что вы ищете")
         user.goals = goals
-    if data.email_notifications is not None:
-        user.email_notifications = data.email_notifications
     if data.tg_notifications is not None:
         user.tg_notifications = data.tg_notifications
     if data.max_distance_km is not None:

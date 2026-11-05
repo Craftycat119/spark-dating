@@ -179,3 +179,29 @@ def test_hidden_app_gets_notifications_and_missed_call(monkeypatch):
         while wa.receive_json()["type"] != "pong":
             pass
         assert [p["text"] for _, p in bot.sent] == ["📵 Пропущенный видеовызов от Аня"]
+
+
+def test_broadcast_and_unread_count_via_telegram(monkeypatch):
+    from app.database import SessionLocal
+    from app.models import User
+
+    bot = FakeBot()
+    monkeypatch.setattr(config.settings, "telegram_bot_token", TOKEN)
+    monkeypatch.setattr(config.settings, "base_url", "https://cofi.example")
+    monkeypatch.setattr(telegram_bot, "api", bot)
+    monkeypatch.setattr(push, "_in_background", lambda fn, *a: fn(*a))
+    monkeypatch.setattr(push, "MESSAGE_PAUSE", 0)
+    boss = make_user("boss@example.com")
+    a, b = make_user("ua@x.io", name="Аня"), make_user("ub@x.io", name="Боря")
+    with SessionLocal() as db:
+        db.get(User, b.user_id).telegram_id = 9100
+        db.commit()
+    r = boss.post("/api/admin/broadcast", json={"subject": "Новое", "body": "Кружочки"})
+    assert r.json()["recipients"] == 1
+    assert any(p["text"].startswith("📣 Новое") for _, p in bot.sent)
+    a.post("/api/feed/swipe", json={"user_id": b.user_id, "like": True})
+    conv = b.post("/api/feed/swipe", json={"user_id": a.user_id, "like": True}).json()["conversation_id"]
+    bot.sent.clear()
+    a.post(f"/api/chats/{conv}/messages", json={"text": "раз"})
+    a.post(f"/api/chats/{conv}/messages", json={"text": "два"})
+    assert "(2 непрочитанных)" in bot.sent[-1][1]["text"]

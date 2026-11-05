@@ -1,4 +1,5 @@
-"""Отправка писем: коды подтверждения, уведомления о метчах, рассылки об обновлениях."""
+"""Отправка писем. Почтой уходят только коды подтверждения и сброса пароля;
+сообщения, пары, звонки и рассылки идут через Telegram-бота (app/push.py)."""
 from __future__ import annotations
 
 import logging
@@ -73,21 +74,3 @@ def send_code(to: str, code: str, purpose: str) -> bool:
         f"padding:18px 0'>{code}</div>Код действует {ttl} минут. Если это были не вы — просто проигнорируйте письмо.",
     )
     return send_email(to, f"{settings.app_name}: {title.lower()} — {code}", text, html)
-
-
-def send_match_email(to: str, other_name: str, common: list[str]) -> bool:
-    together = f" Общее: {', '.join(common[:5])}." if common else ""
-    text = f"Вы и {other_name} понравились друг другу.{together} Напишите первым: {settings.base_url}"
-    html = _layout(
-        "Взаимно!",
-        f"Вы и <b>{escape(other_name)}</b> понравились друг другу.{escape(together)}<br><br>"
-        f"<a href='{escape(settings.base_url)}' style='display:inline-block;background:#ff5b1f;color:#160b05;"
-        f"padding:12px 22px;border-radius:12px;text-decoration:none'>Открыть чат</a>",
-    )
-    return send_email(to, f"{settings.app_name}: новый метч!", text, html)
-
-
-def send_broadcast(to: str, subject: str, body: str) -> bool:
-    html = _layout(subject, escape(body).replace("\n", "<br>"))
-    footer = "\n\n—\nОтключить такие письма можно в настройках профиля."
-    return send_email(to, subject, body + footer, html)

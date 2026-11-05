@@ -171,8 +171,8 @@ def test_admin_panel():
     assert boss.post(f"/api/admin/users/{b.user_id}/ban", json={"banned": True}).status_code == 200
     assert b.get("/api/auth/me").status_code == 401
 
-    r = boss.post("/api/admin/broadcast", json={"subject": "Обновление", "body": "Добавили кружочки"})
-    assert r.json()["recipients"] == 2  # забаненный не получает
+    # без бота рассылка недоступна: почтой уходят только коды
+    assert boss.post("/api/admin/broadcast", json={"subject": "Обновление", "body": "Добавили кружочки"}).status_code == 503
 
     assert boss.delete(f"/api/admin/users/{a.user_id}").status_code == 200
     assert boss.get(f"/api/admin/users/{a.user_id}").status_code == 404

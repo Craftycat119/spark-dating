@@ -21,7 +21,6 @@ def own_profile(user: User) -> dict:
         "id": user.id,
         "email": user.email,
         "email_verified": user.email_verified,
-        "email_notifications": user.email_notifications,
         "tg_notifications": user.tg_notifications,
         "telegram_linked": bool(user.telegram_id),
         "auth_provider": user.auth_provider,

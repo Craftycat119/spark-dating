@@ -284,6 +284,9 @@ export const EN = {
   "Другая картинка": "Another picture", "Цифры для проверки": "Digits to check",
   "Проверка на робота не пройдена, попробуйте ещё раз": "Robot check failed, please try again",
   "Картинка не загрузилась, нажмите обновить": "The picture didn't load, tap refresh",
+  "Подключите Telegram": "Connect Telegram", "Подключить": "Connect",
+  "В Telegram будут приходить сообщения и пропущенные звонки. На почту — только коды входа": "Messages and missed calls will come to Telegram. Email only gets sign-in codes",
+  "Непрочитанные сообщения, пропущенные звонки и пары, когда вы не в приложении": "Unread messages, missed calls and matches when you're not in the app",
   "Барсик": "Barsik", "Луна": "Luna", "38 000 ₽": "38,000 ₽", "Дружить": "Be friends", "Новый друг": "New friend", "Войти через Telegram": "Sign in with Telegram",
   "Имя в Telegram": "Telegram name", 
 };

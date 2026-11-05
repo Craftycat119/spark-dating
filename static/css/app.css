@@ -764,3 +764,10 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .captcha-label { font-size: 14px; color: var(--muted); }
 .captcha-row { display: flex; align-items: center; gap: 10px; }
 .captcha-row img { width: 220px; max-width: calc(100% - 54px); height: auto; aspect-ratio: 220 / 80; border-radius: 14px; background: var(--surface); }
+/* предложение подключить Telegram для уведомлений */
+.tg-nudge { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; margin: 12px 0 16px; padding: 14px 16px; border-radius: var(--r-box); background: color-mix(in srgb, #2aabee 14%, var(--surface)); }
+.tg-nudge > .ph-fill, .tg-nudge > .ph { font-size: 26px; color: #2aabee; }
+.tg-nudge b { display: block; }
+.tg-nudge span { display: block; font-size: 13px; color: var(--muted); }
+.tg-nudge .btn { min-height: 40px; padding: 0 16px; font-size: 14px; }
+@media (max-width: 520px) { .tg-nudge { grid-template-columns: auto 1fr; } .tg-nudge .btn { grid-column: 1 / -1; } }

@@ -116,6 +116,17 @@ def away(user_id: int) -> bool:
 
 # ---------- сообщения и пары ----------
 
+def _unread(user_id: int, conversation_id: int) -> int:
+    from sqlalchemy import func, select
+
+    from .database import SessionLocal
+    from .models import Message
+
+    with SessionLocal() as db:
+        return db.scalar(select(func.count(Message.id)).where(
+            Message.conversation_id == conversation_id, Message.sender_id != user_id, Message.read_at.is_(None))) or 0
+
+
 def notify_message(recipient, sender_name: str, conversation_id: int, preview: str) -> None:
     """Новое сообщение: уведомляем, если человек сейчас не смотрит на COFI."""
     if not away(recipient.id) or not can_notify(recipient):
@@ -126,7 +137,9 @@ def notify_message(recipient, sender_name: str, conversation_id: int, preview: s
         if now - _last_message_notice.get(key, 0) < MESSAGE_PAUSE:
             return
         _last_message_notice[key] = now
-    text = f"✉️ Вам пришло сообщение от {sender_name}" + (f":\n{preview[:300]}" if preview else "")
+    unread = _unread(recipient.id, conversation_id)
+    more = f" ({unread} непрочитанных)" if unread > 1 else ""
+    text = f"✉️ Вам пришло сообщение от {sender_name}{more}" + (f":\n{preview[:300]}" if preview else "")
     _in_background(_send, recipient.telegram_id, text, [_open_button("Открыть чат", chat=conversation_id)])
 
 
@@ -255,3 +268,10 @@ def notify_admins(db, thread, text: str) -> None:
     button = {"text": "Ответить в админ-панели", "url": f"{base}/admin#support"} if app_link() else None
     for chat in chats:
         _in_background(_send, chat, message, [button])
+
+
+def broadcast(chats: list[int], text: str) -> None:
+    """Рассылка из админ-панели. Не быстрее ~25 сообщений в секунду: так требует Telegram."""
+    for chat in chats:
+        _send(chat, text, [_open_button("Открыть COFI")])
+        time.sleep(0.04)

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from .. import emailer, feed_index
+from .. import feed_index, push
 from ..interests import GENDERS, INTERESTS, LOOKING_FOR, ORIENTATIONS
 from ..database import get_db
 from ..deps import admin_user
@@ -201,18 +201,13 @@ def conversation_messages(conv_id: int, _: User = Depends(admin_user), db: Sessi
 
 @router.post("/broadcast")
 def broadcast(data: BroadcastIn, background: BackgroundTasks, _: User = Depends(admin_user), db: Session = Depends(get_db)):
-    emails = db.scalars(
-        select(User.email).where(
-            User.email.is_not(None), User.email_verified.is_(True), User.email_notifications.is_(True), User.is_banned.is_(False)
-        )
-    ).all()
-
-    def _send_all():
-        for e in emails:
-            emailer.send_broadcast(e, data.subject, data.body)
-
-    background.add_task(_send_all)
-    return {"status": "queued", "recipients": len(emails)}
+    """Новость всем через Telegram-бота. Почта используется только для кодов подтверждения."""
+    if not push.enabled():
+        raise HTTPException(503, "Telegram-бот не настроен: укажите TELEGRAM_BOT_TOKEN в .env")
+    chats = db.scalars(select(User.telegram_id).where(
+        User.telegram_id.is_not(None), User.tg_notifications.is_(True), User.is_banned.is_(False), User.is_bot.is_(False))).all()
+    background.add_task(push.broadcast, list(chats), f"📣 {data.subject}\n\n{data.body}")
+    return {"status": "queued", "recipients": len(chats)}
 
 
 # ---------- Возраст ----------
