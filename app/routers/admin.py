@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from .. import emailer
+from .. import emailer, feed_index
 from ..interests import GENDERS, INTERESTS, LOOKING_FOR, ORIENTATIONS
 from ..database import get_db
 from ..deps import admin_user
@@ -156,6 +156,7 @@ def ban(user_id: int, data: BanIn, admin: User = Depends(admin_user), db: Sessio
         raise HTTPException(400, "Нельзя заблокировать себя")
     u.is_banned = data.banned
     db.commit()
+    feed_index.invalidate()
     return user_row(u)
 
 
@@ -165,6 +166,7 @@ def reset_verification(user_id: int, _: User = Depends(admin_user), db: Session 
     u.photo_verified = False
     u.photo_verified_at = None
     db.commit()
+    feed_index.invalidate()
     return user_row(u)
 
 
@@ -265,6 +267,7 @@ def set_birth_date(user_id: int, data: BirthIn, _: User = Depends(admin_user), d
     u.age = years_between(data.birth_date)
     u.age_verified = data.verified
     db.commit()
+    feed_index.invalidate()
     return user_row(u)
 
 

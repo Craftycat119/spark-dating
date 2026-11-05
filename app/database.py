@@ -7,9 +7,14 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import settings
 
+# Пул подключений под число потоков сервера (их 40): раньше пул был 5+10, и под нагрузкой запросы ждали
+# свободного подключения до 30 секунд и падали
 engine = create_engine(
     settings.db_url,
-    connect_args={"check_same_thread": False} if settings.db_url.startswith("sqlite") else {},
+    connect_args={"check_same_thread": False, "timeout": 15} if settings.db_url.startswith("sqlite") else {},
+    pool_size=40,
+    max_overflow=20,
+    pool_timeout=15,
 )
 
 
@@ -20,6 +25,8 @@ if settings.db_url.startswith("sqlite"):
         cur = dbapi_conn.cursor()
         cur.execute("PRAGMA foreign_keys=ON")
         cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA synchronous=NORMAL")  # в режиме WAL надёжно и в разы быстрее записи
+        cur.execute("PRAGMA busy_timeout=15000")  # одновременная запись ждёт своей очереди до 15 с, а не падает
         cur.close()
         # Встроенный lower() в SQLite не понимает кириллицу — подменяем на питоновский
         dbapi_conn.create_function("lower", 1, lambda v: v.lower() if isinstance(v, str) else v, deterministic=True)

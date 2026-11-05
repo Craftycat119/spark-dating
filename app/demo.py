@@ -332,6 +332,9 @@ def create_guest(db: Session, ip: str, user_agent: str, teen: bool = False) -> U
         if b["likes_you"]:
             db.add(Swipe(from_user_id=by_email[f"{b['key']}@bots.cofi"].id, to_user_id=g.id, liked=True))
     db.commit()
+    from . import feed_index
+
+    feed_index.invalidate()  # новые боты и гость должны сразу попасть в подбор
     return g
 
 

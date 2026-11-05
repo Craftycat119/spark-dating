@@ -23,8 +23,11 @@ def bounding_box(lat: float, lon: float, radius_km: float) -> tuple[float, float
 GRID = 0.02  # ≈2,2 км по широте: столько «шум» в координатах, которые участвуют в расчёте расстояния
 
 
-def _snap(v: float) -> float:
+def snap(v: float) -> float:
     return (math.floor(v / GRID) + 0.5) * GRID
+
+
+_snap = snap
 
 
 def public_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> int:

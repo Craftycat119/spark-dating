@@ -7,10 +7,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import demo, emailer, push
+from .. import demo, emailer, feed_index, push
 from ..database import get_db
 from ..deps import current_user
-from ..geo import bounding_box, public_distance_km
+from ..geo import GRID, haversine_km, public_distance_km, snap
 from ..interests import compatible, match_score
 from ..legal import TERMS_VERSION
 from ..models import Conversation, Message, Notification, Swipe, User
@@ -59,32 +59,36 @@ def get_feed(limit: int = 10, user: User = Depends(current_user), db: Session = 
     _require_access(user)
     limit = max(1, min(limit, 30))
 
-    swiped = select(Swipe.to_user_id).where(Swipe.from_user_id == user.id)
-    q = audience(visible_users(), user).where(User.id != user.id, User.id.not_in(swiped))
+    swiped = set(db.scalars(select(Swipe.to_user_id).where(Swipe.from_user_id == user.id)))
     radius = user.max_distance_km
-    if radius < 20000:
-        lat_min, lat_max, lon_min, lon_max = bounding_box(user.lat, user.lon, radius)
-        q = q.where(User.lat.between(lat_min, lat_max))
-        if lon_min >= -180 and lon_max <= 180:
-            q = q.where(User.lon.between(lon_min, lon_max))
-
-    my_interests, my_goals = user.interests, user.goals
+    my_set, my_n, my_goals = set(user.interests), len(user.interests), set(user.goals)
+    # всё о себе считаем один раз, а не для каждой из тысяч анкет
+    me_id, me_demo, me_group, me_gender, me_looking = user.id, bool(user.is_demo), user.age_group, user.gender, user.looking_for
+    me_slat, me_slon = snap(user.lat), snap(user.lon)
+    max_dlat = radius / 111.0 + GRID
     scored = []
-    for other in db.scalars(q):
-        if not other.survey_done:
-            continue
-        if other.age_group != user.age_group:
+    for c in feed_index.candidates(db):
+        if c.id == me_id or c.id in swiped or c.group != me_group:
             continue  # подростки и взрослые никогда не видят друг друга
-        if not compatible(user.gender, user.looking_for, other.gender, other.looking_for):
+        if (c.is_bot if me_demo else (c.is_bot or c.is_demo)) != me_demo:
+            continue  # демо-гости видят только ботов, настоящие люди — только настоящих
+        if abs(c.slat - me_slat) > max_dlat:
+            continue  # заведомо дальше радиуса — без точного расчёта
+        if not compatible(me_gender, me_looking, c.gender, c.looking):
             continue
-        d = public_distance_km(user.lat, user.lon, other.lat, other.lon)
+        d = max(1, round(haversine_km(me_slat, me_slon, c.slat, c.slon)))
         if d > radius:
             continue
-        score, common = match_score(my_interests, my_goals, other.interests, other.goals)
-        scored.append((score, d, common, other))
+        # то же, что match_score, но на готовых множествах
+        common = [i for i in c.interests if i in my_set]
+        interest_part = len(common) / (min(my_n, len(c.interests)) or 1)
+        goal_part = len(my_goals & c.goals) / (min(len(my_goals), len(c.goals)) or 1) if my_goals and c.goals else 0
+        scored.append((round(100 * (0.8 * interest_part + 0.2 * goal_part)), d, common, c.id))
     # Группы по 10% совпадения, внутри группы — по расстоянию
     scored.sort(key=lambda x: (-(x[0] // 10), x[1]))
-    return {"total": len(scored), "cards": [public_card(o, s, c, d) for s, d, c, o in scored[:limit]]}
+    top = scored[:limit]
+    people = {u.id: u for u in db.scalars(select(User).where(User.id.in_([t[3] for t in top])))}
+    return {"total": len(scored), "cards": [public_card(people[oid], sc, c, d) for sc, d, c, oid in top if oid in people]}
 
 
 def _notify_match(db: Session, conv: Conversation, background: BackgroundTasks) -> None:

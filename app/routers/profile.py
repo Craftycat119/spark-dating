@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
-from .. import face_verify, storage, telegram_bot
+from .. import face_verify, feed_index, storage, telegram_bot
 from ..config import settings
 from ..database import get_db
 from ..deps import current_user
@@ -131,6 +131,7 @@ def update_profile(data: ProfileIn, user: User = Depends(current_user), db: Sess
         user.max_distance_km = max(1, min(data.max_distance_km, 20000))
 
     db.commit()
+    feed_index.invalidate()  # лента увидит изменения сразу
     db.refresh(user)
     return own_profile(user)
 
@@ -167,6 +168,7 @@ def upload_photo(file: UploadFile = File(...), user: User = Depends(current_user
     user.photo_verified_at = None
     user.face_score = None
     db.commit()
+    feed_index.invalidate()  # лента увидит изменения сразу
     return own_profile(user)
 
 
@@ -222,7 +224,8 @@ def verify_face(data: FramesIn, user: User = Depends(current_user), db: Session 
         user.photo_verified = True
         user.photo_verified_at = utcnow()
         user.face_score = result.score
-        db.commit()
+    db.commit()
+    feed_index.invalidate()  # лента увидит изменения сразу
     return {"ok": result.ok, "score": round(result.score, 3), "reason": result.reason, "profile": own_profile(user)}
 
 
@@ -235,6 +238,7 @@ def update_location(data: LocationIn, user: User = Depends(current_user), db: Se
     if user.registration_lat is None:
         user.registration_lat, user.registration_lon = data.lat, data.lon
     db.commit()
+    feed_index.invalidate()  # лента увидит изменения сразу
     return {"status": "ok"}
 
 
@@ -260,6 +264,7 @@ def delete_user_completely(db: Session, user: User) -> None:
         storage.delete_file(p.path)
     db.delete(user)
     db.commit()
+    feed_index.invalidate()  # лента увидит изменения сразу
 
 
 @router.delete("")
