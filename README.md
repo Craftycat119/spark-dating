@@ -6,6 +6,8 @@
 
 Бэкенд — FastAPI + SQLite (SQLAlchemy), фронтенд — чистый JS без сборки, realtime — WebSocket, звонки — WebRTC.
 
+> **Свой сервер с доменом и https:** `sudo bash deploy/install.sh` на Ubuntu. Пошаговая инструкция и объяснение каждого шага: [deploy/DEPLOY.md](deploy/DEPLOY.md).
+
 ## Запуск через командную строку
 
 Нужен **Python 3.10–3.13** ([python.org](https://www.python.org/downloads/)). На Windows при установке отметьте **Add python.exe to PATH**.
