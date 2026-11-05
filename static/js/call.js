@@ -38,6 +38,11 @@ export function startCall(conversationId, peer, video) {
 }
 
 async function onOffer(d) {
+  if (current && current.id === d.call_id) {
+    // тот же звонок пришёл ещё раз: открыли COFI кнопкой «Ответить» в Telegram, пока он звонил в приложении
+    if (d.answer_now && !current.outgoing && !current.pc) current.accept();
+    return;
+  }
   if (current) {
     send({ type: "call:busy", conversation_id: d.conversation_id, call_id: d.call_id });
     return;

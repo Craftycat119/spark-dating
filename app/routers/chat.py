@@ -230,6 +230,9 @@ async def websocket_endpoint(ws: WebSocket):
             if kind == "ping":
                 await ws.send_text('{"type":"pong"}')
                 continue
+            if kind == "presence":  # страница сообщает, видна ли она: от этого зависит, слать ли уведомления в Telegram
+                manager.set_visible(ws, bool(data.get("visible")))
+                continue
             if kind not in CALL_EVENTS and kind != "typing":
                 continue
             if kind == "call:join":

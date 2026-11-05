@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+import urllib.error
 from dataclasses import dataclass, field
 from urllib.parse import urlencode
 
@@ -34,8 +35,8 @@ class PendingCall:
     sdp: dict
     created: float = field(default_factory=time.time)
     ice: list = field(default_factory=list)
-    tg_chat: int | None = None
-    tg_message: int | None = None
+    tg_chat: int | None = None  # куда слать «Пропущенный вызов» (Telegram собеседника), если уведомления включены
+    tg_message: int | None = None  # сообщение «Звонок от…», которое правим по итогу
 
 
 _calls: dict[str, PendingCall] = {}
@@ -69,10 +70,15 @@ def _send(chat_id: int, text: str, buttons: list[dict | None] | None = None) -> 
         payload["reply_markup"] = {"inline_keyboard": [row]}
     try:
         res = api("sendMessage", payload)
+        log.info("Telegram: уведомление отправлено (%s): %s", chat_id, text.splitlines()[0])
         return res.get("result", {}).get("message_id")
-    except Exception:  # noqa: BLE001 — нет сети или человек остановил бота
-        log.warning("Telegram: не удалось отправить уведомление %s", chat_id)
-        return None
+    except urllib.error.HTTPError as ex:
+        reason = ex.read().decode("utf-8", "replace")
+        hint = " Человек должен открыть бота и нажать «Запустить»." if ex.code in (400, 403) else ""
+        log.warning("Telegram: уведомление не отправлено (%s): %s%s", chat_id, reason, hint)
+    except Exception as ex:  # noqa: BLE001 — нет сети до api.telegram.org
+        log.warning("Telegram: уведомление не отправлено (%s): %s", chat_id, ex)
+    return None
 
 
 def _edit(chat_id: int | None, message_id: int | None, text: str) -> None:
@@ -91,14 +97,28 @@ def _in_background(fn, *args) -> None:
 
 
 def can_notify(user) -> bool:
-    return enabled() and bool(user.telegram_id) and user.tg_notifications and not user.is_bot
+    if not enabled() or user.is_bot:
+        return False
+    if not user.telegram_id:
+        log.info("Telegram-уведомление для %s не отправлено: Telegram не подключён (вход по почте). "
+                 "Пусть нажмёт в профиле «Подключить уведомления в Telegram»", user.name or user.id)
+        return False
+    if not user.tg_notifications:
+        log.info("Telegram-уведомление для %s не отправлено: уведомления выключены в профиле", user.name or user.id)
+        return False
+    return True
+
+
+def away(user_id: int) -> bool:
+    """Человек не смотрит на COFI: приложение закрыто, свёрнуто или в фоне (соединение может быть ещё живо)."""
+    return not manager.is_active(user_id)
 
 
 # ---------- сообщения и пары ----------
 
 def notify_message(recipient, sender_name: str, conversation_id: int, preview: str) -> None:
-    """Новое сообщение: уведомляем, только если человек сейчас не в приложении."""
-    if not can_notify(recipient) or manager.is_online(recipient.id):
+    """Новое сообщение: уведомляем, если человек сейчас не смотрит на COFI."""
+    if not away(recipient.id) or not can_notify(recipient):
         return
     key = (recipient.id, conversation_id)
     now = time.time()
@@ -106,12 +126,12 @@ def notify_message(recipient, sender_name: str, conversation_id: int, preview: s
         if now - _last_message_notice.get(key, 0) < MESSAGE_PAUSE:
             return
         _last_message_notice[key] = now
-    text = f"💬 {sender_name}: {preview[:200]}" if preview else f"💬 Новое сообщение от {sender_name}"
+    text = f"✉️ Вам пришло сообщение от {sender_name}" + (f":\n{preview[:300]}" if preview else "")
     _in_background(_send, recipient.telegram_id, text, [_open_button("Открыть чат", chat=conversation_id)])
 
 
 def notify_match(recipient, other_name: str, conversation_id: int) -> None:
-    if not can_notify(recipient) or manager.is_online(recipient.id):
+    if not away(recipient.id) or not can_notify(recipient):
         return
     _in_background(_send, recipient.telegram_id, f"🔥 Взаимно! Вы и {other_name} понравились друг другу. Напишите первым",
                    [_open_button("Написать", chat=conversation_id)])
@@ -123,16 +143,28 @@ def _expire() -> None:
     """Убираем звонки, которые никто не взял. Вызывать под _lock; сообщения в Telegram правим в фоне."""
     now = time.time()
     for cid in [c for c, p in _calls.items() if now - p.created > CALL_TTL]:
-        p = _calls.pop(cid)
-        _in_background(_edit, p.tg_chat, p.tg_message, f"📞 Пропущенный звонок от {p.caller_name}")
+        _missed(_calls.pop(cid))
+
+
+def _missed(p: PendingCall) -> None:
+    """Никто не ответил: правим «Звонок от…» и отдельным сообщением шлём «Пропущенный вызов» — его видно в уведомлениях."""
+    if not p.tg_chat:
+        return
+    kind = "видеовызов" if p.video else "вызов"
+    _in_background(_edit, p.tg_chat, p.tg_message, f"📞 Звонок от {p.caller_name} завершён")
+    _in_background(_send, p.tg_chat, f"📵 Пропущенный {kind} от {p.caller_name}",
+                   [_open_button("Перезвонить", chat=p.conversation_id)])
 
 
 def offer(call: PendingCall, callee) -> bool:
-    """Сохраняем звонок. Если собеседник не в сети, шлём ему звонок в Telegram. True — уведомление ушло."""
+    """Сохраняем звонок. Если собеседник не смотрит на COFI, шлём ему звонок в Telegram. True — уведомление ушло."""
     with _lock:
         _expire()
         _calls[call.call_id] = call
-    if manager.is_online(callee.id) or not can_notify(callee):
+    if not can_notify(callee):
+        return False
+    call.tg_chat = callee.telegram_id  # «Пропущенный вызов» придёт, даже если звонок показывался в приложении
+    if not away(callee.id):
         return False
     kind = "Видеозвонок" if call.video else "Звонок"
     msg_id = _send(callee.telegram_id, f"📞 {kind} от {call.caller_name}\nНажмите «Ответить», чтобы открыть COFI и поговорить", [
@@ -141,7 +173,7 @@ def offer(call: PendingCall, callee) -> bool:
     ])
     if msg_id is None:
         return False
-    call.tg_chat, call.tg_message = callee.telegram_id, msg_id
+    call.tg_message = msg_id
     return True
 
 
@@ -170,8 +202,8 @@ def finish(call_id: str, outcome: str) -> None:
         p = _calls.pop(call_id, None)
     if not p:
         return
-    if outcome == "end":
-        _in_background(_edit, p.tg_chat, p.tg_message, f"📞 Пропущенный звонок от {p.caller_name}")
+    if outcome == "end":  # звонящий сбросил, пока никто не ответил
+        _missed(p)
     elif outcome == "reject":
         _in_background(_edit, p.tg_chat, p.tg_message, f"📞 Вы отклонили звонок от {p.caller_name}")
 

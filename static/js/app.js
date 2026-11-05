@@ -85,8 +85,19 @@ async function enterFromTelegram() {
   } catch { /* не вышло — покажем обычный экран входа */ }
 }
 
+let presenceBound = false;
+
 function afterLogin() {
   connectSocket();
+  // Сообщаем серверу, видна ли страница: свёрнутое мини-приложение держит соединение,
+  // но человек ничего не видит, и тогда сообщения и звонки нужно присылать в Telegram
+  if (!presenceBound) {
+    presenceBound = true;
+    const presence = () => send({ type: "presence", visible: document.visibilityState === "visible" });
+    on("socket:open", presence);
+    document.addEventListener("visibilitychange", presence);
+    window.addEventListener("pagehide", () => send({ type: "presence", visible: false }));
+  }
   initCalls(state.config, async (convId) => {
     try {
       const c = await api.get(`/api/chats/${convId}?limit=1`);

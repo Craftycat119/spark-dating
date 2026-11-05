@@ -76,7 +76,7 @@ def test_offline_call_and_message_notifications(monkeypatch):
     # сообщение человеку не в сети приходит в Telegram с кнопкой «Открыть чат»
     a.post(f"/api/chats/{conv}/messages", json={"text": "Привет!"})
     method, payload = bot.sent[0]
-    assert method == "sendMessage" and payload["chat_id"] == 9001 and "Аня: Привет!" in payload["text"]
+    assert method == "sendMessage" and payload["chat_id"] == 9001 and payload["text"] == "✉️ Вам пришло сообщение от Аня:\nПривет!"
     assert payload["reply_markup"]["inline_keyboard"][0][0]["web_app"]["url"] == f"https://cofi.example/?chat={conv}"
     a.post(f"/api/chats/{conv}/messages", json={"text": "Ещё"})
     assert len(bot.sent) == 1  # не чаще раза в минуту на чат
@@ -128,3 +128,54 @@ def test_call_to_offline_user_via_telegram(monkeypatch):
             assert wb.receive_json() == {"type": "call:ice", "conversation_id": conv, "call_id": "k1", "candidate": {"candidate": "c"}}
             wb.send_json({"type": "call:answer", "conversation_id": conv, "sdp": {"type": "answer", "sdp": "y"}, "call_id": "k1"})
             assert wa.receive_json()["type"] == "call:answer"
+
+
+def test_hidden_app_gets_notifications_and_missed_call(monkeypatch):
+    """Свёрнутое приложение держит соединение, но уведомления всё равно приходят; несостоявшийся звонок — «Пропущенный вызов»."""
+    from fastapi.testclient import TestClient
+
+    from app.database import SessionLocal
+    from app.main import app
+    from app.models import User
+    from test_app import cookie
+
+    bot = FakeBot()
+    monkeypatch.setattr(config.settings, "telegram_bot_token", TOKEN)
+    monkeypatch.setattr(config.settings, "base_url", "https://cofi.example")
+    monkeypatch.setattr(telegram_bot, "api", bot)
+    monkeypatch.setattr(push, "_in_background", lambda fn, *a: fn(*a))
+    a, b = make_user("ha@x.io", name="Аня"), make_user("hb@x.io", name="Борис")
+    with SessionLocal() as db:
+        db.get(User, b.user_id).telegram_id = 9003
+        db.commit()
+    a.post("/api/feed/swipe", json={"user_id": b.user_id, "like": True})
+    conv = b.post("/api/feed/swipe", json={"user_id": a.user_id, "like": True}).json()["conversation_id"]
+    with TestClient(app) as hub, hub.websocket_connect("/ws", headers=cookie(a)) as wa, \
+            hub.websocket_connect("/ws", headers=cookie(b)) as wb:
+        wb.send_json({"type": "presence", "visible": False})
+        wb.send_json({"type": "ping"})
+        assert wb.receive_json()["type"] == "pong"  # presence уже обработан
+        bot.sent.clear()
+        wa.send_json({"type": "call:offer", "conversation_id": conv, "sdp": {"type": "offer", "sdp": "x"}, "video": False, "call_id": "m1"})
+        assert wa.receive_json()["type"] == "call:notified"  # хоть соединение и живо, приложение свёрнуто
+        assert "Звонок от Аня" in bot.sent[-1][1]["text"]
+        wa.receive_json()
+        wa.send_json({"type": "call:end", "conversation_id": conv, "call_id": "m1"})
+        wa.send_json({"type": "ping"})
+        assert wa.receive_json()["type"] == "pong"
+        texts = [p.get("text", "") for _, p in bot.sent]
+        assert "📵 Пропущенный вызов от Аня" in texts
+        # приложение снова на экране: звонок показывается в нём, Telegram-звонка нет, но «пропущенный» придёт
+        wb.send_json({"type": "presence", "visible": True})
+        wb.send_json({"type": "ping"})
+        while wb.receive_json()["type"] != "pong":
+            pass
+        bot.sent.clear()
+        wa.send_json({"type": "call:offer", "conversation_id": conv, "sdp": {"type": "offer", "sdp": "x"}, "video": True, "call_id": "m2"})
+        wa.receive_json()  # запись о звонке
+        assert not bot.sent
+        wa.send_json({"type": "call:end", "conversation_id": conv, "call_id": "m2"})
+        wa.send_json({"type": "ping"})
+        while wa.receive_json()["type"] != "pong":
+            pass
+        assert [p["text"] for _, p in bot.sent] == ["📵 Пропущенный видеовызов от Аня"]
