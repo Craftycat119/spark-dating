@@ -19,6 +19,8 @@ export const icons = {
   send: i("paper-plane-tilt", true),
   circle: i("record"),
   play: i("play", true),
+  stop: i("stop", true),
+  trash: i("trash"),
   pause: i("pause", true),
   check: i("seal-check", true),
   shield: i("shield-check"),

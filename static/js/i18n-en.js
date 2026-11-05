@@ -272,6 +272,9 @@ export const EN = {
   "Примите Пользовательское соглашение": "Accept the Terms of Use",
   "Знакомства в COFI с 18 лет, с 12 до 17 доступна только «Дружба». Создавая аккаунт, вы принимаете": "Dating on COFI is 18+, ages 12 to 17 get the Friends feed only. By creating an account you accept the",
   "Правила, возраст, персональные данные": "Rules, age, personal data", "Понятно": "Got it",
+  "Продолжить запись": "Resume recording", "Остановить и посмотреть": "Stop and preview",
+  "Обрезаем кружок…": "Trimming the video note…", "Потяните края полосы, чтобы обрезать начало и конец": "Drag the edges of the bar to trim the start and end",
+  "Нажмите, чтобы включить звук": "Tap to turn on sound", "Начало": "Start", "Конец": "End",
   "Барсик": "Barsik", "Луна": "Luna", "38 000 ₽": "38,000 ₽", "Дружить": "Be friends", "Новый друг": "New friend", "Войти через Telegram": "Sign in with Telegram",
   "Имя в Telegram": "Telegram name", 
 };

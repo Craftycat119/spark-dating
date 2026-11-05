@@ -121,7 +121,8 @@ class Call {
 
   async getMedia() {
     this.local = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true },
+      // эхоподавление, шумоподавление и автоусиление браузера; моно — меньше эха и трафика
+      audio: { echoCancellation: { ideal: true }, noiseSuppression: { ideal: true }, autoGainControl: { ideal: true }, channelCount: { ideal: 1 } },
       video: this.video ? { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } : false,
     });
     if (this.video) {
