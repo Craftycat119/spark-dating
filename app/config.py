@@ -36,6 +36,19 @@ def _list(name: str) -> list[str]:
     return [x.strip().lower() for x in os.environ.get(name, "").split(",") if x.strip()]
 
 
+def _ice_servers() -> list:
+    """STUN/TURN для звонков. STUN помогает, когда оба в обычном Wi-Fi. Если кто-то в мобильном интернете,
+    прямое соединение обычно закрыто оператором, и без TURN звонок висит на «Соединяем…».
+    TURN проще задать тремя строками: TURN_URLS (через запятую), TURN_USERNAME, TURN_CREDENTIAL."""
+    servers = json.loads(os.environ.get("ICE_SERVERS") or
+                         '[{"urls": ["stun:stun.l.google.com:19302", "stun:stun.cloudflare.com:3478"]}]')
+    urls = [u.strip() for u in os.environ.get("TURN_URLS", "").split(",") if u.strip()]
+    if urls:
+        servers.append({"urls": urls, "username": os.environ.get("TURN_USERNAME", ""),
+                        "credential": os.environ.get("TURN_CREDENTIAL", "")})
+    return servers
+
+
 @dataclass
 class Settings:
     app_name: str = os.environ.get("APP_NAME", "COFI")
@@ -78,11 +91,7 @@ class Settings:
     face_yaw_threshold: float = float(os.environ.get("FACE_YAW_THRESHOLD", "0.12"))
 
     # WebRTC: STUN/TURN-серверы для звонков (JSON-массив RTCIceServer)
-    ice_servers: list = field(
-        default_factory=lambda: json.loads(
-            os.environ.get("ICE_SERVERS", '[{"urls": "stun:stun.l.google.com:19302"}]')
-        )
-    )
+    ice_servers: list = field(default_factory=lambda: _ice_servers())
 
     # Пауза перед ответом бота в демо, секунды
     demo_reply_delay: float = float(os.environ.get("DEMO_REPLY_DELAY", "2.5"))

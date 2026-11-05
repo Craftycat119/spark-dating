@@ -58,12 +58,31 @@ export function recordCircle() {
     const timer = el.querySelector(".timer");
     const recBtn = el.querySelector("[data-rec]");
     let facing = "user";
-    let stream, rec, chunks = [], started = 0, tick, done = false;
+    let stream, rec, chunks = [], started = 0, tick, done = false, frame = 0;
+    // Пишем не сырой поток камеры, а квадрат с канваса: на iPhone видео с камеры хранит поворот
+    // в метаданных, и при воспроизведении кружок оказывался повёрнут на 90°. Канвас рисуем ровно так,
+    // как человек видит превью (по центру, зеркально для фронтальной камеры).
+    const SIDE = 480;
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = SIDE;
+    const ctx = canvas.getContext("2d");
+    const draw = () => {
+      const w = video.videoWidth, hgt = video.videoHeight;
+      if (w && hgt) {
+        const side = Math.min(w, hgt);
+        ctx.save();
+        if (facing === "user") { ctx.translate(SIDE, 0); ctx.scale(-1, 1); }
+        ctx.drawImage(video, (w - side) / 2, (hgt - side) / 2, side, side, 0, 0, SIDE, SIDE);
+        ctx.restore();
+      }
+      frame = requestAnimationFrame(draw);
+    };
 
     const finish = (result) => {
       if (done) return;
       done = true;
       clearInterval(tick);
+      cancelAnimationFrame(frame);
       stream?.getTracks().forEach((t) => t.stop());
       el.remove();
       resolve(result);
@@ -97,7 +116,9 @@ export function recordCircle() {
     recBtn.onclick = () => {
       if (rec) return stop();
       const mime = pickMime(["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"]);
-      rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 900_000 } : undefined);
+      draw();
+      const out = canvas.captureStream ? new MediaStream([...canvas.captureStream(30).getVideoTracks(), ...stream.getAudioTracks()]) : stream;
+      rec = new MediaRecorder(out, mime ? { mimeType: mime, videoBitsPerSecond: 900_000 } : undefined);
       rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
       rec.start(250);
       started = performance.now();

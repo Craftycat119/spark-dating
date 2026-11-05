@@ -5,6 +5,7 @@ import { esc, fmtDur, h, toast } from "./ui.js";
 
 let iceServers = [{ urls: "stun:stun.l.google.com:19302" }];
 let current = null; // активный звонок
+const NO_ROUTE = "Не получилось соединиться. Скорее всего, у кого-то из вас мобильный интернет: для таких звонков на сервере нужен TURN (README, раздел «Звонки»)";
 let lookupPeer = () => null; // conversation_id → {name, photo_url}
 
 export function initCalls(config, peerLookup) {
@@ -143,11 +144,13 @@ class Call {
         this.el.classList.add("has-video");
       }
     };
-    this.pc.onconnectionstatechange = () => {
-      const s = this.pc.connectionState;
-      if (s === "connected") this.startTimer();
-      if (s === "failed") this.close("Соединение потеряно");
+    const onState = () => {
+      const s = this.pc.connectionState || this.pc.iceConnectionState;
+      if (s === "connected" || s === "completed") { clearTimeout(this.connectTimeout); this.startTimer(); }
+      if (s === "failed") this.hangup(this.timer ? "Соединение потеряно" : NO_ROUTE);
     };
+    this.pc.onconnectionstatechange = onState;
+    this.pc.oniceconnectionstatechange = onState; // старые Safari не знают connectionState
   }
 
   async dial() {
@@ -193,6 +196,7 @@ class Call {
     await this.pc.setLocalDescription(answer);
     this.signal("call:answer", { sdp: this.pc.localDescription });
     this.activeBar();
+    this.watchConnect();
   }
 
   async onAnswer(d) {
@@ -201,6 +205,13 @@ class Call {
     await this.flushIce();
     this.status.textContent = "Соединяем…";
     this.activeBar();
+    this.watchConnect();
+  }
+
+  /** Если за 20 секунд связь не установилась, не висим на «Соединяем…», а честно говорим почему. */
+  watchConnect() {
+    clearTimeout(this.connectTimeout);
+    this.connectTimeout = setTimeout(() => !this.timer && this.hangup(NO_ROUTE), 20000);
   }
 
   async onIce(d) {
@@ -231,6 +242,7 @@ class Call {
     this.stopRing?.();
     clearTimeout(this.noAnswer);
     clearInterval(this.timer);
+    clearTimeout(this.connectTimeout);
     this.local?.getTracks().forEach((t) => t.stop());
     this.pc?.close();
     this.el.remove();
