@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..deps import COOKIE_NAME, user_from_token
 from .. import push
+from ..ratelimit import by_ip
 from ..models import SupportMessage, SupportThread, User, utcnow
 from ..realtime import manager, notify
 from ..security import hash_secret
@@ -125,6 +126,7 @@ class ThreadIn(BaseModel):
 
 @router.post("/threads")
 def create_thread(data: ThreadIn, request: Request, response: Response, db: Session = Depends(get_db)):
+    by_ip(request, "support-new", 20, 3600)
     user, guest_hash = _who(request, db)
     if data.topic not in ("support", "ads"):
         raise HTTPException(422, "Неизвестный раздел")
@@ -179,6 +181,7 @@ class MessageIn(BaseModel):
 
 @router.post("/threads/{thread_id}/messages")
 def post_message(thread_id: int, data: MessageIn, request: Request, db: Session = Depends(get_db)):
+    by_ip(request, "support-msg", 60, 600)
     user, guest_hash = _who(request, db)
     return handle_user_message(db, _owned(db, thread_id, user, guest_hash), data.text)
 

@@ -39,6 +39,9 @@ async def lifespan(_app: FastAPI):
             log.info("Удалено устаревших демо-аккаунтов: %s", removed)
     if settings.secret_key == "dev-secret-change-me" and not settings.dev_mode:
         log.error("SECRET_KEY не задан! Установите его в .env перед запуском в продакшене.")
+    if settings.dev_mode and settings.base_url.startswith("https://") and "localhost" not in settings.base_url:
+        log.warning("DEV_MODE=1 при публичном адресе %s. Коды на экране показываются только при входе с localhost, "
+                    "но для настоящего сайта поставьте DEV_MODE=0 и SECRET_KEY", settings.base_url)
     if face_verify.is_dev_mode():
         log.warning("FACE_MODE=dev — проверка лица ОТКЛЮЧЕНА. Не используйте в продакшене.")
     set_loop(asyncio.get_running_loop())
@@ -99,6 +102,23 @@ def media(rel: str, user: User = Depends(current_user), db: Session = Depends(ge
     else:
         raise HTTPException(404)
     return FileResponse(path, headers={"Cache-Control": "private, max-age=86400"})
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """Защитные заголовки: браузер не угадывает тип файлов, сайт нельзя встроить на чужую страницу
+    (кроме Telegram Web для мини-приложения), адрес страницы не утекает на другие сайты."""
+    response = await call_next(request)
+    h = response.headers
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    h.setdefault("Content-Security-Policy", "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org; object-src 'none'; base-uri 'self'")
+    h.setdefault("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(self), payment=()")
+    if request.url.scheme == "https":
+        h.setdefault("Strict-Transport-Security", "max-age=31536000")
+    if request.url.path.startswith("/api/"):
+        h.setdefault("Cache-Control", "no-store")  # личные данные из API не оседают в кэше браузера и прокси
+    return response
 
 
 class FreshStatic(StaticFiles):

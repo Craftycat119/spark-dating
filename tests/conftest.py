@@ -21,6 +21,9 @@ from app.main import app  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def fresh_db():
+    from app import ratelimit
+
+    ratelimit._hits.clear()  # у всех тестов один «IP», счётчики попыток не должны переходить между тестами
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     yield

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..deps import current_user
-from ..geo import haversine_km
+from ..geo import public_distance_km
 from ..interests import compatible, match_score
 from ..models import Conversation, Swipe, User
 from ..realtime import manager
@@ -43,7 +43,7 @@ def user_profile(user_id: int, me: User = Depends(current_user), db: Session = D
     score, common = match_score(me.interests, me.goals, other.interests, other.goals)
     distance = None
     if me.lat is not None and other.lat is not None:
-        distance = round(haversine_km(me.lat, me.lon, other.lat, other.lon), 1)
+        distance = public_distance_km(me.lat, me.lon, other.lat, other.lon)
     liked = db.scalar(
         select(Swipe.liked).where(Swipe.from_user_id == me.id, Swipe.to_user_id == other.id)
     )

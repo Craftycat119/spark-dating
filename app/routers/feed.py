@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from .. import demo, emailer, push
 from ..database import get_db
 from ..deps import current_user
-from ..geo import bounding_box, haversine_km
+from ..geo import bounding_box, public_distance_km
 from ..interests import compatible, match_score
 from ..legal import TERMS_VERSION
 from ..models import Conversation, Message, Notification, Swipe, User
@@ -77,7 +77,7 @@ def get_feed(limit: int = 10, user: User = Depends(current_user), db: Session = 
             continue  # подростки и взрослые никогда не видят друг друга
         if not compatible(user.gender, user.looking_for, other.gender, other.looking_for):
             continue
-        d = haversine_km(user.lat, user.lon, other.lat, other.lon)
+        d = public_distance_km(user.lat, user.lon, other.lat, other.lon)
         if d > radius:
             continue
         score, common = match_score(my_interests, my_goals, other.interests, other.goals)
@@ -171,7 +171,7 @@ def undo(data: UndoIn, user: User = Depends(current_user), db: Session = Depends
     if target is None:  # анкету удалили, пока она была в истории
         raise HTTPException(404, "Анкета больше не доступна")
     score, common = match_score(user.interests, user.goals, target.interests, target.goals)
-    d = haversine_km(user.lat, user.lon, target.lat, target.lon) if user.lat is not None and target.lat is not None else None
+    d = public_distance_km(user.lat, user.lon, target.lat, target.lon) if user.lat is not None and target.lat is not None else None
     return {"undone": "like" if was_like else "skip", "card": public_card(target, score, common, d)}
 
 

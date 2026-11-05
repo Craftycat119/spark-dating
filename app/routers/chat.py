@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
@@ -212,6 +213,11 @@ def _log_call(conv_id: int, user_id: int, video: bool) -> dict:
 
 @ws_router.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
+    origin = ws.headers.get("origin")
+    allowed = {ws.headers.get("host"), ws.headers.get("x-forwarded-host"), urlparse(settings.base_url).netloc}
+    if origin and urlparse(origin).netloc not in allowed:
+        await ws.close(code=4403)  # чужой сайт не может подключиться от имени вошедшего пользователя
+        return
     who = await run_in_threadpool(_ws_user, ws.cookies.get(COOKIE_NAME))
     if not who:
         await ws.close(code=4401)

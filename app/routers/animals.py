@@ -16,6 +16,7 @@ from ..database import get_db
 from ..deps import current_user
 from ..geo import haversine_km
 from ..models import AnimalPost, HelpRequest, User
+from ..ratelimit import hit
 from ..serializers import media_url
 
 router = APIRouter(prefix="/api/animals", tags=["animals"])
@@ -170,6 +171,7 @@ def _deliver(request_id: int, chat_ids: list, text: str) -> None:
 @router.post("/{post_id}/help")
 def help_post(post_id: int, data: HelpIn, background: BackgroundTasks, me: User = Depends(current_user), db: Session = Depends(get_db)):
     _require_adult(me)
+    hit(f"help:{me.id}", 10, 3600)  # не больше 10 заявок в час от одного человека
     post = db.get(AnimalPost, post_id)
     if not post or not post.active:
         raise HTTPException(404, "Объявление не найдено")

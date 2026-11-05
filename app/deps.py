@@ -15,9 +15,8 @@ COOKIE_NAME = "spark_session"
 
 
 def client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    """Адрес клиента. X-Forwarded-For сам по себе не читаем: его может подставить кто угодно.
+    uvicorn (proxy_headers) берёт адрес из заголовка, только если запрос пришёл от прокси на этом же компьютере (cloudflared, nginx)."""
     return request.client.host if request.client else ""
 
 
@@ -39,7 +38,8 @@ def start_session(db: Session, user: User, request: Request, response: Response)
         max_age=settings.session_days * 86400,
         httponly=True,
         samesite="lax",
-        secure=settings.cookie_secure,
+        # по https cookie входа уходит только по шифрованному каналу (в том числе через туннель cloudflared)
+        secure=settings.cookie_secure or request.url.scheme == "https",
     )
 
 

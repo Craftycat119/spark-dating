@@ -26,6 +26,7 @@ from ..security import (
     password_errors,
     verify_password,
 )
+from ..ratelimit import by_ip, hit, is_local_request, reset
 from ..serializers import own_profile
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -54,7 +55,10 @@ class ResetIn(BaseModel):
     password: str
 
 
-def _issue_code(db: Session, email: str, purpose: str) -> dict:
+DUMMY_HASH = hash_password("timing-equalizer-9")
+
+
+def _issue_code(db: Session, email: str, purpose: str, request: Request) -> dict:
     last = db.scalar(
         select(EmailCode)
         .where(EmailCode.email == email, EmailCode.purpose == purpose)
@@ -77,8 +81,13 @@ def _issue_code(db: Session, email: str, purpose: str) -> dict:
     # Код отправляем сразу, а не в фоне: если почта не настроена или сломалась, человек узнает об этом здесь
     sent = emailer.send_code(email, code, purpose)
     result: dict = {"status": "code_sent", "email": email}
-    if settings.dev_mode and (not settings.smtp_host or not sent):
-        result["dev_code"] = code  # локальный запуск: код на экране и в терминале
+    delivered = sent and bool(settings.smtp_host)  # без SMTP письмо только печатается в терминал сервера
+    if not delivered and settings.dev_mode and is_local_request(request):
+        # Код на экране — только когда открыли сайт на этом же компьютере (localhost).
+        # Через туннель или из интернета так нельзя: иначе любой зарегистрируется на чужую почту или сбросит чужой пароль.
+        result["dev_code"] = code
+    elif not settings.smtp_host:
+        raise HTTPException(503, "Почта на сервере не настроена, письмо с кодом не отправить. Войдите через Telegram")
     elif not sent:
         raise HTTPException(502, "Не удалось отправить письмо с кодом. Попробуйте позже или войдите через Telegram")
     return result
@@ -104,6 +113,7 @@ def _check_code(db: Session, email: str, code: str, purpose: str) -> None:
 
 @router.post("/register")
 def register(data: Credentials, request: Request, db: Session = Depends(get_db)):
+    by_ip(request, "register", 10, 3600)
     email = normalize_email(data.email)
     if not is_valid_email(email):
         raise HTTPException(422, "Некорректная почта")
@@ -126,7 +136,7 @@ def register(data: Credentials, request: Request, db: Session = Depends(get_db))
     user.password_hash = hash_password(data.password)
     db.commit()
     try:
-        return _issue_code(db, email, "verify")
+        return _issue_code(db, email, "verify", request)
     except HTTPException as ex:
         # Вернулись «Назад» с экрана кода и снова нажали «Создать аккаунт»: письмо уже ушло,
         # пускаем на экран кода, старый код по-прежнему действует
@@ -136,16 +146,18 @@ def register(data: Credentials, request: Request, db: Session = Depends(get_db))
 
 
 @router.post("/resend-code")
-def resend_code(data: EmailOnly, db: Session = Depends(get_db)):
+def resend_code(data: EmailOnly, request: Request, db: Session = Depends(get_db)):
+    by_ip(request, "resend", 10, 3600)
     email = normalize_email(data.email)
     user = db.scalar(select(User).where(User.email == email))
     if not user or user.email_verified:
         raise HTTPException(400, "Нечего подтверждать")
-    return _issue_code(db, email, "verify")
+    return _issue_code(db, email, "verify", request)
 
 
 @router.post("/verify-email")
 def verify_email(data: CodeIn, request: Request, response: Response, db: Session = Depends(get_db)):
+    by_ip(request, "verify", 30, 600)
     email = normalize_email(data.email)
     user = db.scalar(select(User).where(User.email == email))
     if not user:
@@ -159,36 +171,42 @@ def verify_email(data: CodeIn, request: Request, response: Response, db: Session
 
 @router.post("/login")
 def login(data: Credentials, request: Request, response: Response, db: Session = Depends(get_db)):
+    by_ip(request, "login", 30, 600)
+    hit(f"login:email:{normalize_email(data.email)}", 10, 900)  # подбор пароля к одной почте с разных адресов
     email = normalize_email(data.email)
     user = db.scalar(select(User).where(User.email == email))
-    if not user or not verify_password(data.password, user.password_hash):
+    ok = verify_password(data.password, (user.password_hash if user else None) or DUMMY_HASH)  # одинаковое время для любой почты
+    if not user or not ok:
         raise HTTPException(401, "Неверная почта или пароль")
     if user.is_banned:
         raise HTTPException(403, "Аккаунт заблокирован")
     if not user.email_verified:
         try:
-            extra = _issue_code(db, email, "verify")
+            extra = _issue_code(db, email, "verify", request)
         except HTTPException:
             extra = {}
         raise HTTPException(403, {"code": "email_not_verified", "message": "Подтвердите почту — мы отправили код", **extra})
     if email in settings.admin_emails and not user.is_admin:
         user.is_admin = True
+    reset(f"login:email:{email}")
     start_session(db, user, request, response)
     return own_profile(user)
 
 
 @router.post("/forgot-password")
-def forgot_password(data: EmailOnly, db: Session = Depends(get_db)):
+def forgot_password(data: EmailOnly, request: Request, db: Session = Depends(get_db)):
+    by_ip(request, "forgot", 10, 3600)
     email = normalize_email(data.email)
     user = db.scalar(select(User).where(User.email == email))
     if user and user.email_verified:
-        return _issue_code(db, email, "reset")
+        return _issue_code(db, email, "reset", request)
     # Не раскрываем, есть ли такой аккаунт
     return {"status": "code_sent", "email": email}
 
 
 @router.post("/reset-password")
 def reset_password(data: ResetIn, request: Request, response: Response, db: Session = Depends(get_db)):
+    by_ip(request, "reset", 20, 600)
     email = normalize_email(data.email)
     errors = password_errors(data.password)
     if errors:
@@ -212,6 +230,7 @@ class TelegramPoll(BaseModel):
 @router.post("/telegram/start")
 def telegram_start(request: Request):
     """Начать вход через бота: ссылка t.me/<бот>?start=login_<токен>."""
+    by_ip(request, "tg-start", 20, 600)
     if not settings.telegram_bot_token or not telegram_bot.bot_username():
         raise HTTPException(503, "Вход через Telegram не настроен: администратору нужно указать TELEGRAM_BOT_TOKEN в .env")
     return telegram_bot.new_login(_device_label(request.headers.get("user-agent", "")))
@@ -260,6 +279,7 @@ class WebAppIn(BaseModel):
 @router.post("/telegram/webapp")
 def telegram_webapp(data: WebAppIn, request: Request, response: Response, db: Session = Depends(get_db)):
     """Вход в мини-приложении: Telegram передаёт подписанные данные о пользователе (initData)."""
+    by_ip(request, "tg-webapp", 30, 600)
     if not settings.telegram_bot_token:
         raise HTTPException(503, "Вход через Telegram не настроен")
     tg = verify_webapp_init_data(data.init_data, settings.telegram_bot_token)
@@ -270,7 +290,7 @@ def telegram_webapp(data: WebAppIn, request: Request, response: Response, db: Se
     return own_profile(user)
 
 
-def verify_webapp_init_data(init_data: str, bot_token: str, max_age: int = 24 * 3600) -> dict | None:
+def verify_webapp_init_data(init_data: str, bot_token: str, max_age: int = 3600) -> dict | None:
     """Проверка подписи initData: https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app"""
     pairs = dict(parse_qsl(init_data, keep_blank_values=True))
     received = pairs.pop("hash", "")
@@ -303,6 +323,7 @@ class DemoIn(BaseModel):
 @router.post("/demo")
 def demo_login(request: Request, response: Response, data: DemoIn | None = None, db: Session = Depends(get_db)):
     """Вход в демо без регистрации: готовая анкета и анкеты-боты рядом («Знакомства» 18+ или «Дружба» до 18 лет)."""
+    by_ip(request, "demo", 15, 3600)
     guest = demo.create_guest(db, client_ip(request), request.headers.get("user-agent", ""), teen=bool(data and data.teen))
     start_session(db, guest, request, response)
     return own_profile(guest)

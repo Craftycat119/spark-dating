@@ -74,7 +74,7 @@ def public_card(user: User, match: int, common: list[str], distance_km: float | 
         **identity(user),
         "match": match,
         "common": common,
-        "distance_km": None if distance_km is None else round(distance_km, 1),
+        "distance_km": None if distance_km is None else max(1, round(distance_km)),
     }
 
 
