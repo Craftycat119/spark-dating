@@ -8,6 +8,7 @@ import { mountThread } from "./threads.js";
 import { renderGuide } from "./guide.js";
 import { feedTabs, renderAnimals } from "./animals.js";
 import { takePhoto } from "./camera.js";
+import { mountCaptcha } from "./captcha.js";
 import { renderTerms } from "./terms.js";
 import { renderAds, renderSupportHub, renderThread, reportUser } from "./support.js";
 import { currentHash, navigate, onRoute } from "./router.js";
@@ -265,6 +266,7 @@ function renderAuth(mode = "login") {
         <label class="field"><span>Пароль</span><input class="input" type="password" name="password" autocomplete="${mode === "login" ? "current-password" : "new-password"}" required></label>
         ${mode === "register" ? `<ul class="checklist" id="pw-rules">
           <li data-rule="len">Не меньше 8 символов</li><li data-rule="upper">Хотя бы одна заглавная буква</li><li data-rule="digit">Хотя бы одна цифра</li></ul>` : ""}
+        <div data-captcha></div>
         <p class="error-text" id="auth-error" hidden></p>
         <button class="btn block" type="submit">${mode === "login" ? "Войти" : "Создать аккаунт"}</button>
         ${mode === "register" ? `<p class="auth-legal">Знакомства в COFI с 18 лет, с 12 до 17 доступна только «Дружба». Создавая аккаунт, вы принимаете <a href="#/terms" data-terms>Пользовательское соглашение</a></p>` : ""}
@@ -308,6 +310,7 @@ ${sheet}`, { nav: false, cls: "auth" });
   $$("[data-mode]", root).forEach((b) => (b.onclick = () => renderAuth(b.dataset.mode)));
   const form = $("form", root);
   const err = $("#auth-error", root);
+  const robot = mountCaptcha($("[data-captcha]", root), state.config.captcha);
   const showErr = (m) => { err.textContent = m; err.hidden = !m; };
 
   if (mode === "register") {
@@ -328,17 +331,18 @@ ${sheet}`, { nav: false, cls: "auth" });
     btn.disabled = true;
     try {
       if (mode === "register") {
-        const r = await api.post("/api/auth/register", { email, password });
+        const r = await api.post("/api/auth/register", { email, password, ...robot.values() });
         renderCode(email, r.dev_code);
         if (r.status === "code_pending") toast(`Код уже отправлен на эту почту. ${r.detail}`);
       } else {
-        state.me = await api.post("/api/auth/login", { email, password });
+        state.me = await api.post("/api/auth/login", { email, password, ...robot.values() });
         afterLogin();
         go("#/feed");
       }
     } catch (ex) {
       if (ex.code === "email_not_verified") return renderCode(email, ex.detail.dev_code);
       showErr(ex.message);
+      robot.refresh(); // картинка одноразовая: после любой неудачи — новая
     } finally {
       btn.disabled = false;
     }
@@ -475,6 +479,7 @@ function renderForgot(prefill = "") {
       <p class="muted">Пришлём код на почту, после чего вы зададите новый пароль.</p>
       <form class="stack" id="f1">
         <label class="field"><span>Почта</span><input class="input" type="email" name="email" value="${esc(prefill)}" required></label>
+        <div data-captcha></div>
         <button class="btn block">Получить код</button>
       </form>
       <form class="stack" id="f2" hidden>
@@ -487,14 +492,15 @@ function renderForgot(prefill = "") {
       <button class="link" id="back" style="align-self:flex-start">Вернуться ко входу</button>
     </div>`, { nav: false });
   const f1 = $("#f1", root), f2 = $("#f2", root);
+  const robot = mountCaptcha($("[data-captcha]", f1), state.config.captcha);
   f1.onsubmit = async (e) => {
     e.preventDefault();
     try {
-      const r = await api.post("/api/auth/forgot-password", { email: f1.email.value.trim() });
+      const r = await api.post("/api/auth/forgot-password", { email: f1.email.value.trim(), ...robot.values() });
       f2.hidden = false;
       if (r.dev_code) { $("#dev-hint", root).hidden = false; $("#dev-hint", root).textContent = `Режим разработки: код ${r.dev_code}`; }
       f2.code.focus();
-    } catch (ex) { toast(ex.message, { error: true }); }
+    } catch (ex) { toast(ex.message, { error: true }); robot.refresh(); }
   };
   f2.onsubmit = async (e) => {
     e.preventDefault();

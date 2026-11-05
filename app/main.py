@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import face_verify, telegram_bot
+from . import captcha, face_verify, telegram_bot
 from .config import BASE_DIR, settings
 from .ages import MIN_AGE, TEEN_GOALS
 from .legal import TERMS_VERSION
@@ -71,6 +71,7 @@ def public_config():
         "teen_goals": TEEN_GOALS,
         "min_age": MIN_AGE,
         "terms_version": TERMS_VERSION,
+        "captcha": captcha.public_config(),
         "genders": GENDERS,
         "teen_genders": TEEN_GENDERS,
         "orientations": ORIENTATIONS,

@@ -759,3 +759,8 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .admin-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; background: var(--orange); color: var(--on-orange); font: 700 11px/1.6 var(--sans); letter-spacing: .02em; vertical-align: middle; }
 .admin-badge.big { align-self: flex-start; padding: 6px 14px; font-size: 13px; }
 .admin-badge .ph { font-size: 14px; }
+/* проверка на робота */
+.captcha-box { display: grid; gap: 8px; }
+.captcha-label { font-size: 14px; color: var(--muted); }
+.captcha-row { display: flex; align-items: center; gap: 10px; }
+.captcha-row img { width: 220px; max-width: calc(100% - 54px); height: auto; aspect-ratio: 220 / 80; border-radius: 14px; background: var(--surface); }

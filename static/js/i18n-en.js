@@ -280,6 +280,10 @@ export const EN = {
   "Подключить уведомления в Telegram": "Connect Telegram notifications", "Уведомления в Telegram": "Telegram notifications",
   "Сообщения, пары и звонки, когда вы не в приложении": "Messages, matches and calls when you're not in the app",
   "Нажмите «Запустить» в боте, и уведомления подключатся": "Tap Start in the bot to connect notifications",
+  "Проверка, что вы не робот": "Check that you're not a robot", "Цифры с картинки": "Digits from the picture",
+  "Другая картинка": "Another picture", "Цифры для проверки": "Digits to check",
+  "Проверка на робота не пройдена, попробуйте ещё раз": "Robot check failed, please try again",
+  "Картинка не загрузилась, нажмите обновить": "The picture didn't load, tap refresh",
   "Барсик": "Barsik", "Луна": "Luna", "38 000 ₽": "38,000 ₽", "Дружить": "Be friends", "Новый друг": "New friend", "Войти через Telegram": "Sign in with Telegram",
   "Имя в Telegram": "Telegram name", 
 };

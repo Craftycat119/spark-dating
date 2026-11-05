@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import demo, emailer, telegram_bot
+from .. import captcha, demo, emailer, telegram_bot
 from ..config import settings
 from ..database import get_db
 from ..deps import COOKIE_NAME, client_ip, current_user, start_session
@@ -38,10 +38,23 @@ MAX_CODE_ATTEMPTS = 5
 class Credentials(BaseModel):
     email: str
     password: str
+    captcha_id: str | None = None  # id картинки (CAPTCHA=image)
+    captcha: str | None = None  # ответ: цифры с картинки или токен Turnstile
 
 
 class EmailOnly(BaseModel):
     email: str
+    captcha_id: str | None = None
+    captcha: str | None = None
+
+
+@router.get("/captcha")
+def get_captcha(request: Request):
+    """Новая картинка для проверки на робота."""
+    by_ip(request, "captcha", 60, 600)
+    if captcha.mode() != "image":
+        return captcha.public_config()
+    return {**captcha.public_config(), **captcha.new_image()}
 
 
 class CodeIn(BaseModel):
@@ -114,6 +127,7 @@ def _check_code(db: Session, email: str, code: str, purpose: str) -> None:
 @router.post("/register")
 def register(data: Credentials, request: Request, db: Session = Depends(get_db)):
     by_ip(request, "register", 10, 3600)
+    captcha.require(data.captcha_id, data.captcha, client_ip(request))
     email = normalize_email(data.email)
     if not is_valid_email(email):
         raise HTTPException(422, "Некорректная почта")
@@ -173,6 +187,7 @@ def verify_email(data: CodeIn, request: Request, response: Response, db: Session
 def login(data: Credentials, request: Request, response: Response, db: Session = Depends(get_db)):
     by_ip(request, "login", 30, 600)
     hit(f"login:email:{normalize_email(data.email)}", 10, 900)  # подбор пароля к одной почте с разных адресов
+    captcha.require(data.captcha_id, data.captcha, client_ip(request))
     email = normalize_email(data.email)
     user = db.scalar(select(User).where(User.email == email))
     ok = verify_password(data.password, (user.password_hash if user else None) or DUMMY_HASH)  # одинаковое время для любой почты
@@ -196,6 +211,7 @@ def login(data: Credentials, request: Request, response: Response, db: Session =
 @router.post("/forgot-password")
 def forgot_password(data: EmailOnly, request: Request, db: Session = Depends(get_db)):
     by_ip(request, "forgot", 10, 3600)
+    captcha.require(data.captcha_id, data.captcha, client_ip(request))
     email = normalize_email(data.email)
     user = db.scalar(select(User).where(User.email == email))
     if user and user.email_verified:

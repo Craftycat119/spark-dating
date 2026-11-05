@@ -9,6 +9,7 @@ os.environ["DEV_MODE"] = "1"
 os.environ["SMTP_HOST"] = ""
 os.environ["ADMIN_EMAILS"] = "boss@example.com"
 os.environ["DEMO_REPLY_DELAY"] = "0"
+os.environ["CAPTCHA"] = "off"  # проверку на робота тестируем отдельно (test_captcha.py)
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

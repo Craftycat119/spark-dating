@@ -161,7 +161,7 @@ const ROUTES = [];
 const route = (method, pattern, fn) => ROUTES.push({ method, re: new RegExp(`^${pattern}$`), fn });
 
 route("GET", "/api/config", () => ({
-  app_name: "COFI", survey: DATA.survey, genders: DATA.genders, teen_genders: DATA.teen_genders, orientations: DATA.orientations, looking_for: DATA.looking_for, teen_goals: DATA.teen_goals,
+  app_name: "COFI", captcha: { mode: "image", site_key: null }, survey: DATA.survey, genders: DATA.genders, teen_genders: DATA.teen_genders, orientations: DATA.orientations, looking_for: DATA.looking_for, teen_goals: DATA.teen_goals,
   min_age: DATA.min_age, min_interests: DATA.min_interests, telegram_bot_username: "cofi_bot", ice_servers: [], face_dev_mode: true,
 }));
 
@@ -187,7 +187,23 @@ const PASSWORD_RULES = (p) => [
   !/\d/.test(p) && "Нужна хотя бы одна цифра",
 ].filter(Boolean);
 
+// Проверка на робота в демо: та же логика, картинка рисуется SVG прямо в браузере
+const captchas = {};
+route("GET", "/api/auth/captcha", () => {
+  const id = Math.random().toString(36).slice(2), code = Array.from({ length: 5 }, () => "23456789"[Math.floor(Math.random() * 8)]).join("");
+  captchas[id] = code;
+  const chars = [...code].map((c, i) => `<text x="${22 + i * 38}" y="${52 + Math.random() * 12}" transform="rotate(${Math.round(Math.random() * 50 - 25)} ${30 + i * 38} 48)" font-size="44" font-family="Arial" font-weight="700" fill="#4a2a14">${c}</text>`).join("");
+  const lines = Array.from({ length: 6 }, () => `<line x1="${Math.random() * 220}" y1="${Math.random() * 80}" x2="${Math.random() * 220}" y2="${Math.random() * 80}" stroke="#b9805a" stroke-width="2"/>`).join("");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="220" height="80"><rect width="220" height="80" fill="#f3e9df"/>${lines}${chars}</svg>`;
+  return { mode: "image", site_key: null, id, image: "data:image/svg+xml;base64," + btoa(svg) };
+});
+const needCaptcha = (b) => {
+  const ok = captchas[b.captcha_id] && captchas[b.captcha_id] === (b.captcha || "").trim();
+  delete captchas[b.captcha_id];
+  if (!ok) deny(400, { code: "captcha", message: "Проверка на робота не пройдена, попробуйте ещё раз" });
+};
 route("POST", "/api/auth/register", async (b) => {
+  needCaptcha(b);
   const email = (b.email || "").trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) deny(422, "Некорректная почта");
   const errs = PASSWORD_RULES(b.password || "");
@@ -220,6 +236,7 @@ async function loginAs(email) {
   return ownProfile(me());
 }
 route("POST", "/api/auth/login", (b) => {
+  needCaptcha(b);
   const email = (b.email || "").trim().toLowerCase();
   const acc = S.accounts[email];
   if (!acc || acc.password !== b.password) deny(401, "Неверная почта или пароль. В демо войдите кнопкой «Демо без регистрации»");
