@@ -201,7 +201,8 @@ const SECTIONS = [
   ]],
 ];
 
-export function renderGuide(main, { loggedIn, onDemo }) {
+export function renderGuide(main, { loggedIn, onDemo, calls = false }) {
+  const say = (t) => (calls ? t : t.replace(", стикеры и звонки.", " и стикеры."));
   main.innerHTML = `
     <div class="guide-top">
       <a class="icon-btn" href="#/${loggedIn ? "settings" : ""}" aria-label="Назад">${icons.back}</a>
@@ -219,7 +220,7 @@ export function renderGuide(main, { loggedIn, onDemo }) {
     ${SECTIONS.map(([heading, items]) => `
       <h2 class="guide-section">${heading}</h2>
       <div class="features">${items.map(([icon, title, text]) => `
-        <div class="feature"><i class="ph ph-${icon}" aria-hidden="true"></i><div><b>${title}</b><p>${text}</p></div></div>`).join("")}
+        <div class="feature"><i class="ph ph-${icon}" aria-hidden="true"></i><div><b>${title}</b><p>${say(text)}</p></div></div>`).join("")}
       </div>`).join("")}
     <div class="stack" style="margin-top:28px">
       ${loggedIn ? `<a class="btn block" href="#/feed">К анкетам</a>`

@@ -87,6 +87,8 @@ FACE_MODELS_DIR=$DATA_DIR/models
 FACE_MODE=opencv
 ADMIN_EMAILS=$ADMIN_EMAILS
 CAPTCHA=image
+# Звонки пока выключены; включить: CALLS_ENABLED=1 и sudo systemctl restart cofi
+CALLS_ENABLED=0
 
 # Telegram: вход, уведомления, заявки. Домен в @BotFather указывать не нужно
 TELEGRAM_BOT_TOKEN=$BOT_TOKEN

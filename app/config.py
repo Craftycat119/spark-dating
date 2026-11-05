@@ -83,6 +83,9 @@ class Settings:
     # Куда бот присылает обращения в поддержку, жалобы, предложения и заявки на рекламу. Пусто — всем админам с Telegram
     telegram_admin_chat_id: str = os.environ.get("TELEGRAM_ADMIN_CHAT_ID", "")
 
+    # Аудио- и видеозвонки. Пока выключены: кнопок нет, сервер звонки не принимает. Включить: CALLS_ENABLED=1
+    calls_enabled: bool = _bool("CALLS_ENABLED", False)
+
     # Проверка на робота: image (своя картинка), turnstile (Cloudflare, нужны ключи) или off
     captcha_mode: str = os.environ.get("CAPTCHA", "image").strip().lower()
     turnstile_site_key: str = os.environ.get("TURNSTILE_SITE_KEY", "").strip()

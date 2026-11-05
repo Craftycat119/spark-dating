@@ -161,7 +161,7 @@ const ROUTES = [];
 const route = (method, pattern, fn) => ROUTES.push({ method, re: new RegExp(`^${pattern}$`), fn });
 
 route("GET", "/api/config", () => ({
-  app_name: "COFI", captcha: { mode: "image", site_key: null }, survey: DATA.survey, genders: DATA.genders, teen_genders: DATA.teen_genders, orientations: DATA.orientations, looking_for: DATA.looking_for, teen_goals: DATA.teen_goals,
+  app_name: "COFI", captcha: { mode: "image", site_key: null }, calls_enabled: false, survey: DATA.survey, genders: DATA.genders, teen_genders: DATA.teen_genders, orientations: DATA.orientations, looking_for: DATA.looking_for, teen_goals: DATA.teen_goals,
   min_age: DATA.min_age, min_interests: DATA.min_interests, telegram_bot_username: "cofi_bot", ice_servers: [], face_dev_mode: true,
 }));
 

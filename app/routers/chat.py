@@ -241,6 +241,8 @@ async def websocket_endpoint(ws: WebSocket):
                 continue
             if kind not in CALL_EVENTS and kind != "typing":
                 continue
+            if kind.startswith("call:") and not settings.calls_enabled:
+                continue  # звонки выключены (CALLS_ENABLED=0)
             if kind == "call:join":
                 # открыли COFI кнопкой «Ответить» из Telegram: отдаём ждущий звонок и накопленные ICE-кандидаты
                 p = push.take(str(data.get("call_id")), user_id)

@@ -56,3 +56,21 @@ def test_private_data_not_leaked_in_public_profile():
     for field in ("email", "lat", "lon", "telegram_id", "telegram_username", "registration_ip", "birth_date"):
         assert field not in card
     assert a.get("/api/admin/users").status_code == 403
+
+
+def test_calls_disabled_hides_and_blocks(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config.settings, "calls_enabled", False)
+    assert new_client().get("/api/config").json()["calls_enabled"] is False
+    a, b = make_user("ca1@x.io"), make_user("cb1@x.io")
+    a.post("/api/feed/swipe", json={"user_id": b.user_id, "like": True})
+    conv = b.post("/api/feed/swipe", json={"user_id": a.user_id, "like": True}).json()["conversation_id"]
+    from test_app import cookie
+
+    with TestClient(app) as hub, hub.websocket_connect("/ws", headers=cookie(a)) as wa, hub.websocket_connect("/ws", headers=cookie(b)) as wb:
+        wa.send_json({"type": "call:offer", "conversation_id": conv, "sdp": {"type": "offer", "sdp": "x"}, "call_id": "z"})
+        wa.send_json({"type": "ping"})
+        assert wa.receive_json()["type"] == "pong"  # звонок молча не принят
+        wb.send_json({"type": "ping"})
+        assert wb.receive_json()["type"] == "pong"  # собеседнику ничего не пришло

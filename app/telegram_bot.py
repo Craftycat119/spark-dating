@@ -94,7 +94,7 @@ def _link_account(token: str, frm: dict) -> str:
             return "Аккаунт не найден."
         user.telegram_id, user.telegram_username, user.tg_notifications = frm["id"], frm.get("username"), True
         db.commit()
-    return "Готово! Уведомления COFI подключены: сюда будут приходить сообщения, пары и звонки."
+    return "Готово! Уведомления COFI подключены: сюда будут приходить сообщения" + (", пары и звонки." if settings.calls_enabled else " и пары.")
 
 
 def take_login(token: str) -> PendingLogin | None:

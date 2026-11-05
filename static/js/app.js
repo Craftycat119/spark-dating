@@ -68,7 +68,7 @@ async function boot() {
   if (params.has("chat") || params.has("call")) {
     history.replaceState(null, "", location.pathname + (location.hash || "#/"));
     if (state.me && params.get("chat")) navigate(`#/chat/${Number(params.get("chat"))}`);
-    if (state.me && params.get("call")) joinPendingCall(params.get("call"));
+    if (state.me && params.get("call") && state.config.calls_enabled) joinPendingCall(params.get("call"));
   }
   onRoute(route);
   route();
@@ -120,7 +120,7 @@ function afterLogin() {
     document.addEventListener("visibilitychange", presence);
     window.addEventListener("pagehide", () => send({ type: "presence", visible: false }));
   }
-  initCalls(state.config, async (convId) => {
+  if (state.config.calls_enabled) initCalls(state.config, async (convId) => {
     try {
       const c = await api.get(`/api/chats/${convId}?limit=1`);
       return c.user;
@@ -218,7 +218,7 @@ let stopGuide = null;
 function showGuide() {
   stopGuide?.();
   const main = screen("", { nav: false, cls: "guide" });
-  stopGuide = renderGuide(main, { loggedIn: !!state.me, onDemo: startDemo });
+  stopGuide = renderGuide(main, { loggedIn: !!state.me, onDemo: startDemo, calls: !!state.config.calls_enabled });
 }
 
 function startDemo() {
@@ -1157,7 +1157,7 @@ async function linkTelegram() {
 /** Почтой приходят только коды, поэтому без Telegram человек не узнает о сообщениях и звонках. */
 function telegramNudge() {
   if (state.me.telegram_linked || state.me.is_demo || !state.config.telegram_bot_username) return "";
-  return `<div class="tg-nudge">${icons.send}<div><b>Подключите Telegram</b><span>В Telegram будут приходить сообщения и пропущенные звонки. На почту — только коды входа</span></div>
+  return `<div class="tg-nudge">${icons.send}<div><b>Подключите Telegram</b><span>${state.config.calls_enabled ? "В Telegram будут приходить сообщения и пропущенные звонки. На почту — только коды входа" : "В Telegram будут приходить новые сообщения и пары. На почту — только коды входа"}</span></div>
     <button class="btn tg" data-tg-link>Подключить</button></div>`;
 }
 
@@ -1213,8 +1213,8 @@ async function openChat(convId) {
         <img class="avatar" src="${esc(other.photo_url)}" alt="">
         <span class="who"><b translate="no">${esc(other.name)}${other.age ? `, ${other.age}` : ""}</b><small class="status">${other.online ? "в сети" : "не в сети"}</small></span>
       </button>
-      <button class="icon-btn" data-call="audio" aria-label="Аудиозвонок">${icons.phone}</button>
-      <button class="icon-btn" data-call="video" aria-label="Видеозвонок">${icons.video}</button>
+      ${state.config.calls_enabled ? `<button class="icon-btn" data-call="audio" aria-label="Аудиозвонок">${icons.phone}</button>
+      <button class="icon-btn" data-call="video" aria-label="Видеозвонок">${icons.video}</button>` : ""}
       <button class="icon-btn" data-menu aria-label="Ещё">${icons.more}</button>
     </header>
     <div class="messages" tabindex="0" translate="no"></div>
@@ -1536,7 +1536,7 @@ function renderSettings() {
         <input type="range" name="dist" min="1" max="300" value="${Math.min(me.max_distance_km, 300)}"></label>
       <button type="button" class="btn ghost" id="relocate">${icons.pin} Обновить геопозицию</button>
       ${me.telegram_linked ? `<label class="switch"><input type="checkbox" name="tgnotify" ${me.tg_notifications ? "checked" : ""}>
-        <span class="label">Уведомления в Telegram<small>Непрочитанные сообщения, пропущенные звонки и пары, когда вы не в приложении</small></span></label>`
+        <span class="label">Уведомления в Telegram<small>${state.config.calls_enabled ? "Непрочитанные сообщения, пропущенные звонки и пары, когда вы не в приложении" : "Непрочитанные сообщения и пары, когда вы не в приложении"}</small></span></label>`
         : state.config.telegram_bot_username ? `<button type="button" class="btn ghost" id="tg-link">${icons.send} Подключить уведомления в Telegram</button>` : ""}
       <button class="btn block">Сохранить изменения</button>
     </form>
@@ -1557,7 +1557,7 @@ function renderSettings() {
     </div>
 
     <div class="section stack">
-      <a class="row-link" href="#/guide"><span><b>Как пользоваться</b><br><span class="muted small">Жесты, пары, чат и звонки</span></span>${icons.arrow}</a>
+      <a class="row-link" href="#/guide"><span><b>Как пользоваться</b><br><span class="muted small">${state.config.calls_enabled ? "Жесты, пары, чат и звонки" : "Жесты, пары и чат"}</span></span>${icons.arrow}</a>
       <a class="row-link" href="#/support"><span><b>Поддержка</b><br><span class="muted small">Помощь, жалобы и предложения</span></span>${icons.headset}</a>
       <a class="row-link" href="#/terms" data-terms><span><b>Пользовательское соглашение</b><br><span class="muted small">Правила, возраст, персональные данные</span></span>${icons.arrow}</a>
     </div>

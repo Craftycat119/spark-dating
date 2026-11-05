@@ -78,6 +78,7 @@ def public_config():
         "looking_for": LOOKING_FOR,
         "min_interests": MIN_INTERESTS,
         "telegram_bot_username": telegram_bot.bot_username() if settings.telegram_bot_token else None,
+        "calls_enabled": settings.calls_enabled,
         "ice_servers": settings.ice_servers,
         "face_dev_mode": face_verify.is_dev_mode(),
     }
