@@ -102,7 +102,7 @@ function ownProfile(u) {
   return {
     id: u.id, email: u.email || null, email_verified: true, email_notifications: false,
     auth_provider: u.provider || (u.is_demo ? "demo" : "email"), telegram_username: u.telegram_username || null, name: u.name, age: years(u), birth_date: u.birth_date || null, age_group: group(u),
-    age_verified: false, language: "ru", bio: u.bio, gender: u.gender, looking_for: u.looking_for,
+    age_verified: false, terms_accepted: u.terms_accepted ?? !(u.email || u.provider === "telegram"), age_confirmation: u.age_confirmation || null, language: "ru", bio: u.bio, gender: u.gender, looking_for: u.looking_for,
     interests: u.interests, goals: u.goals, survey_done: u.interests.length >= DATA.min_interests && u.goals.length > 0,
     photo_url: u.photo_url, photos: u.photos, photo_verified: u.photo_verified, has_location: true,
     max_distance_km: u.max_distance_km, is_admin: false, is_complete: isComplete(u), is_demo: true,
@@ -282,6 +282,12 @@ route("PUT", "/api/profile", (b) => {
     for (const o of Object.values(S.users)) {
       if (o.is_bot && o.likes_you && group(o) === group(u) && !S.swipes.some((s) => s.from === o.id && s.to === u.id)) S.swipes.push({ from: o.id, to: u.id, liked: true });
     }
+  }
+  if (b.accept_terms !== undefined || b.confirm_age !== undefined) {
+    if (!b.accept_terms) deny(422, "Чтобы продолжить, примите Пользовательское соглашение");
+    if (!b.confirm_age) deny(422, group(u) === "adult" ? "Подтвердите возраст" : "Нужно согласие родителя или законного представителя");
+    u.terms_accepted = true;
+    u.age_confirmation = group(u) === "adult" ? "adult" : "guardian";
   }
   if (b.bio !== undefined) u.bio = b.bio.trim().slice(0, 500);
   if (b.gender !== undefined) u.gender = b.gender;

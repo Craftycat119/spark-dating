@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .legal import TERMS_VERSION
 from .models import Conversation, Message, User
 
 
@@ -27,6 +28,8 @@ def own_profile(user: User) -> dict:
         "birth_date": user.birth_date.isoformat() if user.birth_date else None,
         "age_group": user.age_group,
         "age_verified": user.age_verified,
+        "terms_accepted": bool(user.terms_accepted_at) and user.terms_version == TERMS_VERSION,
+        "age_confirmation": user.age_confirmation,
         "language": user.language,
         "bio": user.bio,
         "gender": user.gender,

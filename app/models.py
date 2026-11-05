@@ -48,6 +48,11 @@ class User(Base):
     age: Mapped[int | None] = mapped_column(Integer)  # кеш; источник правды — birth_date
     birth_date: Mapped[date | None] = mapped_column(Date)
     age_verified: Mapped[bool] = mapped_column(Boolean, default=False)  # возраст подтверждён документом (вручную админом)
+    # Согласие с Пользовательским соглашением и подтверждение возраста при регистрации
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    terms_version: Mapped[str | None] = mapped_column(String(16))
+    # "adult" — подтвердил, что ему есть 18; "guardian" — 12–17 лет, подтвердил согласие родителя
+    age_confirmation: Mapped[str | None] = mapped_column(String(16))
     language: Mapped[str] = mapped_column(String(8), default="ru")
     gender: Mapped[str | None] = mapped_column(String(16))  # male | female
     looking_for: Mapped[str | None] = mapped_column(String(16))  # male | female | any

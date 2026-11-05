@@ -8,6 +8,7 @@ import { mountThread } from "./threads.js";
 import { renderGuide } from "./guide.js";
 import { feedTabs, renderAnimals } from "./animals.js";
 import { takePhoto } from "./camera.js";
+import { renderTerms } from "./terms.js";
 import { renderAds, renderSupportHub, renderThread, reportUser } from "./support.js";
 import { currentHash, navigate, onRoute } from "./router.js";
 import { getThemePref, resolvedTheme, setTheme } from "./theme.js";
@@ -85,7 +86,7 @@ function rerender() {
 }
 
 function onboardingStep(me) {
-  if (!me.name || !me.birth_date || !me.gender || !me.looking_for) return "about";
+  if (!me.name || !me.birth_date || !me.gender || !me.looking_for || !me.terms_accepted) return "about";
   if (!me.survey_done) return "survey";
   if (!me.photo_url) return "photo";
   if (!me.photo_verified) return "scan";
@@ -100,6 +101,7 @@ function route() {
   $(".profile-view")?.remove();
   const page = currentHash().split("/")[1];
   if (page === "guide") return showGuide();
+  if (page === "terms") return renderTerms({ screen, go });
   if (page === "ads") return renderAds({ screen, go, loggedIn: !!state.me });
   if (!state.me) { const m = nextAuthMode; nextAuthMode = "login"; return renderAuth(m); }
   const step = onboardingStep(state.me);
@@ -212,6 +214,7 @@ function renderAuth(mode = "login") {
           <li data-rule="len">Не меньше 8 символов</li><li data-rule="upper">Хотя бы одна заглавная буква</li><li data-rule="digit">Хотя бы одна цифра</li></ul>` : ""}
         <p class="error-text" id="auth-error" hidden></p>
         <button class="btn block" type="submit">${mode === "login" ? "Войти" : "Создать аккаунт"}</button>
+        ${mode === "register" ? `<p class="auth-legal">Знакомства в COFI с 18 лет, с 12 до 17 доступна только «Дружба». Создавая аккаунт, вы принимаете <a href="#/terms" data-terms>Пользовательское соглашение</a></p>` : ""}
         ${mode === "login" ? `<button type="button" class="link" id="forgot" style="align-self:flex-start">Забыли пароль?</button>` : ""}
       </form>
       <div class="divider">или</div>
@@ -492,6 +495,21 @@ function bindChoice(root, name, onPick) {
   }));
 }
 
+function ageOf(birth) {
+  if (!birth) return null;
+  const b = new Date(birth), now = new Date();
+  return now.getFullYear() - b.getFullYear() - (now < new Date(now.getFullYear(), b.getMonth(), b.getDate()) ? 1 : 0);
+}
+
+/** Текст плашки о возрасте: взрослым — «мне есть 18», подросткам — согласие родителя. */
+function ageConsentText(birth) {
+  const age = ageOf(birth);
+  if (age !== null && age < 18) {
+    return "Мне от 12 до 17 лет. Мои родители или законные представители знают о регистрации и согласны. Мне будет доступна только лента «Дружба»";
+  }
+  return "Подтверждаю, что мне исполнилось 18 лет";
+}
+
 function stepAbout() {
   const me = state.me;
   const pick = { gender: me.gender, looking_for: me.looking_for };
@@ -504,9 +522,15 @@ function stepAbout() {
       <div class="field"><span>Я</span>${choiceGroup("gender", state.config.genders, me.gender)}</div>
       <div class="field"><span>Кого ищу</span>${choiceGroup("looking_for", state.config.looking_for, me.looking_for)}</div>
       <label class="field"><span>Коротко о себе</span><textarea class="input" name="bio" maxlength="500" placeholder="Например: варю фильтр-кофе, по субботам бегаю в парке">${esc(me.bio)}</textarea></label>
+      <div class="consent">
+        <label class="check"><input type="checkbox" name="confirm_age" ${me.terms_accepted ? "checked" : ""}><span data-age-text>${ageConsentText(me.birth_date)}</span></label>
+        <label class="check"><input type="checkbox" name="accept_terms" ${me.terms_accepted ? "checked" : ""}><span>Я прочитал(а) и принимаю <a href="#/terms" data-terms>Пользовательское соглашение</a>, включая согласие на обработку персональных данных и фото лица для проверки</span></label>
+      </div>
       <p class="error-text" hidden></p>
       <button class="btn block">Дальше</button>
     </form>`, { nav: false });
+  const birthInput = $("input[name=birth]", root);
+  birthInput.addEventListener("input", () => ($("[data-age-text]", root).textContent = ageConsentText(birthInput.value)));
   bindBack(root, STEP_BACK.about);
   bindChoice(root, "gender", (v) => (pick.gender = v));
   bindChoice(root, "looking_for", (v) => (pick.looking_for = v));
@@ -517,8 +541,10 @@ function stepAbout() {
     const err = $(".error-text", root);
     if (!f.birth.value) { err.textContent = "Укажите дату рождения"; err.hidden = false; return; }
     if (!pick.gender || !pick.looking_for) { err.textContent = "Выберите пол и кого ищете"; err.hidden = false; return; }
+    if (!f.confirm_age.checked) { err.textContent = ageOf(f.birth.value) >= 18 ? "Подтвердите, что вам есть 18 лет" : "Нужно согласие родителя или законного представителя"; err.hidden = false; return; }
+    if (!f.accept_terms.checked) { err.textContent = "Чтобы продолжить, примите Пользовательское соглашение"; err.hidden = false; return; }
     try {
-      const data = { name: f.name.value, bio: f.bio.value, ...pick };
+      const data = { name: f.name.value, bio: f.bio.value, ...pick, confirm_age: true, accept_terms: true };
       if (!state.me.birth_date) data.birth_date = f.birth.value;
       await api.put("/api/profile", data);
       nextStep();
@@ -1385,6 +1411,7 @@ function renderSettings() {
     <div class="section stack">
       <a class="row-link" href="#/guide"><span><b>Как пользоваться</b><br><span class="muted small">Жесты, пары, чат и звонки</span></span>${icons.arrow}</a>
       <a class="row-link" href="#/support"><span><b>Поддержка</b><br><span class="muted small">Помощь, жалобы и предложения</span></span>${icons.headset}</a>
+      <a class="row-link" href="#/terms" data-terms><span><b>Пользовательское соглашение</b><br><span class="muted small">Правила, возраст, персональные данные</span></span>${icons.arrow}</a>
     </div>
 
     <a class="section ad-offer" href="#/ads">

@@ -12,6 +12,7 @@ from ..database import get_db
 from ..deps import current_user
 from ..geo import bounding_box, haversine_km
 from ..interests import compatible, match_score
+from ..legal import TERMS_VERSION
 from ..models import Conversation, Message, Notification, Swipe, User
 from ..realtime import notify
 from ..serializers import photo_url, public_card
@@ -28,6 +29,8 @@ class SwipeIn(BaseModel):
 def _require_access(user: User) -> None:
     if not user.is_complete:
         raise HTTPException(409, {"code": "profile_incomplete", "message": "Заполните анкету и подтвердите фото"})
+    if user.terms_version != TERMS_VERSION:
+        raise HTTPException(409, {"code": "terms_required", "message": "Примите Пользовательское соглашение"})
     if user.lat is None:
         raise HTTPException(409, {"code": "need_location", "message": "Разрешите доступ к геопозиции"})
 

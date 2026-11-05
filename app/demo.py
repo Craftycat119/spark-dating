@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from .ages import birth_for_age
 from .config import settings
 from .database import SessionLocal
+from .legal import TERMS_VERSION
 from .models import Conversation, Message, Swipe, User, UserPhoto, utcnow
 from .realtime import notify
 from .serializers import message_out
@@ -318,6 +319,7 @@ def create_guest(db: Session, ip: str, user_agent: str, teen: bool = False) -> U
     g = User(
         name=G["name"], age=G["age"], birth_date=birth_for_age(G["age"]), gender=G["gender"], looking_for=G["looking_for"],
         bio=G["bio"], auth_provider="demo", is_demo=True, email_notifications=False,
+        terms_accepted_at=utcnow(), terms_version=TERMS_VERSION, age_confirmation="guardian" if teen else "adult",
         photo_path=_teen_portrait(G["name"]) if teen else G["photo"], photo_verified=True, photo_verified_at=utcnow(),
         lat=CENTER[0], lon=CENTER[1], registration_lat=CENTER[0], registration_lon=CENTER[1],
         registration_ip=ip, registration_user_agent=user_agent[:512], max_distance_km=50,

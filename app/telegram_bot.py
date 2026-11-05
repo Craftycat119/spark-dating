@@ -73,6 +73,41 @@ def take_login(token: str) -> PendingLogin | None:
         return p
 
 
+HELP_TEXT = (
+    f"Привет! Это бот {settings.app_name}: знакомства и дружба по общим интересам.\n\n"
+    "Как войти:\n1. Откройте сайт и нажмите «Войти через Telegram».\n2. Нажмите «Открыть Telegram», вы вернётесь сюда.\n"
+    "3. Нажмите «✅ Войти», и браузер войдёт сам.\n\n"
+    "Почта и пароль не нужны. Сюда же приходят заявки «Помочь» по питомцам."
+)
+DESCRIPTION = (f"Вход в {settings.app_name} без почты и пароля. Нажмите «Войти через Telegram» на сайте, "
+               "затем «Запустить» здесь и «✅ Войти».")
+SHORT_DESCRIPTION = f"Вход в {settings.app_name}: знакомства и дружба по интересам"
+
+
+def _site_button() -> dict:
+    """Кнопка «Открыть COFI». Telegram принимает только публичные адреса, для localhost кнопки нет."""
+    url = settings.base_url
+    if not url.startswith("https://") or "localhost" in url or "127.0.0.1" in url:
+        return {}
+    return {"reply_markup": {"inline_keyboard": [[{"text": f"Открыть {settings.app_name}", "url": url}]]}}
+
+
+def setup_profile() -> None:
+    """Команды и описание бота, чтобы не настраивать их вручную в @BotFather."""
+    for method, payload in [
+        ("setMyCommands", {"commands": [
+            {"command": "start", "description": "Как войти на сайт"},
+            {"command": "help", "description": "Помощь"},
+        ]}),
+        ("setMyDescription", {"description": DESCRIPTION}),
+        ("setMyShortDescription", {"short_description": SHORT_DESCRIPTION}),
+    ]:
+        try:
+            api(method, payload)
+        except Exception:  # noqa: BLE001 — оформление бота не обязательно для входа
+            log.warning("Telegram: %s не выполнен", method)
+
+
 def handle_update(upd: dict) -> list[tuple[str, dict]]:
     """Обрабатывает одно обновление бота и возвращает вызовы API, которые нужно сделать.
     Вынесено отдельно, чтобы проверять логику без сети."""
@@ -96,9 +131,8 @@ def handle_update(upd: dict) -> list[tuple[str, dict]]:
                         {"text": "Отмена", "callback_data": f"no:{token}"},
                     ]]},
                 }))
-        elif text.startswith("/start"):
-            calls.append(("sendMessage", {"chat_id": chat_id, "text": f"Это бот {settings.app_name}. "
-                          "Чтобы войти, нажмите «Войти через Telegram» на сайте. Сюда же приходят заявки «Помочь» по питомцам."}))
+        elif text:  # /start, /help и любое другое сообщение: подсказка, как войти
+            calls.append(("sendMessage", {"chat_id": chat_id, "text": HELP_TEXT, **_site_button()}))
     elif cb := upd.get("callback_query"):
         action, _, token = (cb.get("data") or "").partition(":")
         frm = cb.get("from") or {}
@@ -111,7 +145,7 @@ def handle_update(upd: dict) -> list[tuple[str, dict]]:
         if not ok:
             reply = "Ссылка устарела, начните вход на сайте заново."
         elif action == "ok":
-            reply = "Готово! Вернитесь в браузер, вход выполнен."
+            reply = f"Готово! Вернитесь в браузер: вход в {settings.app_name} выполнен."
         else:
             reply = "Вход отменён."
         calls.append(("answerCallbackQuery", {"callback_query_id": cb["id"]}))
@@ -149,6 +183,7 @@ def start() -> None:
         me = api("getMe")["result"]
         _bot_username = me["username"]
         api("deleteWebhook")
+        setup_profile()
     except Exception:  # noqa: BLE001
         log.error("Telegram: не удалось подключиться к боту. Проверьте TELEGRAM_BOT_TOKEN и интернет")
         if not _bot_username:
@@ -156,7 +191,7 @@ def start() -> None:
     _stop.clear()
     _thread = threading.Thread(target=_loop, name="telegram-bot", daemon=True)
     _thread.start()
-    log.info("Telegram-бот @%s запущен: вход через Telegram включён", _bot_username)
+    log.info("Telegram-бот @%s запущен: вход через Telegram включён (https://t.me/%s)", _bot_username, _bot_username)
 
 
 def stop() -> None:

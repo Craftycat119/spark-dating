@@ -113,3 +113,11 @@ def test_telegram_bot_decline_and_unknown_token(monkeypatch):
 def test_admin_email_auto_promoted():
     c = new_client()
     assert register(c, "boss@example.com")["is_admin"]
+
+
+def test_telegram_bot_help_and_site_button(monkeypatch):
+    calls = telegram_bot.handle_update({"message": {"chat": {"id": 5}, "text": "/start"}})
+    assert "Войти через Telegram" in calls[0][1]["text"] and "reply_markup" not in calls[0][1]  # localhost: без кнопки
+    monkeypatch.setattr(config.settings, "base_url", "https://cofi.example")
+    calls = telegram_bot.handle_update({"message": {"chat": {"id": 5}, "text": "привет"}})
+    assert calls[0][1]["reply_markup"]["inline_keyboard"][0][0]["url"] == "https://cofi.example"

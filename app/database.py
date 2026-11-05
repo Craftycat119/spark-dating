@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import settings
@@ -44,3 +44,27 @@ def init_db() -> None:
     from . import models  # noqa: F401  — регистрируем модели
 
     Base.metadata.create_all(engine)
+    _add_missing_columns()
+
+
+def _add_missing_columns() -> None:
+    """Новые поля в моделях добавляются в уже существующую базу сами: анкеты и чаты не теряются.
+    create_all создаёт только новые таблицы, а колонки в старых таблицах не трогает."""
+    insp = inspect(engine)
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if not insp.has_table(table.name):
+                continue
+            existing = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in existing:
+                    continue
+                ddl = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col.type.compile(engine.dialect)}'
+                default = getattr(col.default, "arg", None)
+                if isinstance(default, bool):
+                    ddl += f" NOT NULL DEFAULT {int(default)}"
+                elif isinstance(default, (int, float)):
+                    ddl += f" NOT NULL DEFAULT {default}"
+                elif isinstance(default, str):
+                    ddl += " NOT NULL DEFAULT '" + default.replace("'", "''") + "'"
+                conn.execute(text(ddl))

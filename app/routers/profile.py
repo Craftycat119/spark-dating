@@ -15,6 +15,7 @@ from ..config import settings
 from ..database import get_db
 from ..deps import current_user
 from ..ages import MIN_AGE, TEEN_GOALS, years_between
+from ..legal import TERMS_VERSION
 from ..interests import GENDERS, GOALS, INTERESTS, LOOKING_FOR, MIN_INTERESTS, clean
 from ..models import AnimalPost, Conversation, Message, User, UserPhoto, utcnow
 from ..serializers import own_profile
@@ -37,6 +38,8 @@ class ProfileIn(BaseModel):
     email_notifications: bool | None = None
     max_distance_km: int | None = None
     language: str | None = None
+    accept_terms: bool | None = None  # отметил «Принимаю Пользовательское соглашение»
+    confirm_age: bool | None = None  # отметил «Мне есть 18» (или «Родитель согласен» для 12–17 лет)
 
 
 class FramesIn(BaseModel):
@@ -73,6 +76,14 @@ def update_profile(data: ProfileIn, user: User = Depends(current_user), db: Sess
         if user.age_group == "teen":
             # до 18 лет только дружба: убираем «свидания» и «серьёзные отношения»
             user.goals = [g for g in user.goals if g in TEEN_GOALS]
+    if data.accept_terms is not None or data.confirm_age is not None:
+        if not data.accept_terms:
+            raise HTTPException(422, "Чтобы продолжить, примите Пользовательское соглашение")
+        if not data.confirm_age:
+            raise HTTPException(422, "Подтвердите возраст" if user.age_group == "adult" else "Нужно согласие родителя или законного представителя")
+        user.terms_accepted_at = utcnow()
+        user.terms_version = TERMS_VERSION
+        user.age_confirmation = "adult" if user.age_group == "adult" else "guardian"
     if data.language in ("ru", "en"):
         user.language = data.language
     if data.bio is not None:

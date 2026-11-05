@@ -18,6 +18,7 @@ from .ages import birth_for_age
 from .interests import GOALS, SURVEY
 from .database import SessionLocal, init_db
 from .face_verify import download_models
+from .legal import TERMS_VERSION
 from .models import AnimalPost, User, UserPhoto, utcnow
 from .security import hash_password
 
@@ -88,6 +89,7 @@ def seed(lat: float, lon: float, count: int) -> None:
             name = DEMO_NAMES[i % len(DEMO_NAMES)]
             u = User(
                 email=f"demo{i + 1}@example.com",
+                terms_accepted_at=utcnow(), terms_version=TERMS_VERSION, age_confirmation="adult",
                 password_hash=hash_password("Demo12345"),
                 email_verified=True,
                 name=name,

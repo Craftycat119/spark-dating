@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from . import face_verify, telegram_bot
 from .config import BASE_DIR, settings
 from .ages import MIN_AGE, TEEN_GOALS
+from .legal import TERMS_VERSION
 from .interests import GENDERS, LOOKING_FOR, MIN_INTERESTS, SURVEY
 from .database import get_db, init_db
 from .deps import current_user
@@ -63,6 +64,7 @@ def public_config():
         "survey": SURVEY,
         "teen_goals": TEEN_GOALS,
         "min_age": MIN_AGE,
+        "terms_version": TERMS_VERSION,
         "genders": GENDERS,
         "looking_for": LOOKING_FOR,
         "min_interests": MIN_INTERESTS,

@@ -52,7 +52,8 @@ def make_user(email, name="Тест", lat=55.75, lon=37.61, age=25, bio="При�
     c = new_client()
     register(c, email)
     r = c.put("/api/profile", json={"name": name, "birth_date": birth_for_age(age).isoformat(), "bio": bio, "gender": gender,
-                                    "looking_for": looking_for, "interests": list(interests), "goals": list(goals)})
+                                    "looking_for": looking_for, "interests": list(interests), "goals": list(goals),
+                                    "accept_terms": True, "confirm_age": True})
     assert r.status_code == 200, r.text
     r = c.post("/api/profile/photo", files={"file": ("a.jpg", jpeg_bytes(), "image/jpeg")})
     assert r.status_code == 200, r.text
