@@ -36,6 +36,7 @@ class User(Base):
     password_hash: Mapped[str | None] = mapped_column(String(255))
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     email_notifications: Mapped[bool] = mapped_column(Boolean, default=True)
+    tg_notifications: Mapped[bool] = mapped_column(Boolean, default=True)  # сообщения, пары и звонки через Telegram-бота
 
     # Вход через Telegram
     telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True, index=True)

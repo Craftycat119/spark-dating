@@ -17,8 +17,18 @@ export function initCalls(config, peerLookup) {
   on("call:end", (d) => current?.id === d.call_id && current.close("Звонок завершён"));
   on("call:reject", (d) => current?.id === d.call_id && current.close("Собеседник отклонил звонок"));
   on("call:busy", (d) => current?.id === d.call_id && current.close("Собеседник уже разговаривает"));
+  on("call:notified", (d) => current?.id === d.call_id && current.onNotified());
+  on("call:gone", () => toast("Звонок уже завершён"));
   on("call:unavailable", (d) => current?.id === d.call_id && current.close(
     d.reason === "bot" ? "В демо боты не отвечают на звонки. Позвонить можно реальному человеку" : "Собеседник сейчас не в сети"));
+}
+
+/** Открыли COFI кнопкой «Ответить» из Telegram: забираем ждущий звонок, как только подключится сокет. */
+export function joinPendingCall(callId) {
+  const join = () => send({ type: "call:join", call_id: callId });
+  if (!join()) {
+    const off = on("socket:open", () => { join(); off(); });
+  }
 }
 
 export function startCall(conversationId, peer, video) {
@@ -34,7 +44,8 @@ async function onOffer(d) {
   }
   const peer = (await lookupPeer(d.conversation_id)) || { name: d.from.name };
   current = new Call({ conversationId: d.conversation_id, peer, video: !!d.video, outgoing: false, id: d.call_id, offer: d.sdp });
-  current.ring();
+  if (d.answer_now) current.accept(); // уже нажали «Ответить» в Telegram
+  else current.ring();
 }
 
 // Простой рингтон на WebAudio — без файлов
@@ -80,8 +91,8 @@ class Call {
       <video class="local" playsinline autoplay muted hidden></video>
       <div class="persona">
         ${this.peer.photo_url ? `<img src="${esc(this.peer.photo_url)}" alt="">` : ""}
-        <h2>${esc(this.peer.name)}</h2>
-        <p class="status muted"></p>
+        <div><h2>${esc(this.peer.name)}</h2>
+        <p class="status muted"></p></div>
       </div>
       <div class="bar"></div>
       <audio autoplay></audio>
@@ -122,7 +133,7 @@ class Call {
   async getMedia() {
     this.local = await navigator.mediaDevices.getUserMedia({
       // эхоподавление, шумоподавление и автоусиление браузера; моно — меньше эха и трафика
-      audio: { echoCancellation: { ideal: true }, noiseSuppression: { ideal: true }, autoGainControl: { ideal: true }, channelCount: { ideal: 1 } },
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: { ideal: 1 } },
       video: this.video ? { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } : false,
     });
     if (this.video) {
@@ -147,7 +158,14 @@ class Call {
     };
     const onState = () => {
       const s = this.pc.connectionState || this.pc.iceConnectionState;
-      if (s === "connected" || s === "completed") { clearTimeout(this.connectTimeout); this.startTimer(); }
+      if (s === "connected" || s === "completed") {
+        clearTimeout(this.connectTimeout);
+        this.startTimer();
+        // на компьютере звук из динамиков снова попадает в микрофон: подсказываем про наушники
+        if (!this.video && !matchMedia("(pointer: coarse)").matches) {
+          this.el.querySelector(".persona").insertAdjacentHTML("beforeend", `<p class="call-tip">Если собеседник слышит эхо, наденьте наушники или убавьте звук</p>`);
+        }
+      }
       if (s === "failed") this.hangup(this.timer ? "Соединение потеряно" : NO_ROUTE);
     };
     this.pc.onconnectionstatechange = onState;
@@ -198,6 +216,13 @@ class Call {
     this.signal("call:answer", { sdp: this.pc.localDescription });
     this.activeBar();
     this.watchConnect();
+  }
+
+  onNotified() {
+    // собеседник не в сети: ему ушёл звонок в Telegram, ждём подольше
+    this.status.textContent = "Собеседник не в сети. Звонок отправлен в Telegram, ждём ответа…";
+    clearTimeout(this.noAnswer);
+    this.noAnswer = setTimeout(() => this.hangup("Никто не ответил"), 75000);
   }
 
   async onAnswer(d) {

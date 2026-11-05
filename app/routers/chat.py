@@ -9,7 +9,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from .. import demo, storage
+from .. import demo, push, storage
 from ..config import settings
 from ..database import SessionLocal, get_db
 from ..deps import COOKIE_NAME, current_user, user_from_token
@@ -22,7 +22,8 @@ ws_router = APIRouter()
 log = logging.getLogger("spark.chat")
 
 MEDIA_KINDS = {"image", "video", "voice", "circle"}
-CALL_EVENTS = {"call:offer", "call:answer", "call:ice", "call:end", "call:reject", "call:busy"}
+MEDIA_PREVIEW = {"image": "📷 Фото", "video": "🎬 Видео", "voice": "🎤 Голосовое сообщение", "circle": "⭕ Видеосообщение"}
+CALL_EVENTS = {"call:offer", "call:answer", "call:ice", "call:end", "call:reject", "call:busy", "call:join"}
 
 
 class MessageIn(BaseModel):
@@ -116,6 +117,7 @@ def send_message(conv_id: int, data: MessageIn, background: BackgroundTasks, use
         raise HTTPException(422, "Некорректный стикер")
     msg = _store(db, conv, Message(conversation_id=conv.id, sender_id=user.id, kind=data.kind, text=text))
     _publish(conv, msg)
+    push.notify_message(conv.other(user.id), user.name, conv.id, "Стикер" if data.kind == "sticker" else text)
     _maybe_bot_reply(conv, user, background)
     return message_out(msg)
 
@@ -146,6 +148,7 @@ def send_media(
         Message(conversation_id=conv.id, sender_id=user.id, kind=kind, text=caption.strip(), media_path=rel, duration=duration),
     )
     _publish(conv, msg)
+    push.notify_message(conv.other(user.id), user.name, conv.id, MEDIA_PREVIEW[kind] + (f": {caption.strip()}" if caption.strip() else ""))
     _maybe_bot_reply(conv, user, background)
     return message_out(msg)
 
@@ -194,6 +197,12 @@ def _peer(conv_id: int, user_id: int) -> tuple[int, bool] | None:
         return other.id, other.is_bot
 
 
+def _offer_call(call: push.PendingCall) -> bool:
+    with SessionLocal() as db:
+        callee = db.get(User, call.callee_id)
+        return push.offer(call, callee) if callee else False
+
+
 def _log_call(conv_id: int, user_id: int, video: bool) -> dict:
     with SessionLocal() as db:
         conv = db.get(Conversation, conv_id)
@@ -223,6 +232,18 @@ async def websocket_endpoint(ws: WebSocket):
                 continue
             if kind not in CALL_EVENTS and kind != "typing":
                 continue
+            if kind == "call:join":
+                # открыли COFI кнопкой «Ответить» из Telegram: отдаём ждущий звонок и накопленные ICE-кандидаты
+                p = push.take(str(data.get("call_id")), user_id)
+                if not p or not manager.is_online(p.caller_id):
+                    await ws.send_text(json.dumps({"type": "call:gone", "call_id": data.get("call_id")}))
+                    continue
+                await ws.send_text(json.dumps({"type": "call:offer", "conversation_id": p.conversation_id, "call_id": p.call_id,
+                                               "sdp": p.sdp, "video": p.video, "answer_now": True,
+                                               "from": {"id": p.caller_id, "name": p.caller_name}}))
+                for cand in p.ice:
+                    await ws.send_text(json.dumps({"type": "call:ice", "conversation_id": p.conversation_id, "call_id": p.call_id, "candidate": cand}))
+                continue
             try:
                 conv_id = int(data.get("conversation_id"))
             except (TypeError, ValueError):
@@ -236,16 +257,28 @@ async def websocket_endpoint(ws: WebSocket):
             out = {k: v for k, v in data.items() if k in {"type", "conversation_id", "sdp", "candidate", "video", "call_id", "reason"}}
             out["from"] = {"id": user_id, "name": user_name}
 
+            call_id = str(data.get("call_id"))
             if kind == "call:offer":
-                if peer_is_bot or not manager.is_online(peer):
-                    await ws.send_text(json.dumps({
-                        "type": "call:unavailable", "conversation_id": conv_id, "call_id": data.get("call_id"),
-                        "reason": "bot" if peer_is_bot else "offline",
-                    }))
+                if peer_is_bot:
+                    await ws.send_text(json.dumps({"type": "call:unavailable", "conversation_id": conv_id, "call_id": call_id, "reason": "bot"}))
                     continue
+                call = push.PendingCall(call_id=call_id, conversation_id=conv_id, caller_id=user_id, caller_name=user_name,
+                                        callee_id=peer, video=bool(data.get("video")), sdp=data.get("sdp") or {})
+                online = manager.is_online(peer)
+                notified = await run_in_threadpool(_offer_call, call)
+                if not online and not notified:
+                    push.finish(call_id, "gone")
+                    await ws.send_text(json.dumps({"type": "call:unavailable", "conversation_id": conv_id, "call_id": call_id, "reason": "offline"}))
+                    continue
+                if notified:
+                    await ws.send_text(json.dumps({"type": "call:notified", "conversation_id": conv_id, "call_id": call_id}))
                 msg = await run_in_threadpool(_log_call, conv_id, user_id, bool(data.get("video")))
                 for uid in (user_id, peer):
                     await manager.send(uid, {"type": "message", "message": msg})
+            elif kind == "call:ice":
+                push.add_ice(call_id, user_id, data.get("candidate"))
+            elif kind in ("call:answer", "call:end", "call:reject", "call:busy"):
+                push.finish(call_id, kind.split(":")[1])
             await manager.send(peer, out)
     except WebSocketDisconnect:
         pass

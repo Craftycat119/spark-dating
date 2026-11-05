@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import demo, emailer
+from .. import demo, emailer, push
 from ..database import get_db
 from ..deps import current_user
 from ..geo import bounding_box, haversine_km
@@ -97,6 +97,7 @@ def _notify_match(db: Session, conv: Conversation, background: BackgroundTasks) 
         }
         db.add(Notification(user_id=me.id, kind="match", payload=json.dumps(payload, ensure_ascii=False)))
         notify(me.id, {"type": "match", **payload})
+        push.notify_match(me, other.name, conv.id)
         if me.email and me.email_verified and me.email_notifications:
             background.add_task(emailer.send_match_email, me.email, other.name, common)
     db.commit()

@@ -275,6 +275,11 @@ export const EN = {
   "Продолжить запись": "Resume recording", "Остановить и посмотреть": "Stop and preview",
   "Обрезаем кружок…": "Trimming the video note…", "Потяните края полосы, чтобы обрезать начало и конец": "Drag the edges of the bar to trim the start and end",
   "Нажмите, чтобы включить звук": "Tap to turn on sound", "Начало": "Start", "Конец": "End",
+  "Собеседник не в сети. Звонок отправлен в Telegram, ждём ответа…": "They're offline. The call was sent to their Telegram, waiting for an answer…",
+  "Звонок уже завершён": "The call has already ended", "Если собеседник слышит эхо, наденьте наушники или убавьте звук": "If they hear an echo, use headphones or turn the volume down",
+  "Подключить уведомления в Telegram": "Connect Telegram notifications", "Уведомления в Telegram": "Telegram notifications",
+  "Сообщения, пары и звонки, когда вы не в приложении": "Messages, matches and calls when you're not in the app",
+  "Нажмите «Запустить» в боте, и уведомления подключатся": "Tap Start in the bot to connect notifications",
   "Барсик": "Barsik", "Луна": "Luna", "38 000 ₽": "38,000 ₽", "Дружить": "Be friends", "Новый друг": "New friend", "Войти через Telegram": "Sign in with Telegram",
   "Имя в Telegram": "Telegram name", 
 };

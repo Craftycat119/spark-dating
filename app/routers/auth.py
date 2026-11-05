@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
+import time
 from datetime import timedelta
+from urllib.parse import parse_qsl
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
@@ -222,7 +227,13 @@ def telegram_poll(data: TelegramPoll, request: Request, response: Response, db: 
     if p.status == "declined":
         raise HTTPException(403, "Вход отменён в Telegram")
 
-    tg = p.user
+    user = _telegram_user(db, p.user, request)
+    start_session(db, user, request, response)
+    return {"status": "ok", "user": own_profile(user)}
+
+
+def _telegram_user(db: Session, tg: dict, request: Request) -> User:
+    """Находит аккаунт по Telegram id или создаёт новый."""
     user = db.scalar(select(User).where(User.telegram_id == tg["id"]))
     if not user:
         user = User(
@@ -239,8 +250,41 @@ def telegram_poll(data: TelegramPoll, request: Request, response: Response, db: 
         raise HTTPException(403, "Аккаунт заблокирован")
     else:
         user.telegram_username = tg.get("username") or user.telegram_username
+    return user
+
+
+class WebAppIn(BaseModel):
+    init_data: str
+
+
+@router.post("/telegram/webapp")
+def telegram_webapp(data: WebAppIn, request: Request, response: Response, db: Session = Depends(get_db)):
+    """Вход в мини-приложении: Telegram передаёт подписанные данные о пользователе (initData)."""
+    if not settings.telegram_bot_token:
+        raise HTTPException(503, "Вход через Telegram не настроен")
+    tg = verify_webapp_init_data(data.init_data, settings.telegram_bot_token)
+    if not tg:
+        raise HTTPException(401, "Telegram не подтвердил вход")
+    user = _telegram_user(db, tg, request)
     start_session(db, user, request, response)
-    return {"status": "ok", "user": own_profile(user)}
+    return own_profile(user)
+
+
+def verify_webapp_init_data(init_data: str, bot_token: str, max_age: int = 24 * 3600) -> dict | None:
+    """Проверка подписи initData: https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app"""
+    pairs = dict(parse_qsl(init_data, keep_blank_values=True))
+    received = pairs.pop("hash", "")
+    check = "\n".join(f"{k}={v}" for k, v in sorted(pairs.items()))
+    secret = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+    if not received or not hmac.compare_digest(hmac.new(secret, check.encode(), hashlib.sha256).hexdigest(), received):
+        return None
+    try:
+        if time.time() - int(pairs.get("auth_date", 0)) > max_age:
+            return None
+        user = json.loads(pairs.get("user", "{}"))
+    except (TypeError, ValueError):
+        return None
+    return user if user.get("id") else None
 
 
 def _device_label(ua: str) -> str:

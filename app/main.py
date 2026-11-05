@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -17,6 +18,7 @@ from .interests import GENDERS, LOOKING_FOR, MIN_INTERESTS, SURVEY
 from .database import get_db, init_db
 from .deps import current_user
 from .models import Conversation, User
+from .realtime import set_loop
 from .routers import admin, animals, auth, chat, feed, profile, support, users
 from .storage import resolve
 
@@ -39,6 +41,7 @@ async def lifespan(_app: FastAPI):
         log.error("SECRET_KEY не задан! Установите его в .env перед запуском в продакшене.")
     if face_verify.is_dev_mode():
         log.warning("FACE_MODE=dev — проверка лица ОТКЛЮЧЕНА. Не используйте в продакшене.")
+    set_loop(asyncio.get_running_loop())
     telegram_bot.start()
     yield
     telegram_bot.stop()

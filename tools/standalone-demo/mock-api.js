@@ -260,6 +260,7 @@ route("POST", "/api/auth/telegram/poll", async (b) => {
   save();
   return { status: "ok", user: ownProfile(me()) };
 });
+route("POST", "/api/profile/telegram-link", () => deny(503, "В демо уведомления в Telegram не подключаются. В приложении здесь откроется бот COFI"));
 route("POST", "/api/auth/logout", () => { S.me = null; save(); return { status: "ok" }; });
 
 function requireMe() {

@@ -1,5 +1,5 @@
 import { api, ApiError, connectSocket, disconnectSocket, on, send } from "./api.js";
-import { initCalls, startCall } from "./call.js";
+import { initCalls, joinPendingCall, startCall } from "./call.js";
 import { icons } from "./icons.js";
 import { recordCircle, VoiceRecorder } from "./recorder.js";
 import { runScanner } from "./scanner.js";
@@ -60,9 +60,29 @@ async function boot() {
   } catch {
     state.me = null;
   }
+  await enterFromTelegram();
   if (state.me) afterLogin();
+  // ссылки из уведомлений бота: /?chat=ID открывает чат, /?call=ID — входящий звонок
+  const params = new URLSearchParams(location.search);
+  if (params.has("chat") || params.has("call")) {
+    history.replaceState(null, "", location.pathname + (location.hash || "#/"));
+    if (state.me && params.get("chat")) navigate(`#/chat/${Number(params.get("chat"))}`);
+    if (state.me && params.get("call")) joinPendingCall(params.get("call"));
+  }
   onRoute(route);
   route();
+}
+
+/** Открыли COFI как мини-приложение Telegram: Telegram кладёт подписанные данные в адрес (#tgWebAppData=…), входим по ним. */
+async function enterFromTelegram() {
+  const hash = location.hash.slice(1);
+  if (!hash.includes("tgWebAppData=")) return;
+  const initData = new URLSearchParams(hash).get("tgWebAppData");
+  history.replaceState(null, "", location.pathname + location.search + "#/");
+  if (state.me || !initData) return;
+  try {
+    state.me = await api.post("/api/auth/telegram/webapp", { init_data: initData });
+  } catch { /* не вышло — покажем обычный экран входа */ }
 }
 
 function afterLogin() {
@@ -1390,6 +1410,9 @@ function renderSettings() {
       <button type="button" class="btn ghost" id="relocate">${icons.pin} Обновить геопозицию</button>
       ${me.email ? `<label class="switch"><input type="checkbox" name="notify" ${me.email_notifications ? "checked" : ""}>
         <span class="label">Письма о парах и обновлениях<small>${esc(me.email)}</small></span></label>` : ""}
+      ${me.telegram_linked ? `<label class="switch"><input type="checkbox" name="tgnotify" ${me.tg_notifications ? "checked" : ""}>
+        <span class="label">Уведомления в Telegram<small>Сообщения, пары и звонки, когда вы не в приложении</small></span></label>`
+        : state.config.telegram_bot_username ? `<button type="button" class="btn ghost" id="tg-link">${icons.send} Подключить уведомления в Telegram</button>` : ""}
       <button class="btn block">Сохранить изменения</button>
     </form>
 
@@ -1452,11 +1475,20 @@ function renderSettings() {
       ...pick,
     };
     if (form.notify) data.email_notifications = form.notify.checked;
+    if (form.tgnotify) data.tg_notifications = form.tgnotify.checked;
     try {
       state.me = await api.put("/api/profile", data);
       toast("Изменения сохранены");
     } catch (ex) { toast(ex.message, { error: true }); }
   };
+
+  $("#tg-link", root)?.addEventListener("click", async () => {
+    try {
+      const { url } = await api.post("/api/profile/telegram-link");
+      if (!window.open(url, "_blank")) location.href = url; // браузер заблокировал новое окно
+      toast("Нажмите «Запустить» в боте, и уведомления подключатся", { timeout: 6000 });
+    } catch (ex) { toast(ex.message, { error: true }); }
+  });
 
   $("#relocate", root).onclick = async () => {
     try {

@@ -63,6 +63,40 @@ def new_login(device: str) -> dict:
     return {"token": token, "url": f"https://t.me/{_bot_username}?start=login_{token}", "expires_in": LOGIN_TTL}
 
 
+_links: dict[str, tuple[int, float]] = {}  # токен → (id пользователя, когда создан)
+
+
+def new_link(user_id: int) -> str:
+    """Ссылка, по которой человек с аккаунтом по почте подключает уведомления в Telegram."""
+    token = secrets.token_urlsafe(18)
+    now = time.time()
+    with _lock:
+        for t in [t for t, (_, c) in _links.items() if now - c > LOGIN_TTL]:
+            del _links[t]
+        _links[token] = (user_id, now)
+    return f"https://t.me/{_bot_username}?start=link_{token}"
+
+
+def _link_account(token: str, frm: dict) -> str:
+    from .database import SessionLocal
+    from .models import User
+
+    with _lock:
+        entry = _links.pop(token, None)
+    if not entry:
+        return "Ссылка устарела. Нажмите «Подключить уведомления в Telegram» в профиле COFI ещё раз."
+    with SessionLocal() as db:
+        taken = db.query(User).filter(User.telegram_id == frm["id"], User.id != entry[0]).first()
+        if taken:
+            return "Этот Telegram уже привязан к другому аккаунту COFI."
+        user = db.get(User, entry[0])
+        if not user:
+            return "Аккаунт не найден."
+        user.telegram_id, user.telegram_username, user.tg_notifications = frm["id"], frm.get("username"), True
+        db.commit()
+    return "Готово! Уведомления COFI подключены: сюда будут приходить сообщения, пары и звонки."
+
+
 def take_login(token: str) -> PendingLogin | None:
     """Статус входа. Подтверждённый или отклонённый вход выдаётся один раз и удаляется."""
     with _lock:
@@ -115,7 +149,9 @@ def handle_update(upd: dict) -> list[tuple[str, dict]]:
     if msg := upd.get("message"):
         chat_id = msg["chat"]["id"]
         text = (msg.get("text") or "").strip()
-        if text.startswith("/start login_"):
+        if text.startswith("/start link_"):
+            calls.append(("sendMessage", {"chat_id": chat_id, "text": _link_account(text.removeprefix("/start link_").strip(), msg.get("from") or {"id": chat_id})}))
+        elif text.startswith("/start login_"):
             token = text.removeprefix("/start login_").strip()
             with _lock:
                 p = _pending.get(token)
@@ -136,6 +172,14 @@ def handle_update(upd: dict) -> list[tuple[str, dict]]:
     elif cb := upd.get("callback_query"):
         action, _, token = (cb.get("data") or "").partition(":")
         frm = cb.get("from") or {}
+        if action == "callno":  # «Отклонить» на звонке
+            from . import push
+
+            reply = push.decline_from_telegram(token, frm.get("id"))
+            calls.append(("answerCallbackQuery", {"callback_query_id": cb["id"]}))
+            if m := cb.get("message"):
+                calls.append(("editMessageText", {"chat_id": m["chat"]["id"], "message_id": m["message_id"], "text": reply}))
+            return calls
         with _lock:
             p = _pending.get(token)
             ok = bool(p and p.status == "pending")

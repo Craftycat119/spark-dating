@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
-from .. import face_verify, storage
+from .. import face_verify, storage, telegram_bot
 from ..config import settings
 from ..database import get_db
 from ..deps import current_user
@@ -36,6 +36,7 @@ class ProfileIn(BaseModel):
     interests: list[str] | None = None
     goals: list[str] | None = None
     email_notifications: bool | None = None
+    tg_notifications: bool | None = None
     max_distance_km: int | None = None
     language: str | None = None
     accept_terms: bool | None = None  # отметил «Принимаю Пользовательское соглашение»
@@ -110,12 +111,22 @@ def update_profile(data: ProfileIn, user: User = Depends(current_user), db: Sess
         user.goals = goals
     if data.email_notifications is not None:
         user.email_notifications = data.email_notifications
+    if data.tg_notifications is not None:
+        user.tg_notifications = data.tg_notifications
     if data.max_distance_km is not None:
         user.max_distance_km = max(1, min(data.max_distance_km, 20000))
 
     db.commit()
     db.refresh(user)
     return own_profile(user)
+
+
+@router.post("/telegram-link")
+def telegram_link(user: User = Depends(current_user)):
+    """Подключить уведомления в Telegram к аккаунту, созданному по почте."""
+    if not settings.telegram_bot_token or not telegram_bot.bot_username():
+        raise HTTPException(503, "Telegram-бот не настроен: администратору нужно указать TELEGRAM_BOT_TOKEN в .env")
+    return {"url": telegram_bot.new_link(user.id)}
 
 
 @router.post("/photo")
