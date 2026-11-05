@@ -19,7 +19,7 @@ export async function renderAnimals({ screen, state, go }) {
   let items = [], index = 0;
   const adult = state.me.age_group === "adult";
   const root = screen(`
-    <div class="topbar"><span class="logo">cofi<span>°</span></span></div>
+    <div class="topbar"><span class="logo"><i class="logo-mark" aria-hidden="true"></i>cofi<span>°</span></span></div>
     ${feedTabs("animals", state.me)}
     <div class="cat-chips">${CATS.map(([k, l]) => `<button class="chip" data-cat="${k}" aria-pressed="${k === category}">${l}</button>`).join("")}</div>
     <div class="pet-stage"><div class="skeleton" style="position:relative;height:420px"></div></div>

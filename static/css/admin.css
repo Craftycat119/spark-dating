@@ -85,3 +85,4 @@ dl.kv dd { margin: 0; word-break: break-word; }
 .add-admin summary { cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .add-admin form { margin-top: 12px; max-width: 640px; }
 .tag.hot { background: var(--orange); color: var(--on-orange); }
+.rail .brand img { width: 32px; height: 32px; border-radius: 9px; vertical-align: middle; margin-right: 8px; }

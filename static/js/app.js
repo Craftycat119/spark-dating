@@ -286,7 +286,7 @@ function renderAuth(mode = "login") {
     root = screen(`
     <section class="hero3d">
       <div class="stage" aria-hidden="true">${wordmark("COFI")}</div>
-      <span class="brand">cofi<sup>°</sup></span>
+      <span class="brand"><i class="logo-mark" aria-hidden="true"></i>cofi<sup>°</sup></span>
       <button class="icon-btn theme-toggle" aria-label="Сменить тему">${themeIcon()}</button>
       <div class="hero-copy">
         <h1>Знакомства, где общее находится сразу</h1>
@@ -871,7 +871,7 @@ const kmText = (km) => (km == null ? "" : km < 1 ? "меньше 1 км от в�
 
 async function renderFeed() {
   const root = screen(`
-    <div class="topbar"><span class="row" style="gap:8px"><span class="logo">cofi<span>°</span></span>${state.me.is_demo ? '<span class="demo-pill">демо</span>' : ""}</span><span class="counter"></span></div>
+    <div class="topbar"><span class="row" style="gap:8px"><span class="logo"><i class="logo-mark" aria-hidden="true"></i>cofi<span>°</span></span>${state.me.is_demo ? '<span class="demo-pill">демо</span>' : ""}</span><span class="counter"></span></div>
     ${feedTabs("people", state.me)}
     <div class="deck" aria-live="polite"><div class="skeleton" style="position:relative;height:420px"></div></div>
     <p class="swipe-hint" hidden>Свайп по нитке вниз: нравится, вверх: дальше. Нажмите на фото, чтобы открыть анкету</p>
@@ -1684,7 +1684,7 @@ on("message", (d) => {
 
 function notifyBrowser(title, body) {
   if (document.hidden && "Notification" in window && Notification.permission === "granted") {
-    try { new Notification(title, { body, icon: "/static/img/icon.svg" }); } catch { /* мобильные браузеры */ }
+    try { new Notification(title, { body, icon: "/static/img/logo-192.png" }); } catch { /* мобильные браузеры */ }
   }
 }
 

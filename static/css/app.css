@@ -771,3 +771,7 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .tg-nudge span { display: block; font-size: 13px; color: var(--muted); }
 .tg-nudge .btn { min-height: 40px; padding: 0 16px; font-size: 14px; }
 @media (max-width: 520px) { .tg-nudge { grid-template-columns: auto 1fr; } .tg-nudge .btn { grid-column: 1 / -1; } }
+/* логотип COFI: значок рядом с названием */
+.logo-mark { display: inline-block; width: 1.35em; height: 1.35em; margin-right: .35em; vertical-align: -0.32em; border-radius: 28%; background: url(/static/img/logo-64.png) center / contain no-repeat; }
+.hero3d .brand { display: inline-flex; align-items: center; }
+.hero3d .brand .logo-mark { width: 26px; height: 26px; margin-right: 7px; vertical-align: 0; }

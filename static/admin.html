@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>COFI: админ-панель</title>
   <script>/* тема до первой отрисовки, чтобы не мигало */try{var t=localStorage.getItem("theme")||"dark";if(t==="system")t=matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme="dark"}</script>
-  <link rel="icon" href="/static/img/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/static/img/favicon.ico" sizes="any">
+  <link rel="icon" href="/static/img/logo-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
+  <link rel="manifest" href="/static/manifest.webmanifest">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;800&family=Unbounded:wght@600;700&display=swap" rel="stylesheet">
@@ -16,7 +19,7 @@
 </head>
 <body class="admin">
   <aside class="rail">
-    <div class="brand">COFI<small>админ-панель</small></div>
+    <div class="brand"><img src="/static/img/logo-64.png" alt="" width="32" height="32">COFI<small>админ-панель</small></div>
     <nav>
       <a href="#overview" data-view="overview">Обзор</a>
       <a href="#users" data-view="users">Анкеты</a>

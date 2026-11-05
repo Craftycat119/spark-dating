@@ -150,7 +150,7 @@ cofi/ (или spark-dating/)
 │   ├── realtime.py        WebSocket-соединения
 │   ├── cli.py             make-admin, seed, download-models, outlook-login, test-email
 │   └── routers/           auth, profile, feed (подбор), chat (+ сигналинг звонков), admin
-├── static/                index.html, admin.html, css/, js/, vendor/ (иконки Phosphor)
+├── static/                index.html, admin.html, css/, js/, img/ (логотип и иконки), vendor/ (иконки Phosphor)
 ├── tools/standalone-demo/ сборка демо в один HTML-файл без сервера (только в репозитории)
 └── tests/                 тесты (только в репозитории)
 ```
@@ -162,6 +162,8 @@ cofi/ (или spark-dating/)
 это в пользовательском соглашении.
 
 ## Telegram: вход и заявки
+
+**Аватар бота:** в @BotFather отправьте `/setuserpic`, выберите бота и пришлите картинку `static/img/bot-avatar.png` (логотип COFI, 640×640).
 
 1. Напишите [@BotFather](https://t.me/BotFather) команду `/newbot`, придумайте имя и username бота, скопируйте токен.
 2. В `.env`: `TELEGRAM_BOT_TOKEN=123456:ABC…`. Больше ничего не нужно: username бота сервер узнаёт сам, домен указывать не надо.

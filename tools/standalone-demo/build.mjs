@@ -55,7 +55,9 @@ const font = (f) => `url(data:font/woff2;base64,${readFileSync(resolve(root, "st
 const phosphor = ["regular.css", "fill.css"].map((f) =>
   readFileSync(resolve(root, "static/vendor/phosphor", f), "utf8")
     .replace(/url\("\.\/(Phosphor[^"]*\.woff2)"\) format\("woff2"\)/, (_, file) => font(file))).join("\n");
-const css = readFileSync(resolve(root, "static/css/app.css"), "utf8");
+// логотип встраиваем в файл: на странице по ссылке нет папки /static
+const logo = `data:image/png;base64,${readFileSync(resolve(root, "static/img/logo-64.png")).toString("base64")}`;
+const css = readFileSync(resolve(root, "static/css/app.css"), "utf8").replaceAll("/static/img/logo-64.png", logo);
 
 // 4. Разметка из index.html: фильтры «надутого» материала и контейнеры
 const index = readFileSync(resolve(root, "static/index.html"), "utf8");
@@ -64,6 +66,7 @@ const themeScript = index.match(/<script>\/\* тема[\s\S]*?<\/script>/)[0];
 
 const html = `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>COFI демо</title>
+<link rel="icon" href="${logo}">
 <meta name="theme-color" content="#120c09">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

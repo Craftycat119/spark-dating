@@ -8,7 +8,7 @@ const ADS_QUICK = ["Какие форматы рекламы?", "Сколько 
 
 export async function renderSupportHub({ screen, go, back = "#/settings" }) {
   const root = screen(`
-    <div class="guide-top"><a class="icon-btn" href="${back}" aria-label="Назад">${icons.back}</a><span class="logo">cofi<span>°</span></span><span style="width:44px"></span></div>
+    <div class="guide-top"><a class="icon-btn" href="${back}" aria-label="Назад">${icons.back}</a><span class="logo"><i class="logo-mark" aria-hidden="true"></i>cofi<span>°</span></span><span style="width:44px"></span></div>
     <h1>Поддержка</h1>
     <p class="lead" style="margin-top:10px">Оператор отвечает прямо в чате, обычно в течение часа.</p>
     <div class="support-new">
