@@ -76,3 +76,12 @@ dl.kv dd { margin: 0; word-break: break-word; }
 .pet-form label.chip { cursor: pointer; gap: 6px; }
 .pet-form label.chip input { accent-color: var(--orange); }
 .btn.tiny { min-height: 32px; padding: 0 12px; font-size: 13px; }
+/* заглушка вместо пустого или потерянного фото */
+.pic-empty { display: grid; place-items: center; gap: 6px; aspect-ratio: 3 / 4; padding: 12px; border-radius: 14px; background: var(--surface); color: var(--muted); font-size: 12px; text-align: center; }
+.pic-empty .ph { font-size: 28px; }
+.pic-empty.small { width: 36px; height: 36px; aspect-ratio: 1; padding: 0; border-radius: 50%; font-size: 0; }
+.pic-empty.small .ph { font-size: 18px; }
+.add-admin { margin: 0 0 16px; padding: 12px 16px; border-radius: 18px; background: var(--surface); }
+.add-admin summary { cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.add-admin form { margin-top: 12px; max-width: 640px; }
+.tag.hot { background: var(--orange); color: var(--on-orange); }

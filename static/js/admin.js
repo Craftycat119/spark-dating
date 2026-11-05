@@ -61,11 +61,35 @@ async function users() {
       <input class="input" type="search" placeholder="Имя, почта, @telegram или ID" value="${esc(usersState.q)}">
       <select class="input"><option value="">Любые интересы</option>${catalog.map((k) => `<option ${usersState.interest === k ? "selected" : ""}>${esc(k)}</option>`).join("")}</select>
     </div>
+    <details class="add-admin">
+      <summary>${icons.plus} Добавить администратора</summary>
+      <form class="stack">
+        <p class="muted small">Анкету заполнять не нужно: только имя и значок «Администрация». Укажите почту и пароль для входа
+          или @username человека, который уже входил в COFI через Telegram.</p>
+        <input class="input" name="name" placeholder="Имя" required maxlength="64">
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          <input class="input" name="email" type="email" placeholder="Почта" style="flex:1;min-width:180px">
+          <input class="input" name="password" type="text" placeholder="Пароль (8+ символов, заглавная, цифра)" style="flex:1;min-width:180px">
+        </div>
+        <input class="input" name="telegram" placeholder="…или Telegram: @username">
+        <button class="btn">Добавить</button>
+      </form>
+    </details>
     <div id="table"><div class="spinner"></div></div>`;
-  const search = $("input", view);
+  $(".add-admin form", view).onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    try {
+      const u = await api.post("/api/admin/admins", { name: f.name.value, email: f.email.value, password: f.password.value, telegram: f.telegram.value });
+      toast(`${u.name} теперь администратор`);
+      f.reset();
+      loadUsers();
+    } catch (ex) { toast(ex.message, { error: true }); }
+  };
+  const search = $("input[type=search]", view);
   let t;
   search.oninput = () => { clearTimeout(t); t = setTimeout(() => { usersState.q = search.value; usersState.page = 1; loadUsers(); }, 300); };
-  $("select", view).onchange = (e) => { usersState.interest = e.target.value; usersState.page = 1; loadUsers(); };
+  $(".toolbar select", view).onchange = (e) => { usersState.interest = e.target.value; usersState.page = 1; loadUsers(); };
   loadUsers();
 }
 
@@ -80,10 +104,11 @@ async function loadUsers() {
   }
   const pages = Math.ceil(res.total / res.per_page);
   box.innerHTML = `<table class="grid"><thead><tr>
-      <th></th><th>Имя</th><th>Вход</th><th>Регистрация</th><th>IP</th><th>Ищет</th><th>Статус</th></tr></thead>
+      <th></th><th>Имя</th><th>Дата рождения</th><th>Вход</th><th>Регистрация</th><th>IP</th><th>Ищет</th><th>Статус</th></tr></thead>
     <tbody>${res.items.map((u) => `<tr data-id="${u.id}">
-      <td>${u.photo_url ? `<img src="${esc(u.photo_url)}" alt="">` : ""}</td>
-      <td><b>${esc(u.name || "Без имени")}</b>${u.age ? `, ${u.age}` : ""}<br><span class="muted small">#${u.id}</span></td>
+      <td>${pic(u.photo_url, "", true)}</td>
+      <td><b>${esc(u.name || "Без имени")}</b>${u.is_admin ? ' <span class="tag hot">Админ</span>' : ""}<br><span class="muted small">#${u.id}</span></td>
+      <td>${u.birth_date ? `${new Date(u.birth_date).toLocaleDateString("ru-RU")}<br><span class="muted small">${u.age} ${plural(u.age, "год", "года", "лет")}</span>` : '<span class="muted">—</span>'}</td>
       <td>${u.email ? esc(u.email) : u.telegram_username ? `@${esc(u.telegram_username)}` : `Telegram ${u.telegram_id}`}</td>
       <td>${dt(u.created_at)}</td>
       <td>${esc(u.registration_ip || "—")}</td>
@@ -97,6 +122,17 @@ async function loadUsers() {
   $$("[data-p]", box).forEach((b) => (b.onclick = () => { usersState.page += Number(b.dataset.p); loadUsers(); }));
 }
 
+const plural = (n, one, few, many) => {
+  const m10 = n % 10, m100 = n % 100;
+  return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
+};
+
+/** Фото или аккуратная заглушка: пустой src давал значок «битой» картинки. */
+function pic(url, empty, small = false) {
+  if (!url) return small ? `<span class="pic-empty small">${icons.user}</span>` : `<div class="pic-empty">${icons.user}<span>${esc(empty)}</span></div>`;
+  return `<img src="${esc(url)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'pic-empty${small ? " small" : ""}',textContent:'Файл не найден'}))">`;
+}
+
 function closeDrawer() { drawer.hidden = true; drawer.innerHTML = ""; }
 
 async function openUser(id) {
@@ -107,8 +143,8 @@ async function openUser(id) {
     <h2>${esc(u.name || "Без имени")}${u.age ? `, ${u.age}` : ""}</h2>
     <p class="muted small">#${u.id} · ${u.online ? "в сети" : `был(а) ${dt(u.last_seen_at)}`}</p>
     <div class="photos">
-      <figure><img src="${esc(u.photo_url || "")}" alt=""><figcaption>Фото анкеты</figcaption></figure>
-      <figure><img src="${esc(u.selfie_url || "")}" alt=""><figcaption>Кадр со сканера${u.face_score != null ? `, сходство ${u.face_score.toFixed(2)}` : ""}</figcaption></figure>
+      <figure>${pic(u.photo_url, "Фото ещё не загружено")}<figcaption>Фото анкеты</figcaption></figure>
+      <figure>${pic(u.selfie_url, "Проверку лица ещё не проходил(а)")}<figcaption>Кадр со сканера${u.face_score != null ? `, сходство ${u.face_score.toFixed(2)}` : ""}</figcaption></figure>
     </div>
     ${u.gallery.length ? `<div class="photos" style="grid-template-columns:repeat(3,1fr)">${u.gallery.map((g) => `<figure><a href="${esc(g)}" target="_blank"><img src="${esc(g)}" alt=""></a></figure>`).join("")}</div>` : ""}
     <div class="actions">
@@ -131,12 +167,15 @@ async function openUser(id) {
     </dl>
     <h3>Анкета</h3>
     <dl class="kv">
-      <dt>Дата рождения</dt><dd>${u.birth_date ? new Date(u.birth_date).toLocaleDateString("ru-RU") : "—"}, ${u.age ?? "?"} лет, ${u.age_group === "teen" ? '<span class="tag">14–17</span>' : u.age_group === "adult" ? '<span class="tag">18+</span>' : "—"}
+      <dt>Дата рождения</dt><dd>${u.birth_date
+        ? `${new Date(u.birth_date).toLocaleDateString("ru-RU")}, ${u.age} ${plural(u.age, "год", "года", "лет")} <span class="tag">${u.age_group === "teen" ? "12–17, «Дружба»" : "18+, «Знакомства»"}</span>`
+        : '<span class="muted">не указана: человек ещё не прошёл шаг «Знакомимся»</span>'}
         ${u.age_verified ? '<span class="tag ok">проверен по документу</span>' : ""}
         <form class="row" data-birth style="margin-top:8px;gap:8px"><input class="input" type="date" name="d" value="${u.birth_date || ""}" style="padding:8px 10px;max-width:170px">
         <button class="btn quiet" style="min-height:38px;padding:0 14px;font-size:13px">Исправить и отметить проверенным</button></form></dd>
-      <dt>Пол</dt><dd>${esc(u.gender || "—")}</dd>
-      <dt>Кого ищет</dt><dd>${esc(u.looking_for || "—")}</dd>
+      <dt>Пол</dt><dd>${esc(u.gender_label || "—")}${u.show_identity === false ? ' <span class="muted small">(скрыт в анкете)</span>' : ""}</dd>
+      <dt>Ориентация</dt><dd>${esc(u.orientation_label || "—")}</dd>
+      <dt>Кого ищет</dt><dd>${esc(u.looking_for_label || "—")}</dd>
       <dt>Цель</dt><dd>${tags(u.goals, "hot") || "—"}</dd>
       <dt>Интересы</dt><dd>${tags(u.interests) || "—"}</dd>
       <dt>О себе</dt><dd>${esc(u.bio || "—")}</dd>

@@ -16,7 +16,7 @@ from ..database import get_db
 from ..deps import current_user
 from ..ages import MIN_AGE, TEEN_GOALS, years_between
 from ..legal import TERMS_VERSION
-from ..interests import GENDERS, GOALS, INTERESTS, LOOKING_FOR, MIN_INTERESTS, clean
+from ..interests import GENDERS, GOALS, INTERESTS, LOOKING_FOR, MIN_INTERESTS, ORIENTATIONS, TEEN_GENDERS, clean
 from ..models import AnimalPost, Conversation, Message, User, UserPhoto, utcnow
 from ..serializers import own_profile
 
@@ -32,6 +32,8 @@ class ProfileIn(BaseModel):
     birth_date: date | None = None
     bio: str | None = Field(None, max_length=BIO_MAX)
     gender: str | None = None
+    orientation: str | None = None
+    show_identity: bool | None = None
     looking_for: str | None = None
     interests: list[str] | None = None
     goals: list[str] | None = None
@@ -92,7 +94,19 @@ def update_profile(data: ProfileIn, user: User = Depends(current_user), db: Sess
     if data.gender is not None:
         if data.gender not in GENDERS:
             raise HTTPException(422, "Укажите пол")
+        if data.gender not in TEEN_GENDERS and user.age_group == "teen":
+            raise HTTPException(422, "В ленте «Дружба» можно выбрать «Парень» или «Девушка»")
         user.gender = data.gender
+    if user.age_group == "teen" and user.gender not in (None, *TEEN_GENDERS):
+        user.gender = None  # дату указали после пола: подросток выбирает пол заново
+    if data.orientation is not None:
+        if data.orientation and data.orientation not in ORIENTATIONS:
+            raise HTTPException(422, "Неизвестная ориентация")
+        user.orientation = data.orientation or None
+    if user.age_group == "teen":
+        user.orientation = None  # до 18 лет ориентацию не спрашиваем и не храним
+    if data.show_identity is not None:
+        user.show_identity = data.show_identity
     if data.looking_for is not None:
         if data.looking_for not in LOOKING_FOR:
             raise HTTPException(422, "Укажите, кого ищете")

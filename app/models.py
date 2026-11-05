@@ -55,7 +55,9 @@ class User(Base):
     # "adult" — подтвердил, что ему есть 18; "guardian" — 12–17 лет, подтвердил согласие родителя
     age_confirmation: Mapped[str | None] = mapped_column(String(16))
     language: Mapped[str] = mapped_column(String(8), default="ru")
-    gender: Mapped[str | None] = mapped_column(String(16))  # male | female
+    gender: Mapped[str | None] = mapped_column(String(16))  # male | female | trans_male | trans_female
+    orientation: Mapped[str | None] = mapped_column(String(16))  # hetero | bi | pan | ace (только с 18 лет)
+    show_identity: Mapped[bool] = mapped_column(Boolean, default=True)  # показывать пол и ориентацию в анкете
     looking_for: Mapped[str | None] = mapped_column(String(16))  # male | female | any
     bio: Mapped[str] = mapped_column(Text, default="")
     interests_json: Mapped[str] = mapped_column(Text, default="[]")

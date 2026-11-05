@@ -75,14 +75,35 @@ async function boot() {
 
 /** Открыли COFI как мини-приложение Telegram: Telegram кладёт подписанные данные в адрес (#tgWebAppData=…), входим по ним. */
 async function enterFromTelegram() {
-  const hash = location.hash.slice(1);
-  if (!hash.includes("tgWebAppData=")) return;
-  const initData = new URLSearchParams(hash).get("tgWebAppData");
-  history.replaceState(null, "", location.pathname + location.search + "#/");
-  if (state.me || !initData) return;
+  const initData = telegramInitData();
+  if (location.hash.includes("tgWebAppData=")) history.replaceState(null, "", location.pathname + location.search + "#/");
+  if (!initData) return;
+  try { tgApp()?.ready(); tgApp()?.expand(); } catch { /* старый Telegram */ }
+  if (state.me) return;
   try {
     state.me = await api.post("/api/auth/telegram/webapp", { init_data: initData });
-  } catch { /* не вышло — покажем обычный экран входа */ }
+  } catch (ex) {
+    toast(`Вход из Telegram не удался: ${ex.message}`, { error: true, timeout: 7000 });
+  }
+}
+
+const tgApp = () => window.Telegram?.WebApp;
+
+/** Открывает бота сразу в приложении Telegram, страница при этом остаётся и ждёт подтверждения. */
+function openTelegram(url) {
+  if (url.startsWith("#")) return; // демо: имитация бота
+  if (tgApp()?.initData !== undefined && tgApp()?.platform && tgApp().platform !== "unknown") {
+    try { return tgApp().openTelegramLink(url); } catch { /* ниже обычный способ */ }
+  }
+  const m = url.match(/t\.me\/([^?]+)\?start=(.+)$/);
+  if (m) location.href = `tg://resolve?domain=${m[1]}&start=${m[2]}`; // приложение Telegram, без ухода со страницы
+}
+
+/** Подписанные данные Telegram, если COFI открыт как мини-приложение (скрипт Telegram или адрес #tgWebAppData=…). */
+function telegramInitData() {
+  if (tgApp()?.initData) return tgApp().initData;
+  const hash = location.hash.slice(1);
+  return hash.includes("tgWebAppData=") ? new URLSearchParams(hash).get("tgWebAppData") : "";
 }
 
 let presenceBound = false;
@@ -117,6 +138,7 @@ function rerender() {
 }
 
 function onboardingStep(me) {
+  if (me.is_admin) return me.name ? null : "admin"; // администратору анкета не нужна, только имя
   if (!me.name || !me.birth_date || !me.gender || !me.looking_for || !me.terms_accepted) return "about";
   if (!me.survey_done) return "survey";
   if (!me.photo_url) return "photo";
@@ -205,7 +227,7 @@ function startDemo() {
       <h2>Какое демо открыть</h2>
       <p class="muted">Подростки и взрослые в COFI никогда не пересекаются, поэтому ленты разные.</p>
       <button class="row-link" data-age="adult"><span><b>Мне 18 или больше</b><br><span class="muted small">Знакомства и питомцы, 10 анкет</span></span>${icons.arrow}</button>
-      <button class="row-link" data-age="teen"><span><b>Мне 12–17</b><br><span class="muted small">Дружба без знакомств, 6 анкет</span></span>${icons.arrow}</button>
+      <button class="row-link" data-age="teen"><span><b>Мне 12–17</b><br><span class="muted small">Лента «Дружба», 6 анкет</span></span>${icons.arrow}</button>
       <button class="btn ghost block" data-close>Отмена</button>
     </div></div>`);
   $("[data-close]", el).onclick = () => el.remove();
@@ -329,6 +351,18 @@ ${sheet}`, { nav: false, cls: "auth" });
 
 /** Вход через бота: ссылка t.me/<бот>?start=login_…, человек жмёт «Войти» в Telegram, страница ждёт подтверждения. */
 async function telegramLogin() {
+  // Внутри мини-приложения Telegram уже знает, кто вы: входим сразу, без перехода в бота
+  const initData = telegramInitData();
+  if (initData) {
+    try {
+      state.me = await api.post("/api/auth/telegram/webapp", { init_data: initData });
+      afterLogin();
+      go("#/feed");
+      return;
+    } catch (ex) {
+      toast(ex.message, { error: true });
+    }
+  }
   let start;
   try {
     start = await api.post("/api/auth/telegram/start");
@@ -348,6 +382,8 @@ async function telegramLogin() {
   const close = () => { active = false; el.remove(); };
   $("[data-close]", el).onclick = close;
   document.body.append(el);
+  openTelegram(start.url);
+  $("a.btn.tg", el).onclick = (e) => { e.preventDefault(); openTelegram(start.url); };
   const deadline = Date.now() + start.expires_in * 1000;
   while (active && Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 2000));
@@ -511,11 +547,11 @@ async function nextStep() {
 }
 
 function renderOnboarding(step) {
-  ({ about: stepAbout, survey: () => renderSurvey(), photo: stepPhoto, scan: stepScan, location: stepLocation })[step]();
+  ({ admin: stepAdminName, about: stepAbout, survey: () => renderSurvey(), photo: stepPhoto, scan: stepScan, location: stepLocation })[step]();
 }
 
-function choiceGroup(name, options, value) {
-  return `<div class="choice-grid" style="grid-template-columns:repeat(${Object.keys(options).length},1fr)" role="radiogroup">${Object.entries(options).map(([k, label]) =>
+function choiceGroup(name, options, value, cols = Object.keys(options).length) {
+  return `<div class="choice-grid" style="grid-template-columns:repeat(${cols},1fr)" role="radiogroup">${Object.entries(options).map(([k, label]) =>
     `<button type="button" class="chip" data-name="${name}" data-value="${k}" aria-pressed="${k === value}">${esc(label)}</button>`).join("")}</div>`;
 }
 
@@ -541,16 +577,66 @@ function ageConsentText(birth) {
   return "Подтверждаю, что мне исполнилось 18 лет";
 }
 
+/**
+ * Пол, ориентация и переключатель «показывать в анкете». Варианты зависят от возраста:
+ * до 18 лет только «Парень» и «Девушка», без ориентации; с 18 — ещё трансгендерные варианты и ориентация.
+ */
+function identityFields(box, pick, age) {
+  const adult = age === null || age >= 18;
+  const genders = adult ? state.config.genders : state.config.teen_genders || state.config.genders;
+  if (!(pick.gender in genders)) pick.gender = null;
+  if (!adult) pick.orientation = null;
+  box.innerHTML = `
+    <div class="field"><span>Я</span>${choiceGroup("gender", genders, pick.gender, 2)}</div>
+    ${adult && state.config.orientations ? `<div class="field"><span>Ориентация <small class="muted">необязательно</small></span>${choiceGroup("orientation", state.config.orientations, pick.orientation, 2)}</div>` : ""}
+    <label class="switch"><input type="checkbox" data-show-identity ${pick.show_identity !== false ? "checked" : ""}>
+      <span class="label">Показывать ${adult ? "пол и ориентацию" : "пол"} в анкете<small>Если выключить, другие этого не увидят. Подбор по «кого ищу» работает всё равно</small></span></label>`;
+  bindChoice(box, "gender", (v) => (pick.gender = v));
+  bindChoice(box, "orientation", (v) => (pick.orientation = v));
+  $("[data-show-identity]", box).onchange = (e) => (pick.show_identity = e.target.checked);
+}
+
+/** Администратор: только имя, остальное не нужно. */
+function stepAdminName() {
+  const root = screen(`
+    <form class="stack" style="margin-top:24px">
+      <span class="admin-badge big">${icons.shield} Администрация COFI</span>
+      <h1>Как вас подписывать</h1>
+      <p class="muted">Имя видят пользователи в ответах поддержки рядом со значком «Администрация». Анкету заполнять не нужно.</p>
+      <label class="field"><span>Имя</span><input class="input" name="name" maxlength="64" required autocomplete="given-name"></label>
+      <p class="error-text" hidden></p>
+      <button class="btn block">Готово</button>
+    </form>`, { nav: false });
+  $("form", root).onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      state.me = await api.put("/api/profile", { name: e.target.name.value });
+      route();
+    } catch (ex) { const err = $(".error-text", root); err.textContent = ex.message; err.hidden = false; }
+  };
+}
+
+/** Экран ленты для администратора без анкеты: его самого в ленте нет, а смотреть есть что в админ-панели. */
+function adminHome(root) {
+  $(".deck", root).replaceChildren(h(`<div class="empty">
+    <span class="admin-badge big">${icons.shield} Администрация COFI</span>
+    <h2>Вы вошли как администратор</h2>
+    <p class="muted">Анкеты, обращения, жалобы, питомцы и рассылки — в админ-панели. Свою анкету заполнять не нужно, в ленте вас никто не видит.</p>
+    <a class="btn" href="/admin">Открыть админ-панель</a>
+    <a class="btn ghost" href="#/animals">Посмотреть ленту «Питомцы»</a>
+  </div>`));
+}
+
 function stepAbout() {
   const me = state.me;
-  const pick = { gender: me.gender, looking_for: me.looking_for };
+  const pick = { gender: me.gender, looking_for: me.looking_for, orientation: me.orientation || "", show_identity: me.show_identity !== false };
   const root = screen(`${stepsBar("about")}
     <form class="stack">
       <h1>Знакомимся</h1>
       <label class="field"><span>Имя</span><input class="input" name="name" maxlength="64" value="${esc(me.name)}" autocomplete="given-name" required></label>
       <label class="field"><span>Дата рождения</span><input class="input" name="birth" type="date" value="${me.birth_date ?? ""}" ${me.birth_date ? "disabled" : ""} required max="${new Date().toISOString().slice(0, 10)}"></label>
-      <p class="hint">COFI доступен с 12 лет. До 18 лет открыта только лента «Дружба», без знакомств. Дату нельзя будет изменить самостоятельно.</p>
-      <div class="field"><span>Я</span>${choiceGroup("gender", state.config.genders, me.gender)}</div>
+      <p class="hint">COFI доступен с 12 лет. До 18 лет доступна только лента «Дружба». Дату нельзя будет изменить самостоятельно.</p>
+      <div class="stack" data-identity></div>
       <div class="field"><span>Кого ищу</span>${choiceGroup("looking_for", state.config.looking_for, me.looking_for)}</div>
       <label class="field"><span>Коротко о себе</span><textarea class="input" name="bio" maxlength="500" placeholder="Например: варю фильтр-кофе, по субботам бегаю в парке">${esc(me.bio)}</textarea></label>
       <div class="consent">
@@ -561,9 +647,13 @@ function stepAbout() {
       <button class="btn block">Дальше</button>
     </form>`, { nav: false });
   const birthInput = $("input[name=birth]", root);
-  birthInput.addEventListener("input", () => ($("[data-age-text]", root).textContent = ageConsentText(birthInput.value)));
+  const identityBox = $("[data-identity]", root);
+  identityFields(identityBox, pick, ageOf(birthInput.value));
+  birthInput.addEventListener("input", () => {
+    $("[data-age-text]", root).textContent = ageConsentText(birthInput.value);
+    identityFields(identityBox, pick, ageOf(birthInput.value));
+  });
   bindBack(root, STEP_BACK.about);
-  bindChoice(root, "gender", (v) => (pick.gender = v));
   bindChoice(root, "looking_for", (v) => (pick.looking_for = v));
   const form = $("form", root);
   form.onsubmit = async (e) => {
@@ -786,6 +876,7 @@ async function renderFeed() {
     </div>`, { cls: "feed" });
   const deck = $(".deck", root);
   const btns = $(".btns", root);
+  if (state.me.is_admin && !state.me.is_complete) return adminHome(root);
   const hint = $(".swipe-hint", root);
   const counter = $(".counter", root);
   let cards = [], total = 0, seen = 0, busy = false, loading = false, thread = null;
@@ -965,6 +1056,7 @@ async function openProfile(userId, { onDecide = null } = {}) {
     <div class="profile-body">
       <div class="pname" translate="no">${esc(p.name)}<span>, ${p.age}</span></div>
       <div class="meta muted small" style="margin-top:6px">${[kmText(p.distance_km), p.verified ? "фото подтверждено" : "", p.online ? "в сети" : ""].filter(Boolean).join(" · ")}</div>
+      ${p.gender_label || p.orientation_label ? `<div class="chips identity-chips">${[p.gender_label, p.orientation_label].filter(Boolean).map((t) => `<span class="chip static">${esc(t)}</span>`).join("")}</div>` : ""}
       <div class="match-strip">
         <div><b>${p.match}%</b><span>совпадение</span></div>
         <div><b>${p.common.length}</b><span>${plural(p.common.length, "общий интерес", "общих интереса", "общих интересов")}</span></div>
@@ -1377,9 +1469,9 @@ function circleEl(m, mine, time) {
 function renderSettings() {
   const me = state.me;
   const step = onboardingStep(me);
-  const pick = { gender: me.gender, looking_for: me.looking_for };
+  const pick = { gender: me.gender, looking_for: me.looking_for, orientation: me.orientation || "", show_identity: me.show_identity !== false };
   const root = screen(`
-    <h1>Профиль</h1>
+    <h1>Профиль ${me.is_admin ? `<span class="admin-badge">${icons.shield} Администрация</span>` : ""}</h1>
     ${me.is_demo ? `<div class="demo-banner" style="margin-top:14px">${icons.sparkle}<span>Вы в демо-режиме. Боты отвечают в чате, данные удалятся через сутки.</span></div>` : ""}
     ${step ? `<p class="badge-warn" style="margin-top:10px">Анкета не завершена. <a href="#/feed">Продолжить настройку</a></p>` : ""}
     <div class="section profile-hero">
@@ -1413,7 +1505,7 @@ function renderSettings() {
       <div class="field"><span>Дата рождения</span>
         <div class="readonly">${me.birth_date ? new Date(me.birth_date).toLocaleDateString(getLang() === "en" ? "en-GB" : "ru-RU") : "—"}</div>
         <span class="hint">Изменить дату можно только через <a href="#/support">поддержку</a></span></div>
-      <div class="field"><span>Я</span>${choiceGroup("gender", state.config.genders, me.gender)}</div>
+      <div class="stack" data-identity></div>
       <div class="field"><span>Кого ищу</span>${choiceGroup("looking_for", state.config.looking_for, me.looking_for)}</div>
       <label class="field"><span>Описание</span><textarea class="input" name="bio" maxlength="500">${esc(me.bio)}</textarea></label>
       <label class="field"><span>Искать в радиусе <b id="dist-val">${me.max_distance_km}</b> км</span>
@@ -1463,7 +1555,7 @@ function renderSettings() {
       <button class="btn danger" id="delete">Удалить анкету</button>
     </div>`);
 
-  bindChoice(root, "gender", (v) => (pick.gender = v));
+  identityFields($("[data-identity]", root), pick, me.age);
   bindChoice(root, "looking_for", (v) => (pick.looking_for = v));
   $$("[data-lang]", root).forEach((b) => (b.onclick = () => {
     if (b.dataset.lang === getLang()) return;

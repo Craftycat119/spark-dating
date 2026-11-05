@@ -217,3 +217,41 @@ def decline_from_telegram(call_id: str, telegram_user_id: int) -> str:
         _calls.pop(call_id, None)
     notify(p.caller_id, {"type": "call:reject", "conversation_id": p.conversation_id, "call_id": p.call_id})
     return f"📞 Вы отклонили звонок от {p.caller_name}"
+
+
+# ---------- обращения в поддержку → администраторам ----------
+
+SUPPORT_TITLES = {"help": "🆘 Нужна помощь", "complaint": "⚠️ Жалоба", "suggestion": "💡 Предложение", "ads": "📣 Реклама"}
+_last_support_notice: dict[int, float] = {}
+
+
+def notify_admins(db, thread, text: str) -> None:
+    """Новое сообщение в обращении: администраторам в Telegram (или в группу TELEGRAM_ADMIN_CHAT_ID)."""
+    if not enabled():
+        return
+    from sqlalchemy import select
+
+    from .models import User
+
+    now = time.time()
+    with _lock:
+        if now - _last_support_notice.get(thread.id, 0) < 20:  # переписка идёт — не дёргаем на каждое слово
+            return
+        _last_support_notice[thread.id] = now
+    if settings.telegram_admin_chat_id:
+        chats = [settings.telegram_admin_chat_id]
+    else:
+        chats = list(db.scalars(select(User.telegram_id).where(User.is_admin.is_(True), User.telegram_id.is_not(None),
+                                                                User.tg_notifications.is_(True))))
+    if not chats:
+        log.info("Обращение #%s: некому отправить в Telegram. Привяжите Telegram к аккаунту админа или задайте TELEGRAM_ADMIN_CHAT_ID", thread.id)
+        return
+    who = thread.user.name if thread.user else (thread.contact or "гость без аккаунта")
+    target = db.get(User, thread.about_user_id) if thread.about_user_id else None
+    about = f"\nНа анкету: {target.name or 'без имени'} (#{target.id})" if target else ""
+    title = SUPPORT_TITLES.get(thread.category, "🆘 Обращение")
+    message = f"{title} #{thread.id} от {who}{about}\n\n{text[:1500]}"
+    base = settings.base_url.rstrip("/")
+    button = {"text": "Ответить в админ-панели", "url": f"{base}/admin#support"} if app_link() else None
+    for chat in chats:
+        _in_background(_send, chat, message, [button])

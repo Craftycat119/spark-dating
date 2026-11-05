@@ -14,7 +14,7 @@ from . import face_verify, telegram_bot
 from .config import BASE_DIR, settings
 from .ages import MIN_AGE, TEEN_GOALS
 from .legal import TERMS_VERSION
-from .interests import GENDERS, LOOKING_FOR, MIN_INTERESTS, SURVEY
+from .interests import GENDERS, LOOKING_FOR, MIN_INTERESTS, ORIENTATIONS, SURVEY, TEEN_GENDERS
 from .database import get_db, init_db
 from .deps import current_user
 from .models import Conversation, User
@@ -69,6 +69,8 @@ def public_config():
         "min_age": MIN_AGE,
         "terms_version": TERMS_VERSION,
         "genders": GENDERS,
+        "teen_genders": TEEN_GENDERS,
+        "orientations": ORIENTATIONS,
         "looking_for": LOOKING_FOR,
         "min_interests": MIN_INTERESTS,
         "telegram_bot_username": telegram_bot.bot_username() if settings.telegram_bot_token else None,

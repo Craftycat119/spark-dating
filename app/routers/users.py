@@ -11,7 +11,7 @@ from ..geo import haversine_km
 from ..interests import compatible, match_score
 from ..models import Conversation, Swipe, User
 from ..realtime import manager
-from ..serializers import media_url, photo_url
+from ..serializers import identity, media_url, photo_url
 from .feed import audience, visible_users
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -56,6 +56,7 @@ def user_profile(user_id: int, me: User = Depends(current_user), db: Session = D
         "photos": [u for u in [photo_url(other)] if u] + [media_url(p.path) for p in other.photos],
         "interests": other.interests,
         "goals": other.goals,
+        **identity(other),
         "common": common,
         "match": score,
         "distance_km": distance,

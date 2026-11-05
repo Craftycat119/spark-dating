@@ -67,7 +67,7 @@ export async function renderThread({ screen, threadId, back = "#/support", ads =
     </div>`, { nav: false });
   const list = $(".messages", root);
   const seen = new Set();
-  const label = { bot: ads ? "Помощник" : "Поддержка", staff: ads ? "Менеджер" : "Оператор" };
+  const label = { bot: ads ? "Помощник" : "Поддержка", staff: `${ads ? "Менеджер" : "Оператор"} <span class="admin-badge">Администрация</span>` };
   const add = (m) => {
     if (seen.has(m.id)) return;
     seen.add(m.id);

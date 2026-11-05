@@ -9,11 +9,13 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .. import emailer
-from ..interests import GENDERS, INTERESTS, LOOKING_FOR
+from ..interests import GENDERS, INTERESTS, LOOKING_FOR, ORIENTATIONS
 from ..database import get_db
 from ..deps import admin_user
 from ..models import AnimalPost, AuthSession, Conversation, Message, SupportThread, Swipe, User, utcnow
+from ..legal import TERMS_VERSION
 from ..realtime import manager
+from ..security import hash_password, is_valid_email, normalize_email, password_errors
 from ..serializers import media_url, message_out, photo_url
 from .profile import delete_user_completely
 
@@ -39,8 +41,10 @@ def user_row(u: User) -> dict:
         "auth_provider": u.auth_provider,
         "photo_url": photo_url(u),
         "photo_verified": u.photo_verified,
-        "gender": GENDERS.get(u.gender or ""),
-        "looking_for": LOOKING_FOR.get(u.looking_for or ""),
+        "gender_label": GENDERS.get(u.gender or ""),
+        "orientation_label": ORIENTATIONS.get(u.orientation or ""),
+        "show_identity": u.show_identity,
+        "looking_for_label": LOOKING_FOR.get(u.looking_for or ""),
         "interests": u.interests,
         "goals": u.goals,
         "created_at": _iso(u.created_at),
@@ -214,6 +218,41 @@ def broadcast(data: BroadcastIn, background: BackgroundTasks, _: User = Depends(
 class BirthIn(BaseModel):
     birth_date: date
     verified: bool = True
+
+
+class AdminIn(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    email: str = ""
+    password: str = ""
+    telegram: str = ""  # @username или числовой id: если человек уже входил через Telegram
+
+
+@router.post("/admins")
+def add_admin(data: AdminIn, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Администратор без анкеты: только имя и значок «Администрация». Вход по почте и паролю или через Telegram."""
+    tg = data.telegram.strip().lstrip("@")
+    if tg:
+        user = db.scalar(select(User).where(or_(func.lower(User.telegram_username) == tg.lower(),
+                                                User.telegram_id == (int(tg) if tg.isdigit() else -1))))
+        if not user:
+            raise HTTPException(404, "Такой человек ещё не входил в COFI через Telegram. Пусть откроет бота и войдёт, потом повторите")
+    else:
+        email = normalize_email(data.email)
+        if not is_valid_email(email):
+            raise HTTPException(422, "Укажите почту или Telegram")
+        if errors := password_errors(data.password):
+            raise HTTPException(422, "; ".join(errors))
+        user = db.scalar(select(User).where(User.email == email))
+        if not user:
+            user = User(email=email, auth_provider="email")
+            db.add(user)
+        user.password_hash = hash_password(data.password)
+        user.email_verified = True
+    user.name = data.name.strip()
+    user.is_admin = True
+    user.terms_accepted_at, user.terms_version = utcnow(), TERMS_VERSION
+    db.commit()
+    return user_row(user)
 
 
 @router.post("/users/{user_id}/birth-date")

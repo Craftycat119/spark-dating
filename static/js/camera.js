@@ -33,7 +33,12 @@ export async function takePhoto() {
       <button class="btn block" data-use hidden>${icons.check} Использовать фото</button>
     </div>`);
     const video = $("video", el), canvas = $("canvas", el);
+    // iPhone (и Telegram на нём) не запускает видео, пока элемент не на странице: сначала вставляем, потом поток
+    document.body.append(el);
+    video.muted = true;
+    video.setAttribute("playsinline", "");
     video.srcObject = stream;
+    video.play().catch(() => {});
     const done = (file) => { stream.getTracks().forEach((t) => t.stop()); el.remove(); resolve(file); };
     const toggle = (shot) => {
       video.hidden = shot; canvas.hidden = !shot;
@@ -42,6 +47,7 @@ export async function takePhoto() {
     $("[data-cancel]", el).onclick = () => done(null);
     $("[data-shoot]", el).onclick = () => {
       // квадрат по центру кадра, зеркально, как человек видел себя в превью
+      if (!video.videoWidth) return; // кадр ещё не пришёл
       const s = Math.min(video.videoWidth, video.videoHeight);
       canvas.width = canvas.height = Math.min(s, 1080);
       const ctx = canvas.getContext("2d");
@@ -53,6 +59,5 @@ export async function takePhoto() {
     };
     $("[data-retake]", el).onclick = () => toggle(false);
     $("[data-use]", el).onclick = () => canvas.toBlob((b) => done(b && new File([b], "camera.jpg", { type: "image/jpeg" })), "image/jpeg", 0.9);
-    document.body.append(el);
   });
 }

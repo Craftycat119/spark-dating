@@ -102,7 +102,7 @@ function ownProfile(u) {
   return {
     id: u.id, email: u.email || null, email_verified: true, email_notifications: false,
     auth_provider: u.provider || (u.is_demo ? "demo" : "email"), telegram_username: u.telegram_username || null, name: u.name, age: years(u), birth_date: u.birth_date || null, age_group: group(u),
-    age_verified: false, terms_accepted: u.terms_accepted ?? !(u.email || u.provider === "telegram"), age_confirmation: u.age_confirmation || null, language: "ru", bio: u.bio, gender: u.gender, looking_for: u.looking_for,
+    age_verified: false, terms_accepted: u.terms_accepted ?? !(u.email || u.provider === "telegram"), age_confirmation: u.age_confirmation || null, language: "ru", bio: u.bio, gender: u.gender, orientation: u.orientation || null, show_identity: u.show_identity !== false, looking_for: u.looking_for,
     interests: u.interests, goals: u.goals, survey_done: u.interests.length >= DATA.min_interests && u.goals.length > 0,
     photo_url: u.photo_url, photos: u.photos, photo_verified: u.photo_verified, has_location: true,
     max_distance_km: u.max_distance_km, is_admin: false, is_complete: isComplete(u), is_demo: true,
@@ -161,7 +161,7 @@ const ROUTES = [];
 const route = (method, pattern, fn) => ROUTES.push({ method, re: new RegExp(`^${pattern}$`), fn });
 
 route("GET", "/api/config", () => ({
-  app_name: "COFI", survey: DATA.survey, genders: DATA.genders, looking_for: DATA.looking_for, teen_goals: DATA.teen_goals,
+  app_name: "COFI", survey: DATA.survey, genders: DATA.genders, teen_genders: DATA.teen_genders, orientations: DATA.orientations, looking_for: DATA.looking_for, teen_goals: DATA.teen_goals,
   min_age: DATA.min_age, min_interests: DATA.min_interests, telegram_bot_username: "cofi_bot", ice_servers: [], face_dev_mode: true,
 }));
 
@@ -291,7 +291,12 @@ route("PUT", "/api/profile", (b) => {
     u.age_confirmation = group(u) === "adult" ? "adult" : "guardian";
   }
   if (b.bio !== undefined) u.bio = b.bio.trim().slice(0, 500);
-  if (b.gender !== undefined) u.gender = b.gender;
+  if (b.gender !== undefined) {
+    if (group(u) === "teen" && !(b.gender in DATA.teen_genders)) deny(422, "В ленте «Дружба» можно выбрать «Парень» или «Девушка»");
+    u.gender = b.gender;
+  }
+  if (b.orientation !== undefined && b.orientation !== null) u.orientation = group(u) === "teen" ? null : b.orientation || null;
+  if (b.show_identity !== undefined) u.show_identity = b.show_identity;
   if (b.looking_for !== undefined) u.looking_for = b.looking_for;
   if (b.interests !== undefined) {
     const v = [...new Set(b.interests)];
@@ -385,6 +390,8 @@ route("GET", "/api/users/(\\d+)", async (_, [uidStr]) => {
     id: o.id, name: o.name, age: o.age, bio: o.bio, verified: true,
     photos: [await img(o.photo_url), ...gallery.map((p) => p.url)],
     interests: o.interests, goals: o.goals, common, match: score, distance_km: Math.round(km(u, o) * 10) / 10,
+    gender_label: DATA.genders[o.gender] || null,
+    orientation_label: o.age >= 18 ? DATA.orientations[["hetero", "bi", "hetero", "pan", "hetero"][o.id % 5]] : null,
     online: false, liked: S.swipes.some((s) => s.from === u.id && s.to === o.id && s.liked), conversation_id: conv ? conv.id : null,
   };
 });

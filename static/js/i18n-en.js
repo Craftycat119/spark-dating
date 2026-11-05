@@ -25,8 +25,8 @@ export const EN = {
   "Знакомимся": "Let's get to know you", "Имя": "Name", "Дата рождения": "Date of birth", "Я": "I am", "Кого ищу": "Looking for",
   "Коротко о себе": "About you", "Дальше": "Next", "Назад": "Back", "Готово": "Done", "Отмена": "Cancel",
   "Например: варю фильтр-кофе, по субботам бегаю в парке": "For example: I brew filter coffee and run in the park on Saturdays",
-  "COFI доступен с 12 лет. До 18 лет открыта только лента «Дружба», без знакомств. Дату нельзя будет изменить самостоятельно.":
-    "COFI is for ages 12 and up. Under 18 you only get the Friends feed, no dating. You can't change this date yourself later.",
+  "COFI доступен с 12 лет. До 18 лет доступна только лента «Дружба». Дату нельзя будет изменить самостоятельно.":
+    "COFI is for ages 12 and up. Under 18 only the Friends feed is available. You can't change this date yourself later.",
   "Укажите дату рождения": "Enter your date of birth", "Выберите пол и кого ищете": "Choose your gender and who you're looking for",
   "Парень": "Guy", "Девушка": "Girl", "Парня": "A guy", "Девушку": "A girl", "Всех": "Everyone",
   "Пара вопросов о вас": "A few questions about you", "Интересы": "Interests", "Пропустить вопрос": "Skip question",
@@ -204,7 +204,7 @@ export const EN = {
   "Свайп по нитке вниз: нравится": "Swipe the thread down: like", "Свайп по нитке вверх: дальше": "Swipe the thread up: skip",
   "Или кнопка с крестиком. Остальную часть экрана, включая фото, можно спокойно листать пальцем: на анкету это не отвечает. На компьютере работают стрелки ↓ и ↑.":
     "Or the cross button. You can scroll the rest of the screen, photo included, freely, it won't answer the profile. On a computer use the ↓ and ↑ keys.", "Демо": "Demo",
-  "Мне 12–17": "I'm 12–17", "Знакомства и питомцы, 10 анкет": "Dating and pets, 10 profiles", "Дружба без знакомств, 6 анкет": "Friendship, no dating, 6 profiles",
+  "Мне 12–17": "I'm 12–17", "Знакомства и питомцы, 10 анкет": "Dating and pets, 10 profiles", "Лента «Дружба», 6 анкет": "Friends feed, 6 profiles",
   "Это демо ленты «Дружба»: свайп по нитке вниз, чтобы добавить в друзья": "This is the Friends demo: swipe the thread down to add a friend",
   "Нативные карточки в ленте, баннеры в чатах и благотворительные спецпроекты с лентой «Питомцы». Помощник расскажет об условиях.":
     "Native cards in the feed, banners in chats and charity projects with the Pets feed. The assistant will explain the terms.",

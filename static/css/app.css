@@ -709,6 +709,7 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .camera-shot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px 16px calc(24px + env(safe-area-inset-bottom)); background: rgba(10, 7, 5, .94); }
 .camera-shot .cam-frame { position: relative; width: min(86vw, 420px); aspect-ratio: 1; border-radius: 32px; overflow: hidden; background: #000; }
 .camera-shot video, .camera-shot canvas { width: 100%; height: 100%; object-fit: cover; display: block; }
+.camera-shot [hidden] { display: none !important; }
 .camera-shot video { transform: scaleX(-1); }
 .camera-shot .cam-oval { position: absolute; inset: 12% 22%; border: 2px dashed rgba(255, 255, 255, .55); border-radius: 50%; pointer-events: none; }
 .camera-shot canvas:not([hidden]) ~ .cam-oval { display: none; }
@@ -752,3 +753,9 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 @keyframes drop-in { from { transform: translateY(-120%); opacity: 0; } }
 .call.ringing .persona img { animation: ring-small 1.6s ease-out infinite; }
 @keyframes ring-small { 0% { box-shadow: 0 0 0 0 rgba(255, 91, 31, .6); } 100% { box-shadow: 0 0 0 10px rgba(255, 91, 31, 0); } }
+.identity-chips { margin-top: 10px; }
+.identity-chips .chip { min-height: 32px; padding: 0 14px; font-size: 13px; }
+/* значок администратора */
+.admin-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; background: var(--orange); color: var(--on-orange); font: 700 11px/1.6 var(--sans); letter-spacing: .02em; vertical-align: middle; }
+.admin-badge.big { align-self: flex-start; padding: 6px 14px; font-size: 13px; }
+.admin-badge .ph { font-size: 14px; }

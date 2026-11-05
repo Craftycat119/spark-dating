@@ -23,7 +23,7 @@ print(json.dumps({
   "teen_guest": demo.TEEN_GUEST, "teen_fallback": demo.TEEN_FALLBACK,
   "fallback_reply": demo.FALLBACK_REPLY,
   "center": demo.CENTER,
-  "survey": interests.SURVEY, "genders": interests.GENDERS, "looking_for": interests.LOOKING_FOR,
+  "survey": interests.SURVEY, "genders": interests.GENDERS, "teen_genders": interests.TEEN_GENDERS, "orientations": interests.ORIENTATIONS, "looking_for": interests.LOOKING_FOR,
   "min_interests": interests.MIN_INTERESTS,
   "teen_goals": ages.TEEN_GOALS, "min_age": ages.MIN_AGE,
   "animals": [dict(zip(("category","name","species","age_text","description","fundraising_goal","color"), a)) for a in cli.ANIMALS],

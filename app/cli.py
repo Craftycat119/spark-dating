@@ -59,14 +59,38 @@ ANIMALS = [
 COLORS = ["#ff5b1f", "#c9411a", "#e8763f", "#8a3214", "#ff8a4c", "#5a2410"]
 
 
-def make_admin(email: str) -> None:
+def make_admin(who: str) -> None:
+    """Права админа по почте или по Telegram (@username или id)."""
+    who = who.strip()
     with SessionLocal() as db:
-        user = db.scalar(select(User).where(User.email == email.strip().lower()))
+        if "@" in who and not who.startswith("@"):
+            user = db.scalar(select(User).where(User.email == who.lower()))
+        else:
+            tg = who.lstrip("@")
+            user = db.scalar(select(User).where(User.telegram_id == int(tg))) if tg.isdigit() else \
+                db.scalar(select(User).where(User.telegram_username.ilike(tg)))
         if not user:
-            raise SystemExit(f"Пользователь {email} не найден — сначала зарегистрируйтесь")
+            raise SystemExit(f"{who} не найден: сначала войдите в COFI (почтой или через Telegram)")
         user.is_admin = True
+        user.terms_accepted_at, user.terms_version = utcnow(), TERMS_VERSION
         db.commit()
-        print(f"{email} теперь администратор. Панель: /admin")
+        print(f"{who} теперь администратор. Анкету заполнять не нужно. Панель: /admin")
+
+
+def create_admin(name: str, email: str, password: str) -> None:
+    """Администратор без анкеты: только имя, почта и пароль для входа."""
+    from .security import hash_password, normalize_email, password_errors
+
+    if errors := password_errors(password):
+        raise SystemExit("Пароль: " + "; ".join(errors))
+    email = normalize_email(email)
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == email)) or User(email=email, auth_provider="email")
+        db.add(user)
+        user.name, user.password_hash, user.email_verified, user.is_admin = name, hash_password(password), True, True
+        user.terms_accepted_at, user.terms_version = utcnow(), TERMS_VERSION
+        db.commit()
+    print(f"Администратор {name} создан. Вход: {email} и пароль, панель: /admin")
 
 
 def _avatar(name: str, color: str) -> str:
@@ -125,8 +149,12 @@ def seed(lat: float, lon: float, count: int) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("make-admin")
+    p = sub.add_parser("make-admin", help="дать права админа: почта, @username или Telegram id")
     p.add_argument("email")
+    ca = sub.add_parser("create-admin", help="создать админа без анкеты")
+    ca.add_argument("--name", required=True)
+    ca.add_argument("--email", required=True)
+    ca.add_argument("--password", required=True)
     s = sub.add_parser("seed")
     s.add_argument("--lat", type=float, default=55.7558)
     s.add_argument("--lon", type=float, default=37.6173)
@@ -140,6 +168,8 @@ def main() -> None:
     init_db()
     if args.cmd == "make-admin":
         make_admin(args.email)
+    elif args.cmd == "create-admin":
+        create_admin(args.name, args.email, args.password)
     elif args.cmd == "seed":
         seed(args.lat, args.lon, args.count)
     elif args.cmd == "download-models":

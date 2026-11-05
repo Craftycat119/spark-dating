@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..deps import COOKIE_NAME, user_from_token
+from .. import push
 from ..models import SupportMessage, SupportThread, User, utcnow
 from ..realtime import manager, notify
 from ..security import hash_secret
@@ -110,6 +111,7 @@ def _add(db: Session, t: SupportThread, author: str, text: str) -> SupportMessag
         for admin_id in db.scalars(select(User.id).where(User.is_admin.is_(True))):
             if manager.is_online(admin_id):
                 notify(admin_id, {**payload, "admin": True})
+        push.notify_admins(db, t, text)
     return m
 
 

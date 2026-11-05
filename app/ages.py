@@ -15,7 +15,7 @@ from datetime import date
 
 MIN_AGE = 12
 ADULT_AGE = 18
-TEEN_GOALS = ["Дружба", "Компания для хобби", "Просто общение"]
+TEEN_GOALS = ["Дружба", "Компания для хобби", "Просто общение", "Партнёр для спорта", "Единомышленники для проектов", "Языковой обмен"]
 
 
 def years_between(birth: date, today: date | None = None) -> int:
