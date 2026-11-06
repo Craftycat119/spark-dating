@@ -38,12 +38,22 @@ function route() {
 async function overview() {
   const s = await api.get("/api/admin/stats");
   const max = Math.max(1, ...s.top_interests.map((x) => x.count));
+  const a = s.audience;
   view.innerHTML = `<h1>Обзор</h1>
+    <h3>Аудитория <span class="muted small">без ботов и гостей демо</span></h3>
     <div class="kpis">
-      <div><b>${s.users}</b><span>Всего анкет</span></div>
-      <div><b>${s.new_24h}</b><span>Новых за сутки</span></div>
+      <div><b>${a.registered}</b><span>Зарегистрировано</span></div>
+      <div><b>${a.online}</b><span>Сейчас онлайн</span></div>
+    </div>
+    <table class="grid audience">
+      <thead><tr><th>Период</th><th>Заходили (уникальные)</th><th>Посещений</th><th>Новых регистраций</th></tr></thead>
+      <tbody>${a.periods.map((p) => `<tr><td>${p.label}</td><td><b>${p.unique}</b></td><td>${p.visits}</td><td>${p.new}</td></tr>`).join("")}</tbody>
+    </table>
+    <p class="muted small">Уникальные — сколько разных людей открывали COFI. Посещение — заход после перерыва больше 30 минут, один человек может зайти несколько раз в день. Сутки считаются по московскому времени.</p>
+    <h3 style="margin-top:28px">Активность</h3>
+    <div class="kpis">
+      <div><b>${s.users}</b><span>Всего анкет (с ботами и демо)</span></div>
       <div><b>${s.verified}</b><span>С подтверждённым фото</span></div>
-      <div><b>${s.online}</b><span>Сейчас в сети</span></div>
       <div><b>${s.matches}</b><span>Пар</span></div>
       <div><b>${s.messages}</b><span>Сообщений</span></div>
       <div><b>${s.banned}</b><span>Заблокировано</span></div>

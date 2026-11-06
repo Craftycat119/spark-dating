@@ -287,6 +287,9 @@ export const EN = {
   "Подключите Telegram": "Connect Telegram", "Подключить": "Connect",
   "В Telegram будут приходить сообщения и пропущенные звонки. На почту — только коды входа": "Messages and missed calls will come to Telegram. Email only gets sign-in codes",
   "Непрочитанные сообщения, пропущенные звонки и пары, когда вы не в приложении": "Unread messages, missed calls and matches when you're not in the app",
+  "О себе": "About me", "С кем хочу дружить": "Who I want to be friends with", "Да, всё верно": "Yes, that's right",
+  "Вам доступна лента «Дружба»: здесь ищут друзей и компанию по интересам.": "You have the Friends feed: people here look for friends and company by interests.",
+  "Аудитория": "Audience", "Укажите имя": "Enter your name",
   "Барсик": "Barsik", "Луна": "Luna", "38 000 ₽": "38,000 ₽", "Дружить": "Be friends", "Новый друг": "New friend", "Войти через Telegram": "Sign in with Telegram",
   "Имя в Telegram": "Telegram name", 
 };

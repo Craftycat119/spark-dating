@@ -140,7 +140,8 @@ function rerender() {
 
 function onboardingStep(me) {
   if (me.is_admin) return me.name ? null : "admin"; // администратору анкета не нужна, только имя
-  if (!me.name || !me.birth_date || !me.gender || !me.looking_for || !me.terms_accepted) return "about";
+  if (!me.name || !me.birth_date || !me.terms_accepted) return "about";
+  if (!me.gender || !me.looking_for) return "identity";
   if (!me.survey_done) return "survey";
   if (!me.photo_url) return "photo";
   if (!me.photo_verified) return "scan";
@@ -516,7 +517,7 @@ function renderForgot(prefill = "") {
 
 // ---------------- Онбординг ----------------
 
-const STEP_ORDER = ["about", "survey", "photo", "scan", "location"];
+const STEP_ORDER = ["about", "identity", "survey", "photo", "scan", "location"];
 
 /** Кнопка «Назад» над шагом регистрации. */
 const backBtn = (label = "Назад") => `<button type="button" class="back-btn" data-step-back>${icons.back}<span>${label}</span></button>`;
@@ -536,7 +537,8 @@ async function changeSignupMethod() {
 
 const STEP_BACK = {
   about: changeSignupMethod,
-  survey: () => stepAbout(),
+  identity: () => stepAbout(),
+  survey: () => stepIdentity(),
   photo: () => renderSurvey({ fromEnd: true }),
   scan: () => stepPhoto(),
   location: () => stepScan(),
@@ -553,7 +555,7 @@ async function nextStep() {
 }
 
 function renderOnboarding(step) {
-  ({ admin: stepAdminName, about: stepAbout, survey: () => renderSurvey(), photo: stepPhoto, scan: stepScan, location: stepLocation })[step]();
+  ({ admin: stepAdminName, about: stepAbout, identity: stepIdentity, survey: () => renderSurvey(), photo: stepPhoto, scan: stepScan, location: stepLocation })[step]();
 }
 
 function choiceGroup(name, options, value, cols = Object.keys(options).length) {
@@ -633,18 +635,16 @@ function adminHome(root) {
   </div>`));
 }
 
+/** Шаг 1: имя, дата рождения и согласия. Пол и ориентация — только на следующем шаге,
+ *  когда возраст уже известен: подросток не увидит вариантов для «Знакомств». */
 function stepAbout() {
   const me = state.me;
-  const pick = { gender: me.gender, looking_for: me.looking_for, orientation: me.orientation || "", show_identity: me.show_identity !== false };
   const root = screen(`${stepsBar("about")}
     <form class="stack">
       <h1>Знакомимся</h1>
       <label class="field"><span>Имя</span><input class="input" name="name" maxlength="64" value="${esc(me.name)}" autocomplete="given-name" required></label>
       <label class="field"><span>Дата рождения</span><input class="input" name="birth" type="date" value="${me.birth_date ?? ""}" ${me.birth_date ? "disabled" : ""} required max="${new Date().toISOString().slice(0, 10)}"></label>
       <p class="hint">COFI доступен с 12 лет. До 18 лет доступна только лента «Дружба». Дату нельзя будет изменить самостоятельно.</p>
-      <div class="stack" data-identity></div>
-      <div class="field"><span>Кого ищу</span>${choiceGroup("looking_for", state.config.looking_for, me.looking_for)}</div>
-      <label class="field"><span>Коротко о себе</span><textarea class="input" name="bio" maxlength="500" placeholder="Например: варю фильтр-кофе, по субботам бегаю в парке">${esc(me.bio)}</textarea></label>
       <div class="consent">
         <label class="check"><input type="checkbox" name="confirm_age" ${me.terms_accepted ? "checked" : ""}><span data-age-text>${ageConsentText(me.birth_date)}</span></label>
         <label class="check"><input type="checkbox" name="accept_terms" ${me.terms_accepted ? "checked" : ""}><span>Я прочитал(а) и принимаю <a href="#/terms" data-terms>Пользовательское соглашение</a>, включая согласие на обработку персональных данных и фото лица для проверки</span></label>
@@ -653,27 +653,52 @@ function stepAbout() {
       <button class="btn block">Дальше</button>
     </form>`, { nav: false });
   const birthInput = $("input[name=birth]", root);
-  const identityBox = $("[data-identity]", root);
-  identityFields(identityBox, pick, ageOf(birthInput.value));
-  birthInput.addEventListener("input", () => {
-    $("[data-age-text]", root).textContent = ageConsentText(birthInput.value);
-    identityFields(identityBox, pick, ageOf(birthInput.value));
-  });
+  birthInput.addEventListener("input", () => ($("[data-age-text]", root).textContent = ageConsentText(birthInput.value)));
   bindBack(root, STEP_BACK.about);
-  bindChoice(root, "looking_for", (v) => (pick.looking_for = v));
-  const form = $("form", root);
-  form.onsubmit = async (e) => {
+  $("form", root).onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target;
     const err = $(".error-text", root);
-    if (!f.birth.value) { err.textContent = "Укажите дату рождения"; err.hidden = false; return; }
-    if (!pick.gender || !pick.looking_for) { err.textContent = "Выберите пол и кого ищете"; err.hidden = false; return; }
-    if (!f.confirm_age.checked) { err.textContent = ageOf(f.birth.value) >= 18 ? "Подтвердите, что вам есть 18 лет" : "Нужно согласие родителя или законного представителя"; err.hidden = false; return; }
-    if (!f.accept_terms.checked) { err.textContent = "Чтобы продолжить, примите Пользовательское соглашение"; err.hidden = false; return; }
+    const fail = (m) => { err.textContent = m; err.hidden = false; };
+    if (!f.name.value.trim()) return fail("Укажите имя");
+    if (!f.birth.value) return fail("Укажите дату рождения");
+    const age = ageOf(f.birth.value);
+    if (age < 12) return fail("COFI доступен с 12 лет");
+    if (!f.confirm_age.checked) return fail(age >= 18 ? "Подтвердите, что вам есть 18 лет" : "Нужно согласие родителя или законного представителя");
+    if (!f.accept_terms.checked) return fail("Чтобы продолжить, примите Пользовательское соглашение");
+    if (!state.me.birth_date && !(await confirmDialog(`Вам ${age} ${plural(age, "год", "года", "лет")}? Дату рождения потом нельзя будет изменить самостоятельно`, "Да, всё верно"))) return;
     try {
-      const data = { name: f.name.value, bio: f.bio.value, ...pick, confirm_age: true, accept_terms: true };
+      const data = { name: f.name.value, confirm_age: true, accept_terms: true };
       if (!state.me.birth_date) data.birth_date = f.birth.value;
-      await api.put("/api/profile", data);
+      state.me = await api.put("/api/profile", data);
+      nextStep();
+    } catch (ex) { fail(ex.message); }
+  };
+}
+
+/** Шаг 2: пол, ориентация (с 18 лет), кого ищу и пара слов о себе. Варианты уже по возрасту. */
+function stepIdentity() {
+  const me = state.me;
+  const pick = { gender: me.gender, looking_for: me.looking_for, orientation: me.orientation || "", show_identity: me.show_identity !== false };
+  const root = screen(`${stepsBar("identity")}
+    <form class="stack">
+      <h1>О себе</h1>
+      ${me.age_group === "teen" ? `<p class="muted">Вам доступна лента «Дружба»: здесь ищут друзей и компанию по интересам.</p>` : ""}
+      <div class="stack" data-identity></div>
+      <div class="field"><span>${me.age_group === "teen" ? "С кем хочу дружить" : "Кого ищу"}</span>${choiceGroup("looking_for", state.config.looking_for, me.looking_for)}</div>
+      <label class="field"><span>Коротко о себе</span><textarea class="input" name="bio" maxlength="500" placeholder="Например: варю фильтр-кофе, по субботам бегаю в парке">${esc(me.bio)}</textarea></label>
+      <p class="error-text" hidden></p>
+      <button class="btn block">Дальше</button>
+    </form>`, { nav: false });
+  identityFields($("[data-identity]", root), pick, me.age);
+  bindBack(root, STEP_BACK.identity);
+  bindChoice(root, "looking_for", (v) => (pick.looking_for = v));
+  $("form", root).onsubmit = async (e) => {
+    e.preventDefault();
+    const err = $(".error-text", root);
+    if (!pick.gender || !pick.looking_for) { err.textContent = "Выберите пол и кого ищете"; err.hidden = false; return; }
+    try {
+      state.me = await api.put("/api/profile", { bio: e.target.bio.value, ...pick });
       nextStep();
     } catch (ex) { err.textContent = ex.message; err.hidden = false; }
   };

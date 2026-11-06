@@ -83,6 +83,9 @@ class Settings:
     # Куда бот присылает обращения в поддержку, жалобы, предложения и заявки на рекламу. Пусто — всем админам с Telegram
     telegram_admin_chat_id: str = os.environ.get("TELEGRAM_ADMIN_CHAT_ID", "")
 
+    # Часовой пояс для статистики посещений (сутки считаются по нему). По умолчанию Москва, UTC+3
+    stats_tz_hours: int = int(os.environ.get("STATS_TZ_HOURS", "3"))
+
     # Аудио- и видеозвонки. Пока выключены: кнопок нет, сервер звонки не принимает. Включить: CALLS_ENABLED=1
     calls_enabled: bool = _bool("CALLS_ENABLED", False)
 

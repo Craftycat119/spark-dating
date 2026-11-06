@@ -293,6 +293,17 @@ class SupportMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class ActivityDay(Base):
+    """Заходы пользователя по дням: для статистики «сколько людей заходило за день, неделю, месяц».
+    Одна строка на человека в день; visits — сколько раз он возвращался после перерыва больше 30 минут."""
+
+    __tablename__ = "activity_days"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True, index=True)
+    visits: Mapped[int] = mapped_column(Integer, default=1)
+
+
 class Notification(Base):
     __tablename__ = "notifications"
 

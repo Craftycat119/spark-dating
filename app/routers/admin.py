@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session
 from .. import feed_index, push
 from ..interests import GENDERS, INTERESTS, LOOKING_FOR, ORIENTATIONS
 from ..database import get_db
-from ..deps import admin_user
-from ..models import AnimalPost, AuthSession, Conversation, Message, SupportThread, Swipe, User, utcnow
+from ..deps import admin_user, local_day
+from ..models import ActivityDay, AnimalPost, AuthSession, Conversation, Message, SupportThread, Swipe, User, utcnow
 from ..legal import TERMS_VERSION
 from ..realtime import manager
 from ..security import hash_password, is_valid_email, normalize_email, password_errors
@@ -86,7 +86,31 @@ def stats(_: User = Depends(admin_user), db: Session = Depends(get_db)):
         "matches": db.scalar(select(func.count(Conversation.id))) or 0,
         "messages": db.scalar(select(func.count(Message.id))) or 0,
         "top_interests": [{"name": k, "count": v} for k, v in top],
+        "audience": _audience(db),
     }
+
+
+def _audience(db: Session) -> dict:
+    """Сколько настоящих людей (без ботов и гостей демо) зарегистрировано, в сети и заходило за периоды."""
+    real = (User.is_bot.is_(False), User.is_demo.is_(False))
+    today = local_day(utcnow())
+    real_ids = select(User.id).where(*real)
+    online_ids = [uid for uid in list(manager.connections) if manager.is_online(uid)]
+    out = {
+        "registered": db.scalar(select(func.count(User.id)).where(*real)) or 0,
+        "online": db.scalar(select(func.count(User.id)).where(User.id.in_(online_ids), *real)) or 0 if online_ids else 0,
+        "periods": [],
+    }
+    for key, label, days in (("day", "Сегодня", 1), ("week", "За 7 дней", 7), ("month", "За 30 дней", 30)):
+        since = today - timedelta(days=days - 1)
+        act = select(ActivityDay).where(ActivityDay.day >= since, ActivityDay.user_id.in_(real_ids)).subquery()
+        out["periods"].append({
+            "key": key, "label": label,
+            "unique": db.scalar(select(func.count(func.distinct(act.c.user_id)))) or 0,
+            "visits": db.scalar(select(func.coalesce(func.sum(act.c.visits), 0))) or 0,
+            "new": db.scalar(select(func.count(User.id)).where(*real, User.created_at >= utcnow() - timedelta(days=days))) or 0,
+        })
+    return out
 
 
 @router.get("/users")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import hmac
 import json
 import time
@@ -29,6 +30,7 @@ from ..security import (
 from ..ratelimit import by_ip, hit, is_local_request, reset
 from ..serializers import own_profile
 
+log = logging.getLogger("cofi.auth")
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 RESEND_COOLDOWN_SECONDS = 60
@@ -300,6 +302,8 @@ def telegram_webapp(data: WebAppIn, request: Request, response: Response, db: Se
         raise HTTPException(503, "Вход через Telegram не настроен")
     tg = verify_webapp_init_data(data.init_data, settings.telegram_bot_token)
     if not tg:
+        log.warning("Вход из мини-приложения отклонён: подпись Telegram не совпала или данные старше часа. "
+                    "Проверьте, что TELEGRAM_BOT_TOKEN в .env — от того же бота, в котором открыто приложение (после /revoke токен новый)")
         raise HTTPException(401, "Telegram не подтвердил вход")
     user = _telegram_user(db, tg, request)
     start_session(db, user, request, response)
