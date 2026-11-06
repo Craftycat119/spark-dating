@@ -140,6 +140,19 @@ def setup_profile() -> None:
             api(method, payload)
         except Exception:  # noqa: BLE001 — оформление бота не обязательно для входа
             log.warning("Telegram: %s не выполнен", method)
+    # Кнопка «Меню» → мини-приложение по текущему адресу из BASE_URL. Адрес туннеля cloudflared меняется
+    # при каждом запуске, и раньше кнопка вела на старый адрес: мини-приложение вечно «загружалось»
+    from .push import app_link
+
+    url = app_link()
+    if not url:
+        log.warning("Telegram: кнопка мини-приложения не обновлена — BASE_URL=%s не публичный https-адрес", settings.base_url)
+        return
+    try:
+        api("setChatMenuButton", {"menu_button": {"type": "web_app", "text": settings.app_name, "web_app": {"url": url}}})
+        log.info("Telegram: кнопка «%s» в боте открывает %s", settings.app_name, url)
+    except Exception:  # noqa: BLE001
+        log.warning("Telegram: не удалось обновить кнопку мини-приложения")
 
 
 def handle_update(upd: dict) -> list[tuple[str, dict]]:

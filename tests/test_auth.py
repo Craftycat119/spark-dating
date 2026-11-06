@@ -121,3 +121,12 @@ def test_telegram_bot_help_and_site_button(monkeypatch):
     monkeypatch.setattr(config.settings, "base_url", "https://cofi.example")
     calls = telegram_bot.handle_update({"message": {"chat": {"id": 5}, "text": "привет"}})
     assert calls[0][1]["reply_markup"]["inline_keyboard"][0][0]["url"] == "https://cofi.example"
+
+
+def test_bot_menu_button_follows_base_url(monkeypatch):
+    sent = []
+    monkeypatch.setattr(telegram_bot, "api", lambda m, p=None, timeout=15: sent.append((m, p)) or {"ok": True})
+    monkeypatch.setattr(config.settings, "base_url", "https://new-tunnel.trycloudflare.com")
+    telegram_bot.setup_profile()
+    menu = [p for m, p in sent if m == "setChatMenuButton"]
+    assert menu and menu[0]["menu_button"]["web_app"]["url"] == "https://new-tunnel.trycloudflare.com/"
