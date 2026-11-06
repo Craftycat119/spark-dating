@@ -301,7 +301,7 @@ function renderAuth(mode = "login") {
     root = screen(`
     <section class="hero3d">
       <div class="stage" aria-hidden="true">${wordmark("COFI")}</div>
-      <span class="brand"><i class="logo-mark" aria-hidden="true"></i>cofi<sup>°</sup></span>
+      <span class="brand">cofi<sup>°</sup></span>
       <button class="icon-btn theme-toggle" aria-label="Сменить тему">${themeIcon()}</button>
       <div class="hero-copy">
         <h1>Знакомства, где общее находится сразу</h1>
