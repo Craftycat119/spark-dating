@@ -85,6 +85,7 @@ async function enterFromTelegram() {
   if (location.hash.includes("tgWebAppData=")) history.replaceState(null, "", location.pathname + location.search + "#/");
   if (!tgInitData) return;
   try { tgApp()?.ready(); tgApp()?.expand(); } catch { /* старый Telegram */ }
+  setupTelegramMenu();
   const fromNotification = /[?&](chat|call)=/.test(location.search);
   if (state.me && !state.me.birth_date && !state.me.is_admin && !fromNotification) {
     // анкета даже не начата (вход случился сам, как в прошлой версии): показываем стартовый экран
@@ -100,6 +101,48 @@ async function enterFromTelegram() {
 }
 
 let tgInitData = "";
+
+/** Открыть COFI обычным сайтом в Chrome / Safari. Там можно войти через Telegram или почту. */
+function openInBrowser() {
+  const url = location.origin + "/";
+  try { tgApp().openLink(url, { try_instant_view: false }); } catch { window.open(url, "_blank"); }
+}
+
+function addShortcut() {
+  try { tgApp().addToHomeScreen(); } catch { toast("Обновите Telegram или добавьте ярлык через браузер", { error: true }); }
+}
+
+/**
+ * Пункт «Настройки» во всплывающем меню Telegram (⋯ в правом верхнем углу). Свои пункты туда добавить нельзя,
+ * Telegram разрешает только этот, поэтому по нажатию показываем своё меню. Работает на любом шаге, даже до входа.
+ */
+function setupTelegramMenu() {
+  const wa = tgApp();
+  if (!wa?.SettingsButton) return;
+  try {
+    wa.SettingsButton.show();
+    wa.SettingsButton.onClick(() => {
+      if ($(".tg-menu")) return;
+      const el = h(`<div class="overlay sheet-overlay tg-menu" role="dialog" aria-label="Меню COFI">
+        <div class="bottom-sheet stack">
+          <h2>COFI</h2>
+          <button class="btn block" data-a="browser">${icons.globe} Открыть в браузере</button>
+          ${wa.addToHomeScreen ? `<button class="btn ghost block" data-a="home">${icons.phoneApp} Добавить ярлык на экран</button>` : ""}
+          ${state.me ? `<a class="btn ghost block" href="#/settings" data-a="settings">${icons.user} Профиль и настройки</a>` : ""}
+          ${state.me ? `<a class="btn ghost block" href="#/support" data-a="support">${icons.headset} Поддержка</a>` : ""}
+          <button class="btn quiet block" data-a="close">Закрыть</button>
+        </div></div>`);
+      document.body.append(el);
+      el.onclick = (e) => {
+        const a = e.target.closest("[data-a]")?.dataset.a;
+        if (!a && e.target !== el) return;
+        el.remove();
+        if (a === "browser") openInBrowser();
+        else if (a === "home") addShortcut();
+      };
+    });
+  } catch { /* старый Telegram без кнопки настроек */ }
+}
 
 const tgApp = () => window.Telegram?.WebApp;
 
@@ -1822,12 +1865,8 @@ function renderSettings() {
   };
 
   $("#tg-link", root)?.addEventListener("click", linkTelegram);
-  $("#tg-home", root)?.addEventListener("click", () => { try { tgApp().addToHomeScreen(); } catch { toast("Обновите Telegram или добавьте ярлык через браузер", { error: true }); } });
-  $("#open-browser", root)?.addEventListener("click", () => {
-    // Вне Telegram сайт откроется в обычном браузере (Chrome, Safari), войти можно через Telegram или почту
-    const url = location.origin + "/";
-    try { tgApp().openLink(url, { try_instant_view: false }); } catch { window.open(url, "_blank"); }
-  });
+  $("#tg-home", root)?.addEventListener("click", addShortcut);
+  $("#open-browser", root)?.addEventListener("click", openInBrowser);
 
   const drawBlocks = async () => {
     const box = $("[data-blocks]", root);
