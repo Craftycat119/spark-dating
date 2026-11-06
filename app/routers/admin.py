@@ -279,9 +279,12 @@ def add_admin(data: AdminIn, _: User = Depends(admin_user), db: Session = Depend
 @router.post("/users/{user_id}/birth-date")
 def set_birth_date(user_id: int, data: BirthIn, _: User = Depends(admin_user), db: Session = Depends(get_db)):
     """Исправить дату рождения по обращению в поддержку и отметить, что возраст проверен по документу."""
-    from ..ages import years_between
+    from ..ages import MIN_AGE, years_between
 
     u = _get_user(db, user_id)
+    years = years_between(data.birth_date)
+    if years < MIN_AGE or years > 100:
+        raise HTTPException(422, f"Проверьте дату: получается {years} лет. COFI доступен с {MIN_AGE} лет")
     u.birth_date = data.birth_date
     u.age = years_between(data.birth_date)
     u.age_verified = data.verified

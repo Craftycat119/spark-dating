@@ -103,7 +103,17 @@ async function users() {
   loadUsers();
 }
 
+// Список анкет обновляется сам: раз в 20 секунд и при возвращении на вкладку,
+// иначе удалённые пользователями анкеты оставались в таблице до перезагрузки страницы
+let usersTimer = null;
+function watchUsers() {
+  clearInterval(usersTimer);
+  usersTimer = setInterval(() => (document.hidden || !$("#table") ? null : loadUsers()), 20000);
+}
+document.addEventListener("visibilitychange", () => !document.hidden && $("#table") && loadUsers());
+
 async function loadUsers() {
+  watchUsers();
   const p = new URLSearchParams({ q: usersState.q, interest: usersState.interest, page: usersState.page, per_page: 30 });
   const res = await api.get(`/api/admin/users?${p}`);
   const box = $("#table");
@@ -146,11 +156,18 @@ function pic(url, empty, small = false) {
 function closeDrawer() { drawer.hidden = true; drawer.innerHTML = ""; }
 
 async function openUser(id) {
-  const u = await api.get(`/api/admin/users/${id}`);
+  let u;
+  try {
+    u = await api.get(`/api/admin/users/${id}`);
+  } catch (e) {
+    toast(e.status === 404 ? "Эта анкета уже удалена" : e.message, { error: e.status !== 404 });
+    closeDrawer();
+    return loadUsers();
+  }
   drawer.hidden = false;
   drawer.innerHTML = `
     <button class="icon-btn close" aria-label="Закрыть">${icons.x}</button>
-    <h2>${esc(u.name || "Без имени")}${u.age ? `, ${u.age}` : ""}</h2>
+    <h2>${esc(u.name || "Без имени")}${u.age > 0 ? `, ${u.age}` : ""}</h2>
     <p class="muted small">#${u.id} · ${u.online ? "в сети" : `был(а) ${dt(u.last_seen_at)}`}</p>
     <div class="photos">
       <figure>${pic(u.photo_url, "Фото ещё не загружено")}<figcaption>Фото анкеты</figcaption></figure>
@@ -177,7 +194,9 @@ async function openUser(id) {
     </dl>
     <h3>Анкета</h3>
     <dl class="kv">
-      <dt>Дата рождения</dt><dd>${u.birth_date
+      <dt>Дата рождения</dt><dd>${u.birth_date && u.age < 0
+        ? `<span class="tag warn">${new Date(u.birth_date).toLocaleDateString("ru-RU")} — дата в будущем, исправьте ниже</span>`
+        : u.birth_date
         ? `${new Date(u.birth_date).toLocaleDateString("ru-RU")}, ${u.age} ${plural(u.age, "год", "года", "лет")} <span class="tag">${u.age_group === "teen" ? "12–17, «Дружба»" : "18+, «Знакомства»"}</span>`
         : '<span class="muted">не указана: человек ещё не прошёл шаг «Знакомимся»</span>'}
         ${u.age_verified ? '<span class="tag ok">проверен по документу</span>' : ""}
