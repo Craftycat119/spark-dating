@@ -75,18 +75,31 @@ async function boot() {
 }
 
 /** Открыли COFI как мини-приложение Telegram: Telegram кладёт подписанные данные в адрес (#tgWebAppData=…), входим по ним. */
+/**
+ * Открыли COFI как мини-приложение Telegram. Сразу не входим: человек видит стартовый экран и сам выбирает
+ * «Войти через Telegram» (вход мгновенный, без перехода в бота). Сразу входим только по кнопкам из уведомлений
+ * бота (?chat=, ?call=): это уже зарегистрированный человек, лишний экран ему не нужен.
+ */
 async function enterFromTelegram() {
-  const initData = telegramInitData();
+  tgInitData = telegramInitData(); // запоминаем до очистки адреса
   if (location.hash.includes("tgWebAppData=")) history.replaceState(null, "", location.pathname + location.search + "#/");
-  if (!initData) return;
+  if (!tgInitData) return;
   try { tgApp()?.ready(); tgApp()?.expand(); } catch { /* старый Telegram */ }
-  if (state.me) return;
+  const fromNotification = /[?&](chat|call)=/.test(location.search);
+  if (state.me && !state.me.birth_date && !state.me.is_admin && !fromNotification) {
+    // анкета даже не начата (вход случился сам, как в прошлой версии): показываем стартовый экран
+    try { await api.post("/api/auth/logout"); } catch { /* всё равно покажем стартовый экран */ }
+    state.me = null;
+  }
+  if (state.me || !fromNotification) return;
   try {
-    state.me = await api.post("/api/auth/telegram/webapp", { init_data: initData });
+    state.me = await api.post("/api/auth/telegram/webapp", { init_data: tgInitData });
   } catch (ex) {
     toast(`Вход из Telegram не удался: ${ex.message}`, { error: true, timeout: 7000 });
   }
 }
+
+let tgInitData = "";
 
 const tgApp = () => window.Telegram?.WebApp;
 
@@ -102,6 +115,7 @@ function openTelegram(url) {
 
 /** Подписанные данные Telegram, если COFI открыт как мини-приложение (скрипт Telegram или адрес #tgWebAppData=…). */
 function telegramInitData() {
+  if (tgInitData) return tgInitData;
   if (tgApp()?.initData) return tgApp().initData;
   const hash = location.hash.slice(1);
   return hash.includes("tgWebAppData=") ? new URLSearchParams(hash).get("tgWebAppData") : "";
