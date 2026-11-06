@@ -18,6 +18,7 @@ from ..ages import MIN_AGE, TEEN_GOALS, years_between
 from ..legal import TERMS_VERSION
 from ..interests import GENDERS, GOALS, INTERESTS, LOOKING_FOR, MIN_INTERESTS, ORIENTATIONS, ORIENTATIONS_BY_GENDER, TEEN_GENDERS, ZODIAC, clean
 from ..models import AnimalPost, Conversation, Message, User, UserPhoto, utcnow
+from ..ratelimit import hit
 from ..serializers import own_profile
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
@@ -123,6 +124,8 @@ def update_profile(data: ProfileIn, user: User = Depends(current_user), db: Sess
         if data.weight_kg and not 30 <= data.weight_kg <= 250:
             raise HTTPException(422, "Вес — от 30 до 250 кг")
         user.weight_kg = data.weight_kg or None
+    if user.age_group == "teen":
+        user.weight_kg = None  # до 18 лет вес не спрашиваем и не показываем
     if data.zodiac is not None:
         if data.zodiac and data.zodiac not in ZODIAC:
             raise HTTPException(422, "Неизвестный знак зодиака")
@@ -166,6 +169,7 @@ def telegram_link(user: User = Depends(current_user)):
 
 @router.post("/photo")
 def upload_photo(file: UploadFile = File(...), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    hit(f"face:{user.id}", 20, 600)  # проверка лица нагружает процессор
     data = storage.read_limited(file, settings.max_image_mb)
     rel = storage.save_image(data, "photos")
 
@@ -219,6 +223,7 @@ def delete_photo(photo_id: int, user: User = Depends(current_user), db: Session 
 def verify_face(data: FramesIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
     if not user.photo_path:
         raise HTTPException(400, "Сначала загрузите фото")
+    hit(f"face:{user.id}", 20, 600)
     if len(data.frames) > 6 or any(len(v) > 3_000_000 for v in data.frames.values()):
         raise HTTPException(413, "Слишком большие кадры")
 

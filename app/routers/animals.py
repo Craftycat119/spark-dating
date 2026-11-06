@@ -56,7 +56,7 @@ def list_posts(category: str = "", offset: int = 0, limit: int = 20, me: User = 
     if category in CATEGORIES:
         q = q.where(AnimalPost.category == category)
     rows = db.scalars(q.order_by(CATEGORY_ORDER, AnimalPost.id.desc()).offset(max(offset, 0)).limit(max(1, min(limit, 50)))).all()
-    total = len(db.scalars(q).all())
+    total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
     return {"total": total, "items": [post_out(p, me) for p in rows], "categories": CATEGORIES}
 
 

@@ -13,7 +13,6 @@ ORIENTATIONS_BY_GENDER = {
     "nonbinary": ["hetero", "bi", "gay", "lesbian", "queer", "ace", "pan"],
 }
 # Старые варианты пола из прошлых версий
-LEGACY_GENDERS = {"trans_male": "male", "trans_female": "female"}
 GENDER_BASE = {"male": "male", "female": "female", "nonbinary": "nonbinary"}
 ZODIAC = {"aries": "Овен", "taurus": "Телец", "gemini": "Близнецы", "cancer": "Рак", "leo": "Лев", "virgo": "Дева",
           "libra": "Весы", "scorpio": "Скорпион", "sagittarius": "Стрелец", "capricorn": "Козерог", "aquarius": "Водолей", "pisces": "Рыбы"}

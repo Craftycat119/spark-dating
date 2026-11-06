@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import blocks
@@ -81,7 +82,10 @@ def block_user(user_id: int, me: User = Depends(current_user), db: Session = Dep
         raise HTTPException(404, "Анкета не найдена")
     if not db.get(Block, (me.id, user_id)):
         db.add(Block(blocker_id=me.id, blocked_id=user_id))
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:  # двойное нажатие: блокировка уже есть
+            db.rollback()
     a, b = sorted((me.id, user_id))
     conv = db.scalar(select(Conversation).where(Conversation.user_a_id == a, Conversation.user_b_id == b))
     if conv:

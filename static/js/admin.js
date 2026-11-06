@@ -309,7 +309,7 @@ async function loadThreads() {
   box.innerHTML = list.map((t) => `<div class="conv-row" data-id="${t.id}">
       <span class="tag ${t.topic === "ads" ? "hot" : t.category === "complaint" ? "warn" : ""}">${CAT[t.category]}</span>
       <span style="flex:1"><b>${t.user ? esc(t.user.name || t.user.email || "#" + t.user.id) : "Гость" + (t.contact ? `, ${esc(t.contact)}` : "")}</b> №${t.id}<br>
-      <span class="muted">${t.last ? esc((t.last.author === "user" ? "" : t.last.author === "staff" ? "Вы: " : "Бот: ") + t.last.text).slice(0, 90) : ""}</span></span>
+      <span class="muted">${t.last ? esc(((t.last.author === "user" ? "" : t.last.author === "staff" ? "Вы: " : "Бот: ") + t.last.text).slice(0, 90)) : ""}</span></span>
       <span class="muted">${dt(t.updated_at)}</span></div>`).join("") || '<p class="muted">Обращений нет.</p>';
   $$(".conv-row", box).forEach((r) => (r.onclick = () => openThread(Number(r.dataset.id))));
 }
@@ -322,7 +322,7 @@ async function openThread(id) {
     <h2>${CAT[t.category]} №${t.id}</h2>
     <p class="muted small">${t.user ? `Пользователь <a href="#users" data-user="${t.user.id}">#${t.user.id}</a>` : "Без аккаунта"}${t.contact ? `, контакт: ${esc(t.contact)}` : ""}${t.about_user_id ? `, жалоба на <a href="#users" data-user="${t.about_user_id}">анкету #${t.about_user_id}</a>` : ""}</p>
     <div class="transcript">${t.messages.map((m) => `<div class="msg ${m.author === "staff" ? "mine" : ""}">
-      <div class="who">${who[m.author]} · ${dt(m.created_at)}</div><div class="bubble">${esc(m.text)}</div></div>`).join("")}</div>
+      <div class="who">${esc(who[m.author])} · ${dt(m.created_at)}</div><div class="bubble">${esc(m.text)}</div></div>`).join("")}</div>
     <form class="stack" style="margin-top:16px" data-reply>
       <textarea class="input" name="text" rows="3" placeholder="Ответ пользователю" required></textarea>
       <div class="row"><button class="btn">Ответить</button>

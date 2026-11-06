@@ -24,6 +24,7 @@ from .config import settings
 from .security import hash_secret
 
 TTL = 300  # картинка действует 5 минут
+MAX_STORED = 20000
 _store: dict[str, tuple[str, float]] = {}  # id → (хэш ответа, когда создана)
 _lock = threading.Lock()
 DIGITS = "23456789"  # без 0/1, их легко спутать с буквами
@@ -49,7 +50,7 @@ def _font(size: int):
 
 def new_image() -> dict:
     """Картинка 5 цифр с искажениями и шумом, ответ хранится только в виде хэша."""
-    answer = "".join(random.choice(DIGITS) for _ in range(5))
+    answer = "".join(secrets.choice(DIGITS) for _ in range(5))
     w, h = 220, 80
     img = Image.new("RGB", (w, h), (243, 233, 223))
     draw = ImageDraw.Draw(img)
@@ -81,6 +82,8 @@ def new_image() -> dict:
     with _lock:
         for k in [k for k, (_, t) in _store.items() if now - t > TTL]:
             del _store[k]
+        while len(_store) >= MAX_STORED:  # поток запросов не съест память: старые картинки уходят первыми
+            del _store[next(iter(_store))]
         _store[cid] = (hash_secret(answer), now)
     return {"id": cid, "image": "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()}
 

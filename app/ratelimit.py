@@ -19,6 +19,10 @@ def hit(key: str, limit: int, window: int) -> None:
         q = _hits[key]
         while q and now - q[0] > window:
             q.popleft()
+        if len(_hits) > 50000:  # раз в долгое время чистим ключи, по которым давно не было попыток
+            for k in [k for k, v in _hits.items() if not v or now - v[-1] > 3600]:
+                del _hits[k]
+            q = _hits[key]
         if len(q) >= limit:
             wait = int(window - (now - q[0])) + 1
             raise HTTPException(429, f"Слишком много попыток. Попробуйте через {max(1, wait // 60) if wait >= 60 else wait} {'мин' if wait >= 60 else 'с'}")

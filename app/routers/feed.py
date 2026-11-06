@@ -5,6 +5,7 @@ import json
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import blocks, demo, feed_index, push
@@ -116,7 +117,7 @@ def swipe(data: SwipeIn, background: BackgroundTasks, user: User = Depends(curre
     if not target or target.age_group != user.age_group:
         raise HTTPException(404, "Анкета больше не доступна")
 
-    if blocks.between(db, user.id, target.id):
+    if blocks.between(db, user.id, target.id) or not compatible(user.gender, user.looking_for, target.gender, target.looking_for):
         raise HTTPException(404, "Анкета больше не доступна")
     existing = db.scalar(select(Swipe).where(Swipe.from_user_id == user.id, Swipe.to_user_id == target.id))
     if existing:
@@ -141,7 +142,12 @@ def swipe(data: SwipeIn, background: BackgroundTasks, user: User = Depends(curre
         conv = Conversation(user_a_id=a, user_b_id=b)
         db.add(conv)
     conv.active = True
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:  # оба лайкнули друг друга в одну секунду: пару уже создал второй запрос
+        db.rollback()
+        conv = db.scalar(select(Conversation).where(Conversation.user_a_id == a, Conversation.user_b_id == b))
+        is_new = False
     db.refresh(conv)
     if is_new:
         _notify_match(db, conv, background)
@@ -174,8 +180,8 @@ def undo(data: UndoIn, user: User = Depends(current_user), db: Session = Depends
     db.delete(swipe)
     db.commit()
     target = db.get(User, data.user_id)
-    if target is None:  # анкету удалили, пока она была в истории
-        raise HTTPException(404, "Анкета больше не доступна")
+    if target is None or target.is_banned or blocks.between(db, user.id, target.id):
+        raise HTTPException(404, "Анкета больше не доступна")  # удалили, заблокировали или вы в чёрном списке
     score, common = match_score(user.interests, user.goals, target.interests, target.goals)
     d = public_distance_km(user.lat, user.lon, target.lat, target.lon) if user.lat is not None and target.lat is not None else None
     return {"undone": "like" if was_like else "skip", "card": public_card(target, score, common, d)}

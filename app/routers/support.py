@@ -133,13 +133,16 @@ def create_thread(data: ThreadIn, request: Request, response: Response, db: Sess
     if data.topic == "support" and not user:
         raise HTTPException(401, "Чтобы написать в поддержку, войдите в аккаунт")
     category = "ads" if data.topic == "ads" else (data.category if data.category in CATEGORIES else "help")
+    about = db.get(User, data.about_user_id) if data.about_user_id and user else None
+    if about and (about.id == user.id or about.age_group != user.age_group):
+        about = None  # жаловаться можно только на тех, кого человек мог видеть
     if not user and not guest_hash:
         token = secrets.token_urlsafe(24)
         response.set_cookie(GUEST_COOKIE, token, max_age=180 * 86400, httponly=True, samesite="lax")
         guest_hash = hash_secret(token)
     t = SupportThread(topic=data.topic, category=category, user_id=user.id if user else None,
                       guest_token_hash=None if user else guest_hash, contact=data.contact.strip(),
-                      about_user_id=data.about_user_id)
+                      about_user_id=about.id if about else None)
     db.add(t)
     db.commit()
     db.refresh(t)
@@ -148,7 +151,6 @@ def create_thread(data: ThreadIn, request: Request, response: Response, db: Sess
     if data.text.strip():
         handle_user_message(db, t, data.text)
     elif data.topic == "support":
-        about = db.get(User, data.about_user_id) if data.about_user_id else None
         _add(db, t, "bot", REPORT_GREETING.format(name=about.name) if about else GREETINGS[category])
     return _thread_out(t, db)
 

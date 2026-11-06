@@ -753,8 +753,6 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 @keyframes drop-in { from { transform: translateY(-120%); opacity: 0; } }
 .call.ringing .persona img { animation: ring-small 1.6s ease-out infinite; }
 @keyframes ring-small { 0% { box-shadow: 0 0 0 0 rgba(255, 91, 31, .6); } 100% { box-shadow: 0 0 0 10px rgba(255, 91, 31, 0); } }
-.identity-chips { margin-top: 10px; }
-.identity-chips .chip { min-height: 32px; padding: 0 14px; font-size: 13px; }
 /* значок администратора */
 .admin-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; background: var(--orange); color: var(--on-orange); font: 700 11px/1.6 var(--sans); letter-spacing: .02em; vertical-align: middle; }
 .admin-badge.big { align-self: flex-start; padding: 6px 14px; font-size: 13px; }
@@ -772,9 +770,7 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .tg-nudge .btn { min-height: 40px; padding: 0 16px; font-size: 14px; }
 @media (max-width: 520px) { .tg-nudge { grid-template-columns: auto 1fr; } .tg-nudge .btn { grid-column: 1 / -1; } }
 /* логотип COFI: значок рядом с названием */
-.logo-mark { display: inline-block; width: 1.35em; height: 1.35em; margin-right: .35em; vertical-align: -0.32em; border-radius: 28%; background: url(/static/img/logo-64.png) center / contain no-repeat; }
 .hero3d .brand { display: inline-flex; align-items: center; }
-.hero3d .brand .logo-mark { width: 26px; height: 26px; margin-right: 7px; vertical-align: 0; }
 
 /* ---------- Пол и сексуальность: спокойный блок, без ярких плашек ---------- */
 .identity-box { display: flex; flex-direction: column; gap: 2px; padding: 6px 14px 10px; border-radius: var(--r-box); background: var(--surface); }

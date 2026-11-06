@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
@@ -24,6 +25,7 @@ log = logging.getLogger("spark.chat")
 
 MEDIA_KINDS = {"image", "video", "voice", "circle"}
 MEDIA_PREVIEW = {"image": "📷 Фото", "video": "🎬 Видео", "voice": "🎤 Голосовое сообщение", "circle": "⭕ Видеосообщение"}
+PEER_TTL = 15  # секунд: как часто WebSocket заново проверяет, можно ли писать собеседнику
 CALL_EVENTS = {"call:offer", "call:answer", "call:ice", "call:end", "call:reject", "call:busy", "call:join"}
 
 
@@ -227,7 +229,7 @@ async def websocket_endpoint(ws: WebSocket):
         return
     user_id, user_name = who
     await manager.connect(user_id, ws)
-    peers: dict[int, tuple[int, bool] | None] = {}
+    peers: dict[int, tuple[float, tuple[int, bool] | None]] = {}  # чат → (когда проверили, собеседник)
     try:
         while True:
             raw = await ws.receive_text()
@@ -262,11 +264,12 @@ async def websocket_endpoint(ws: WebSocket):
                 conv_id = int(data.get("conversation_id"))
             except (TypeError, ValueError):
                 continue
-            if conv_id not in peers:
-                peers[conv_id] = await run_in_threadpool(_peer, conv_id, user_id)
-            if peers[conv_id] is None:
+            cached = peers.get(conv_id)
+            if not cached or time.monotonic() - cached[0] > PEER_TTL:  # блокировку или удалённую пару увидим быстро
+                cached = peers[conv_id] = (time.monotonic(), await run_in_threadpool(_peer, conv_id, user_id))
+            if cached[1] is None:
                 continue
-            peer, peer_is_bot = peers[conv_id]
+            peer, peer_is_bot = cached[1]
 
             out = {k: v for k, v in data.items() if k in {"type", "conversation_id", "sdp", "candidate", "video", "call_id", "reason"}}
             out["from"] = {"id": user_id, "name": user_name}

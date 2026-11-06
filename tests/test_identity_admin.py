@@ -81,3 +81,28 @@ def test_admin_without_profile_and_support_to_telegram(monkeypatch):
     u.post("/api/support/threads", json={"category": "complaint", "text": "Мне пишут гадости"})
     sent = [p for m, p in bot.sent if m == "sendMessage"]
     assert sent and sent[0]["chat_id"] == "-100500" and "⚠️ Жалоба" in sent[0]["text"] and "Вася" in sent[0]["text"]
+
+
+def test_review_fixes():
+    # жалоба на анкету из другой возрастной группы не раскрывает имя
+    adult = make_user("r1@x.io", name="Взрослый")
+    teen = new_client()
+    register(teen, "r2@x.io")
+    teen.put("/api/profile", json={"name": "Тайное Имя", "birth_date": birth_for_age(15).isoformat(), "accept_terms": True, "confirm_age": True})
+    teen_id = teen.get("/api/auth/me").json()["id"]
+    t = adult.post("/api/support/threads", json={"category": "complaint", "about_user_id": teen_id}).json()
+    assert t["about_user_id"] is None and "Тайное" not in str(t)
+    # подростку вес не сохраняется
+    me = teen.put("/api/profile", json={"weight_kg": 50}).json()
+    assert me["weight_kg"] is None
+    # лайк в обход фильтра «кого ищу» не проходит
+    m = make_user("r3@x.io", gender="male", looking_for="female")
+    w = make_user("r4@x.io", gender="male", looking_for="female")
+    assert m.post("/api/feed/swipe", json={"user_id": w.user_id, "like": True}).status_code == 404
+    # «Вернуть» не показывает анкету того, кто вас заблокировал
+    a = make_user("r5@x.io", gender="female", looking_for="any")
+    b = make_user("r6@x.io", gender="male", looking_for="any")
+    b.post("/api/feed/swipe", json={"user_id": a.user_id, "like": False})
+    a.post(f"/api/users/{b.user_id}/block")
+    a.post(f"/api/users/{b.user_id}/block")  # повторное нажатие — без ошибки
+    assert b.post("/api/feed/undo", json={"user_id": a.user_id}).status_code == 404

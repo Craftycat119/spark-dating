@@ -48,7 +48,7 @@ def save_image(data: bytes, folder: str, max_side: int = 1600) -> str:
         img = Image.open(io.BytesIO(data))
         img = ImageOps.exif_transpose(img)
         img = img.convert("RGB")
-    except (UnidentifiedImageError, OSError) as exc:
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
         raise HTTPException(400, "Это не изображение") from exc
     img.thumbnail((max_side, max_side))
     path, rel = _target(folder, ".jpg")
