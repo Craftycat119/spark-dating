@@ -126,6 +126,22 @@ def _site_button() -> dict:
     return {"reply_markup": {"inline_keyboard": [[{"text": f"Открыть {settings.app_name}", "url": url}]]}}
 
 
+def _reachable(url: str) -> bool:
+    """Открывается ли сайт по публичному адресу (сервер стартует, поэтому ждём и пробуем несколько раз)."""
+    for _ in range(6):
+        try:
+            with urllib.request.urlopen(url + "api/config", timeout=5) as r:
+                if r.status == 200:
+                    return True
+        except urllib.error.HTTPError as ex:
+            if ex.code < 500:
+                return True  # адрес живой, отвечает сам сервер
+        except Exception:  # noqa: BLE001 — домена нет или туннель закрыт
+            pass
+        time.sleep(2)
+    return False
+
+
 def setup_profile() -> None:
     """Команды и описание бота, чтобы не настраивать их вручную в @BotFather."""
     for method, payload in [
@@ -147,6 +163,10 @@ def setup_profile() -> None:
     url = app_link()
     if not url:
         log.warning("Telegram: кнопка мини-приложения не обновлена — BASE_URL=%s не публичный https-адрес", settings.base_url)
+        return
+    if not _reachable(url):
+        log.error("Telegram: адрес BASE_URL=%s не открывается, кнопку в боте не меняю. Если перезапускали туннель cloudflared, "
+                  "впишите новый адрес в BASE_URL в .env (или запускайте «Запуск с туннелем.bat») и перезапустите сервер", url)
         return
     try:
         api("setChatMenuButton", {"menu_button": {"type": "web_app", "text": settings.app_name, "web_app": {"url": url}}})
@@ -212,6 +232,11 @@ def handle_update(upd: dict) -> list[tuple[str, dict]]:
 
 
 def _loop() -> None:
+    # Оформление бота и кнопка мини-приложения — в фоне: проверка адреса ждёт, пока сервер начнёт принимать запросы
+    try:
+        setup_profile()
+    except Exception:  # noqa: BLE001
+        log.exception("Telegram: настройка бота не выполнена")
     offset = 0
     while not _stop.is_set():
         try:
@@ -240,7 +265,6 @@ def start() -> None:
         me = api("getMe")["result"]
         _bot_username = me["username"]
         api("deleteWebhook")
-        setup_profile()
     except Exception:  # noqa: BLE001
         log.error("Telegram: не удалось подключиться к боту. Проверьте TELEGRAM_BOT_TOKEN и интернет")
         if not _bot_username:

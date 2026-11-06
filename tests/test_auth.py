@@ -127,6 +127,17 @@ def test_bot_menu_button_follows_base_url(monkeypatch):
     sent = []
     monkeypatch.setattr(telegram_bot, "api", lambda m, p=None, timeout=15: sent.append((m, p)) or {"ok": True})
     monkeypatch.setattr(config.settings, "base_url", "https://new-tunnel.trycloudflare.com")
+    monkeypatch.setattr(telegram_bot, "_reachable", lambda url: True)
     telegram_bot.setup_profile()
     menu = [p for m, p in sent if m == "setChatMenuButton"]
     assert menu and menu[0]["menu_button"]["web_app"]["url"] == "https://new-tunnel.trycloudflare.com/"
+
+
+
+def test_stale_tunnel_address_is_not_put_into_bot(monkeypatch):
+    sent = []
+    monkeypatch.setattr(telegram_bot, "api", lambda m, p=None, timeout=15: sent.append(m) or {"ok": True})
+    monkeypatch.setattr(config.settings, "base_url", "https://old-tunnel.trycloudflare.com")
+    monkeypatch.setattr(telegram_bot, "_reachable", lambda url: False)
+    telegram_bot.setup_profile()
+    assert "setChatMenuButton" not in sent
