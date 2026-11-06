@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .interests import GENDERS, ORIENTATIONS
+from .interests import GENDERS, ORIENTATIONS, ZODIAC
 from .legal import TERMS_VERSION
 from .models import Conversation, Message, User
 
@@ -37,6 +37,11 @@ def own_profile(user: User) -> dict:
         "gender": user.gender,
         "orientation": user.orientation,
         "show_identity": user.show_identity,
+        "show_orientation": user.show_orientation,
+        "height_cm": user.height_cm,
+        "weight_kg": user.weight_kg,
+        "zodiac": user.zodiac,
+        "extras_done": user.extras_done,
         "looking_for": user.looking_for,
         "interests": user.interests,
         "goals": user.goals,
@@ -54,9 +59,13 @@ def own_profile(user: User) -> dict:
 
 def identity(user: User) -> dict:
     """Пол и ориентация для чужих глаз — только если человек разрешил их показывать."""
-    if not user.show_identity:
-        return {"gender_label": None, "orientation_label": None}
-    return {"gender_label": GENDERS.get(user.gender), "orientation_label": ORIENTATIONS.get(user.orientation)}
+    return {
+        "gender_label": GENDERS.get(user.gender) if user.show_identity else None,
+        "orientation_label": ORIENTATIONS.get(user.orientation) if user.show_orientation else None,
+        "height_cm": user.height_cm,
+        "weight_kg": user.weight_kg,
+        "zodiac_label": ZODIAC.get(user.zodiac),
+    }
 
 
 def public_card(user: User, match: int, common: list[str], distance_km: float | None = None) -> dict:

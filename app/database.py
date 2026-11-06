@@ -52,6 +52,9 @@ def init_db() -> None:
 
     Base.metadata.create_all(engine)
     _add_missing_columns()
+    with engine.begin() as conn:  # пол из прошлых версий: трансгендерные варианты сведены к «парень» / «девушка»
+        conn.execute(text("UPDATE users SET gender='male' WHERE gender='trans_male'"))
+        conn.execute(text("UPDATE users SET gender='female' WHERE gender='trans_female'"))
 
 
 def _add_missing_columns() -> None:

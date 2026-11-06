@@ -1,14 +1,22 @@
 """Опрос при регистрации и подбор пары по интересам."""
 from __future__ import annotations
 
-# Пол. Трансгендерные варианты доступны в «Знакомствах» (с 18 лет); в «Дружбе» только парень и девушка.
-GENDERS = {"male": "Парень", "female": "Девушка", "trans_male": "Трансгендерный парень", "trans_female": "Трансгендерная девушка"}
-TEEN_GENDERS = {"male": "Парень", "female": "Девушка"}
+# Пол — одинаково для обеих лент
+GENDERS = {"male": "Парень", "female": "Девушка", "nonbinary": "Небинар"}
+TEEN_GENDERS = GENDERS
 LOOKING_FOR = {"male": "Парня", "female": "Девушку", "any": "Всех"}
-# Ориентация — только во взрослой ленте
-ORIENTATIONS = {"hetero": "Гетеросексуал", "bi": "Бисексуал", "pan": "Пансексуал", "ace": "Асексуал"}
-# Для подбора «ищу парня / девушку» трансгендерный парень — парень, трансгендерная девушка — девушка
-GENDER_BASE = {"male": "male", "female": "female", "trans_male": "male", "trans_female": "female"}
+# Сексуальность — только во взрослой ленте; набор зависит от пола (гей — для парней, лесби — для девушек)
+ORIENTATIONS = {"hetero": "Гетеро", "bi": "Би", "gay": "Гей", "lesbian": "Лесби", "queer": "Квир", "ace": "Асексуал", "pan": "Пансексуал"}
+ORIENTATIONS_BY_GENDER = {
+    "male": ["hetero", "bi", "gay", "queer", "ace", "pan"],
+    "female": ["hetero", "bi", "lesbian", "queer", "ace", "pan"],
+    "nonbinary": ["hetero", "bi", "gay", "lesbian", "queer", "ace", "pan"],
+}
+# Старые варианты пола из прошлых версий
+LEGACY_GENDERS = {"trans_male": "male", "trans_female": "female"}
+GENDER_BASE = {"male": "male", "female": "female", "nonbinary": "nonbinary"}
+ZODIAC = {"aries": "Овен", "taurus": "Телец", "gemini": "Близнецы", "cancer": "Рак", "leo": "Лев", "virgo": "Дева",
+          "libra": "Весы", "scorpio": "Скорпион", "sagittarius": "Стрелец", "capricorn": "Козерог", "aquarius": "Водолей", "pisces": "Рыбы"}
 
 # Вопросы опроса. key="goals" хранится отдельно, остальные ответы — общий список интересов.
 SURVEY: list[dict] = [
@@ -101,7 +109,7 @@ def match_score(my_interests: list[str], my_goals: list[str], interests: list[st
 
     Интересы дают 80% оценки: доля общих от меньшего из двух списков
     (иначе человек с 40 галочками проигрывал бы тому, у кого их 5).
-    Цели знакомства дают 20%.
+    Цели («что ищете») дают 20%, а в ленте сначала идут те, у кого цель общая.
     """
     common = [i for i in interests if i in set(my_interests)]
     base = min(len(my_interests), len(interests)) or 1

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import demo, feed_index, push
+from .. import blocks, demo, feed_index, push
 from ..database import get_db
 from ..deps import current_user
 from ..geo import GRID, haversine_km, public_distance_km, snap
@@ -59,7 +59,7 @@ def get_feed(limit: int = 10, user: User = Depends(current_user), db: Session = 
     _require_access(user)
     limit = max(1, min(limit, 30))
 
-    swiped = set(db.scalars(select(Swipe.to_user_id).where(Swipe.from_user_id == user.id)))
+    swiped = set(db.scalars(select(Swipe.to_user_id).where(Swipe.from_user_id == user.id))) | blocks.hidden_ids(db, user.id)
     radius = user.max_distance_km
     my_set, my_n, my_goals = set(user.interests), len(user.interests), set(user.goals)
     # всё о себе считаем один раз, а не для каждой из тысяч анкет
@@ -83,12 +83,14 @@ def get_feed(limit: int = 10, user: User = Depends(current_user), db: Session = 
         common = [i for i in c.interests if i in my_set]
         interest_part = len(common) / (min(my_n, len(c.interests)) or 1)
         goal_part = len(my_goals & c.goals) / (min(len(my_goals), len(c.goals)) or 1) if my_goals and c.goals else 0
-        scored.append((round(100 * (0.8 * interest_part + 0.2 * goal_part)), d, common, c.id))
-    # Группы по 10% совпадения, внутри группы — по расстоянию
-    scored.sort(key=lambda x: (-(x[0] // 10), x[1]))
+        same_goal = bool(my_goals & c.goals)
+        scored.append((round(100 * (0.8 * interest_part + 0.2 * goal_part)), d, common, c.id, same_goal))
+    # Сначала те, кто ищет то же, что и вы (отношения / дружба / общение); дальше группы по 10% совпадения,
+    # внутри группы — по расстоянию
+    scored.sort(key=lambda x: (not x[4], -(x[0] // 10), x[1]))
     top = scored[:limit]
     people = {u.id: u for u in db.scalars(select(User).where(User.id.in_([t[3] for t in top])))}
-    return {"total": len(scored), "cards": [public_card(people[oid], sc, c, d) for sc, d, c, oid in top if oid in people]}
+    return {"total": len(scored), "cards": [public_card(people[oid], sc, c, d) for sc, d, c, oid, _ in top if oid in people]}
 
 
 def _notify_match(db: Session, conv: Conversation, background: BackgroundTasks) -> None:
@@ -114,6 +116,8 @@ def swipe(data: SwipeIn, background: BackgroundTasks, user: User = Depends(curre
     if not target or target.age_group != user.age_group:
         raise HTTPException(404, "Анкета больше не доступна")
 
+    if blocks.between(db, user.id, target.id):
+        raise HTTPException(404, "Анкета больше не доступна")
     existing = db.scalar(select(Swipe).where(Swipe.from_user_id == user.id, Swipe.to_user_id == target.id))
     if existing:
         existing.liked = data.like

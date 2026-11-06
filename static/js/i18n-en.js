@@ -3,6 +3,24 @@
 const w = (x) => EN[x] ?? x;
 
 export const EN = {
+  // пол, сексуальность, рост/вес/знак, чёрный список, ярлык
+  "Пол": "Gender", "Небинар": "Non-binary", "Сексуальность": "Sexuality", "не указана": "not set",
+  "Гетеро": "Straight", "Би": "Bi", "Гей": "Gay", "Лесби": "Lesbian", "Квир": "Queer", "Асексуал": "Asexual", "Пансексуал": "Pansexual",
+  "Необязательно. Нажмите ещё раз, чтобы снять выбор": "Optional. Tap again to clear",
+  "Показывать пол в анкете": "Show gender on profile", "Показывать сексуальность": "Show sexuality",
+  "Скрытое не видно другим. Подбор по «кого ищу» работает всё равно": "Hidden fields aren't visible to others. Matching by who you're looking for still works",
+  "Ваш рост": "Your height", "Ваш вес": "Your weight", "Знак зодиака": "Zodiac sign", "Подсказали по дате рождения": "Suggested from your birth date",
+  "Необязательно, можно пропустить": "Optional, you can skip", "Пропустить": "Skip", "см": "cm", "кг": "kg",
+  "Овен": "Aries", "Телец": "Taurus", "Близнецы": "Gemini", "Рак": "Cancer", "Лев": "Leo", "Дева": "Virgo",
+  "Весы": "Libra", "Скорпион": "Scorpio", "Стрелец": "Sagittarius", "Козерог": "Capricorn", "Водолей": "Aquarius", "Рыбы": "Pisces",
+  "Рост, см": "Height, cm", "Вес, кг": "Weight, kg", "Знак": "Sign",
+  "Если ваших интересов здесь нет, напишите их в описании анкеты": "If your interests aren't here, add them to your profile description",
+  "Если ваших интересов нет в списке, напишите их в описании": "If your interests aren't listed, add them to your description",
+  "Чёрный список": "Blocked", "Заблокировать": "Block", "Разблокировать": "Unblock", "Разблокировано": "Unblocked",
+  "Пусто. Заблокировать человека можно в его анкете или в меню чата": "Empty. You can block someone from their profile or the chat menu",
+  "Ярлык на экране телефона": "Home screen shortcut", "COFI откроется одним нажатием, как обычное приложение": "Open COFI with one tap, like a regular app",
+  "Добавить ярлык из Telegram": "Add shortcut from Telegram", "Открыть COFI в браузере": "Open COFI in browser",
+  "iPhone и iPad (Safari)": "iPhone and iPad (Safari)", "Android (Chrome)": "Android (Chrome)",
   // вход и регистрация
   "Знакомства, где общее находится сразу": "Dating where common ground comes first",
   "Отметьте, что любите, и мы покажем людей рядом с похожими интересами.": "Tell us what you love and we'll show people nearby with similar interests.",

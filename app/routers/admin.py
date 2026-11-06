@@ -44,6 +44,7 @@ def user_row(u: User) -> dict:
         "gender_label": GENDERS.get(u.gender or ""),
         "orientation_label": ORIENTATIONS.get(u.orientation or ""),
         "show_identity": u.show_identity,
+        "show_orientation": u.show_orientation,
         "looking_for_label": LOOKING_FOR.get(u.looking_for or ""),
         "interests": u.interests,
         "goals": u.goals,

@@ -5,26 +5,63 @@ from conftest import make_user, new_client, register
 from test_push import TOKEN, FakeBot
 
 
-def test_trans_gender_matching_and_teen_limit():
-    assert compatible("female", "male", "trans_male", "female")  # ищет парня — трансгендерный парень подходит
-    assert not compatible("female", "female", "trans_male", "any")
+def test_gender_matching_and_teen_limit():
+    assert compatible("female", "male", "male", "female")
+    assert not compatible("female", "female", "male", "any")
     c = new_client()
     register(c, "teen@x.io")
     base = {"name": "Миша", "birth_date": birth_for_age(15).isoformat(), "looking_for": "any", "accept_terms": True, "confirm_age": True}
     assert c.put("/api/profile", json={**base, "gender": "trans_male"}).status_code == 422
     me = c.put("/api/profile", json={**base, "gender": "male", "orientation": "bi"}).json()
-    assert me["gender"] == "male" and me["orientation"] is None  # подросткам ориентацию не храним
+    assert me["gender"] == "male" and me["orientation"] is None  # подросткам сексуальность не храним
 
 
-def test_orientation_shown_only_when_allowed():
+def test_sexuality_depends_on_gender_and_separate_toggles():
     a = make_user("i1@x.io", gender="female", looking_for="any")
-    b = make_user("i2@x.io", gender="trans_male", looking_for="any")
-    b.put("/api/profile", json={"orientation": "pan"})
+    b = make_user("i2@x.io", gender="male", looking_for="any")
+    assert b.put("/api/profile", json={"orientation": "lesbian"}).status_code == 422
+    assert b.put("/api/profile", json={"orientation": "gay"}).status_code == 200
     card = a.get(f"/api/users/{b.user_id}").json()
-    assert card["gender_label"] == "Трансгендерный парень" and card["orientation_label"] == "Пансексуал"
+    assert card["gender_label"] == "Парень" and card["orientation_label"] == "Гей"
     b.put("/api/profile", json={"show_identity": False})
     card = a.get(f"/api/users/{b.user_id}").json()
-    assert card["gender_label"] is None and card["orientation_label"] is None
+    assert card["gender_label"] is None and card["orientation_label"] == "Гей"
+    b.put("/api/profile", json={"show_orientation": False})
+    assert a.get(f"/api/users/{b.user_id}").json()["orientation_label"] is None
+    # смена пола сбрасывает неподходящую сексуальность
+    me = b.put("/api/profile", json={"gender": "female"}).json()
+    assert me["orientation"] is None
+    n = make_user("i3@x.io", gender="nonbinary", looking_for="any")
+    assert n.put("/api/profile", json={"orientation": "lesbian"}).status_code == 200
+    assert n.put("/api/profile", json={"orientation": "gay"}).status_code == 200
+
+
+def test_extras_height_weight_zodiac():
+    a = make_user("e1@x.io")
+    me = a.put("/api/profile", json={"height_cm": 180, "weight_kg": 75, "zodiac": "leo", "extras_done": True}).json()
+    assert me["height_cm"] == 180 and me["zodiac"] == "leo" and me["extras_done"]
+    assert a.put("/api/profile", json={"height_cm": 20}).status_code in (400, 422)
+    assert a.put("/api/profile", json={"zodiac": "dragon"}).status_code in (400, 422)
+    b = make_user("e2@x.io")
+    card = b.get(f"/api/users/{a.user_id}").json()
+    assert card["height_cm"] == 180 and card["zodiac_label"] == "Лев"
+
+
+def test_blacklist():
+    a = make_user("b1@x.io", gender="female", looking_for="any")
+    b = make_user("b2@x.io", gender="male", looking_for="any")
+    b.post("/api/feed/swipe", json={"user_id": a.user_id, "like": True})
+    r = a.post("/api/feed/swipe", json={"user_id": b.user_id, "like": True}).json()
+    conv = r.get("conversation_id")
+    assert conv
+    assert a.post(f"/api/users/{b.user_id}/block").status_code == 200
+    assert b.post(f"/api/chats/{conv}/messages", json={"text": "привет"}).status_code == 404
+    assert all(c["id"] != conv for c in b.get("/api/chats").json())
+    assert b.get(f"/api/users/{a.user_id}").status_code == 404
+    assert [x["id"] for x in a.get("/api/blocks").json()] == [b.user_id]
+    assert all(x["id"] != a.user_id for x in b.get("/api/feed").json()["cards"])
+    a.delete(f"/api/users/{b.user_id}/block")
+    assert b.post(f"/api/chats/{conv}/messages", json={"text": "привет"}).status_code == 200
 
 
 def test_admin_without_profile_and_support_to_telegram(monkeypatch):

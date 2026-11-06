@@ -102,7 +102,7 @@ function ownProfile(u) {
   return {
     id: u.id, email: u.email || null, email_verified: true, email_notifications: false,
     auth_provider: u.provider || (u.is_demo ? "demo" : "email"), telegram_username: u.telegram_username || null, name: u.name, age: years(u), birth_date: u.birth_date || null, age_group: group(u),
-    age_verified: false, terms_accepted: u.terms_accepted ?? !(u.email || u.provider === "telegram"), age_confirmation: u.age_confirmation || null, language: "ru", bio: u.bio, gender: u.gender, orientation: u.orientation || null, show_identity: u.show_identity !== false, looking_for: u.looking_for,
+    age_verified: false, terms_accepted: u.terms_accepted ?? !(u.email || u.provider === "telegram"), age_confirmation: u.age_confirmation || null, language: "ru", bio: u.bio, gender: u.gender, orientation: u.orientation || null, show_identity: u.show_identity !== false, show_orientation: u.show_orientation !== false, height_cm: u.height_cm || null, weight_kg: u.weight_kg || null, zodiac: u.zodiac || null, extras_done: !!u.extras_done, looking_for: u.looking_for,
     interests: u.interests, goals: u.goals, survey_done: u.interests.length >= DATA.min_interests && u.goals.length > 0,
     photo_url: u.photo_url, photos: u.photos, photo_verified: u.photo_verified, has_location: true,
     max_distance_km: u.max_distance_km, is_admin: false, is_complete: isComplete(u), is_demo: true,
@@ -161,7 +161,7 @@ const ROUTES = [];
 const route = (method, pattern, fn) => ROUTES.push({ method, re: new RegExp(`^${pattern}$`), fn });
 
 route("GET", "/api/config", () => ({
-  app_name: "COFI", captcha: { mode: "image", site_key: null }, calls_enabled: false, survey: DATA.survey, genders: DATA.genders, teen_genders: DATA.teen_genders, orientations: DATA.orientations, looking_for: DATA.looking_for, teen_goals: DATA.teen_goals,
+  app_name: "COFI", captcha: { mode: "image", site_key: null }, calls_enabled: false, survey: DATA.survey, genders: DATA.genders, teen_genders: DATA.teen_genders, orientations: DATA.orientations, orientations_by_gender: DATA.orientations_by_gender, zodiac: DATA.zodiac, looking_for: DATA.looking_for, teen_goals: DATA.teen_goals,
   min_age: DATA.min_age, min_interests: DATA.min_interests, telegram_bot_username: "cofi_bot", ice_servers: [], face_dev_mode: true,
 }));
 
@@ -312,8 +312,17 @@ route("PUT", "/api/profile", (b) => {
     if (group(u) === "teen" && !(b.gender in DATA.teen_genders)) deny(422, "В ленте «Дружба» можно выбрать «Парень» или «Девушка»");
     u.gender = b.gender;
   }
-  if (b.orientation !== undefined && b.orientation !== null) u.orientation = group(u) === "teen" ? null : b.orientation || null;
+  if (b.orientation !== undefined && b.orientation !== null) {
+    if (b.orientation && !(DATA.orientations_by_gender[u.gender] || []).includes(b.orientation)) deny(422, "Этот вариант сексуальности не подходит к выбранному полу");
+    u.orientation = group(u) === "teen" ? null : b.orientation || null;
+  }
+  if (u.orientation && !(DATA.orientations_by_gender[u.gender] || []).includes(u.orientation)) u.orientation = null;
   if (b.show_identity !== undefined) u.show_identity = b.show_identity;
+  if (b.show_orientation !== undefined) u.show_orientation = b.show_orientation;
+  if (b.height_cm !== undefined) u.height_cm = b.height_cm || null;
+  if (b.weight_kg !== undefined) u.weight_kg = b.weight_kg || null;
+  if (b.zodiac !== undefined) u.zodiac = b.zodiac || null;
+  if (b.extras_done !== undefined) u.extras_done = b.extras_done;
   if (b.looking_for !== undefined) u.looking_for = b.looking_for;
   if (b.interests !== undefined) {
     const v = [...new Set(b.interests)];
@@ -361,16 +370,17 @@ function visibleBots(u) {
 route("GET", "/api/feed", async () => {
   const u = requireMe();
   if (!isComplete(u)) deny(409, { code: "profile_incomplete", message: "Заполните анкету" });
-  const swiped = new Set(S.swipes.filter((s) => s.from === u.id).map((s) => s.to));
+  const swiped = new Set([...S.swipes.filter((s) => s.from === u.id).map((s) => s.to), ...(S.blocks || [])]);
   const scored = [];
   for (const o of visibleBots(u)) {
     if (swiped.has(o.id)) continue;
     const d = km(u, o);
     if (d > u.max_distance_km) continue;
     const [score, common] = matchScore(u.interests, u.goals, o.interests, o.goals);
-    scored.push({ score, d, common, o });
+    scored.push({ score, d, common, o, same: o.goals.some((g) => u.goals.includes(g)) });
   }
-  scored.sort((a, b) => Math.floor(b.score / 10) - Math.floor(a.score / 10) || a.d - b.d);
+  // сначала те, кто ищет то же самое, потом по совпадению интересов и расстоянию
+  scored.sort((a, b) => (b.same - a.same) || Math.floor(b.score / 10) - Math.floor(a.score / 10) || a.d - b.d);
   const cards = await Promise.all(scored.slice(0, 10).map(async ({ score, d, common, o }) => ({
     id: o.id, name: o.name, age: years(o), bio: o.bio, photo_url: await img(o.photo_url), verified: true,
     interests: o.interests, goals: o.goals, photos_count: o.photos.length, match: score, common, distance_km: Math.round(d * 10) / 10,
@@ -396,10 +406,26 @@ route("POST", "/api/feed/swipe", async (b) => {
   return { match: true, conversation_id: conv.id, user: { id: t.id, name: t.name, age: t.age, photo_url: await img(t.photo_url), common, match: score } };
 });
 
+route("POST", "/api/users/(\\d+)/block", (_, [uid]) => {
+  requireMe();
+  S.blocks = [...new Set([...(S.blocks || []), +uid])];
+  save();
+  return { status: "blocked" };
+});
+route("DELETE", "/api/users/(\\d+)/block", (_, [uid]) => {
+  S.blocks = (S.blocks || []).filter((x) => x !== +uid);
+  save();
+  return { status: "unblocked" };
+});
+route("GET", "/api/blocks", async () => {
+  requireMe();
+  return Promise.all((S.blocks || []).map(async (x) => ({ id: x, name: S.users[x]?.name, photo_url: S.users[x] ? await img(S.users[x].photo_url) : null })));
+});
+
 route("GET", "/api/users/(\\d+)", async (_, [uidStr]) => {
   const u = requireMe();
   const o = S.users[+uidStr];
-  if (!o || !o.is_bot) deny(404, "Анкета не найдена");
+  if (!o || !o.is_bot || (S.blocks || []).includes(o.id)) deny(404, "Анкета не найдена");
   const conv = S.convs.find((c) => c.active && c.users.includes(u.id) && c.users.includes(o.id));
   const [score, common] = matchScore(u.interests, u.goals, o.interests, o.goals);
   const gallery = await photos(o);
@@ -409,6 +435,8 @@ route("GET", "/api/users/(\\d+)", async (_, [uidStr]) => {
     interests: o.interests, goals: o.goals, common, match: score, distance_km: Math.round(km(u, o) * 10) / 10,
     gender_label: DATA.genders[o.gender] || null,
     orientation_label: o.age >= 18 ? DATA.orientations[["hetero", "bi", "hetero", "pan", "hetero"][o.id % 5]] : null,
+    height_cm: o.gender === "male" ? 176 + (o.id % 12) : 162 + (o.id % 10), weight_kg: null,
+    zodiac: Object.keys(DATA.zodiac)[o.id % 12], zodiac_label: Object.values(DATA.zodiac)[o.id % 12],
     online: false, liked: S.swipes.some((s) => s.from === u.id && s.to === o.id && s.liked), conversation_id: conv ? conv.id : null,
   };
 });
@@ -416,6 +444,7 @@ route("GET", "/api/users/(\\d+)", async (_, [uidStr]) => {
 function convFor(u, cid) {
   const c = S.convs.find((x) => x.id === +cid);
   if (!c || !c.active || !c.users.includes(u.id)) deny(404, "Чат не найден");
+  if (c.users.some((x) => (S.blocks || []).includes(x))) deny(404, "Чат недоступен");
   return c;
 }
 async function userBrief(o) {
@@ -425,7 +454,7 @@ async function userBrief(o) {
 route("GET", "/api/chats", async () => {
   const u = requireMe();
   const out = [];
-  for (const c of S.convs.filter((x) => x.active && x.users.includes(u.id))) {
+  for (const c of S.convs.filter((x) => x.active && x.users.includes(u.id) && !x.users.some((y) => (S.blocks || []).includes(y)))) {
     const msgs = S.messages.filter((m) => m.conversation_id === c.id);
     const other = S.users[c.users.find((x) => x !== u.id)];
     out.push({ id: c.id, active: true, user: await userBrief(other), last_message: msgs.length ? messageOut(msgs[msgs.length - 1]) : null,

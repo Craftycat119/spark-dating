@@ -156,6 +156,7 @@ function onboardingStep(me) {
   if (me.is_admin) return me.name ? null : "admin"; // администратору анкета не нужна, только имя
   if (!me.name || !me.birth_date || !me.terms_accepted) return "about";
   if (!me.gender || !me.looking_for) return "identity";
+  if (!me.survey_done && !me.extras_done) return "extras"; // рост, вес, знак — только при первой регистрации
   if (!me.survey_done) return "survey";
   if (!me.photo_url) return "photo";
   if (!me.photo_verified) return "scan";
@@ -531,7 +532,7 @@ function renderForgot(prefill = "") {
 
 // ---------------- Онбординг ----------------
 
-const STEP_ORDER = ["about", "identity", "survey", "photo", "scan", "location"];
+const STEP_ORDER = ["about", "identity", "extras", "survey", "photo", "scan", "location"];
 
 /** Кнопка «Назад» над шагом регистрации. */
 const backBtn = (label = "Назад") => `<button type="button" class="back-btn" data-step-back>${icons.back}<span>${label}</span></button>`;
@@ -552,7 +553,8 @@ async function changeSignupMethod() {
 const STEP_BACK = {
   about: changeSignupMethod,
   identity: () => stepAbout(),
-  survey: () => stepIdentity(),
+  extras: () => stepIdentity(),
+  survey: () => stepExtras({ fromEnd: true }),
   photo: () => renderSurvey({ fromEnd: true }),
   scan: () => stepPhoto(),
   location: () => stepScan(),
@@ -569,7 +571,7 @@ async function nextStep() {
 }
 
 function renderOnboarding(step) {
-  ({ admin: stepAdminName, about: stepAbout, identity: stepIdentity, survey: () => renderSurvey(), photo: stepPhoto, scan: stepScan, location: stepLocation })[step]();
+  ({ admin: stepAdminName, about: stepAbout, identity: stepIdentity, extras: () => stepExtras(), survey: () => renderSurvey(), photo: stepPhoto, scan: stepScan, location: stepLocation })[step]();
 }
 
 function choiceGroup(name, options, value, cols = Object.keys(options).length) {
@@ -599,23 +601,120 @@ function ageConsentText(birth) {
   return "Подтверждаю, что мне исполнилось 18 лет";
 }
 
+/** Варианты сексуальности под выбранный пол: девушке — «лесби», парню — «гей», небинарным — оба. */
+function orientationsFor(gender) {
+  const all = state.config.orientations || {};
+  const keys = state.config.orientations_by_gender?.[gender] || Object.keys(all);
+  return Object.fromEntries(keys.filter((k) => k in all).map((k) => [k, all[k]]));
+}
+
 /**
- * Пол, ориентация и переключатель «показывать в анкете». Варианты зависят от возраста:
- * до 18 лет только «Парень» и «Девушка», без ориентации; с 18 — ещё трансгендерные варианты и ориентация.
+ * Пол, сексуальность (с 18 лет) и два отдельных переключателя «показывать в анкете».
+ * Всё в одном спокойном блоке: сексуальность свёрнута и необязательна.
  */
 function identityFields(box, pick, age) {
   const adult = age === null || age >= 18;
   const genders = adult ? state.config.genders : state.config.teen_genders || state.config.genders;
   if (!(pick.gender in genders)) pick.gender = null;
   if (!adult) pick.orientation = null;
-  box.innerHTML = `
-    <div class="field"><span>Я</span>${choiceGroup("gender", genders, pick.gender, 2)}</div>
-    ${adult && state.config.orientations ? `<div class="field"><span>Ориентация <small class="muted">необязательно</small></span>${choiceGroup("orientation", state.config.orientations, pick.orientation, 2)}</div>` : ""}
-    <label class="switch"><input type="checkbox" data-show-identity ${pick.show_identity !== false ? "checked" : ""}>
-      <span class="label">Показывать ${adult ? "пол и ориентацию" : "пол"} в анкете<small>Если выключить, другие этого не увидят. Подбор по «кого ищу» работает всё равно</small></span></label>`;
-  bindChoice(box, "gender", (v) => (pick.gender = v));
-  bindChoice(box, "orientation", (v) => (pick.orientation = v));
-  $("[data-show-identity]", box).onchange = (e) => (pick.show_identity = e.target.checked);
+  const withSexuality = adult && !!state.config.orientations;
+  const draw = () => {
+    const opts = orientationsFor(pick.gender);
+    if (pick.orientation && !(pick.orientation in opts)) pick.orientation = "";
+    const current = pick.orientation ? opts[pick.orientation] : "не указана";
+    box.innerHTML = `
+      <div class="field"><span>Пол</span>${choiceGroup("gender", genders, pick.gender, 3)}</div>
+      <div class="identity-box">
+        ${withSexuality ? `<details class="soft-details" ${box.dataset.open ? "open" : ""}>
+          <summary><span>Сексуальность</span><span class="muted">${esc(current)}</span></summary>
+          <div class="chips small-chips">${Object.entries(opts).map(([k, l]) =>
+            `<button type="button" class="chip" data-name="orientation" data-value="${k}" aria-pressed="${k === pick.orientation}">${esc(l)}</button>`).join("")}</div>
+          <p class="hint">Необязательно. Нажмите ещё раз, чтобы снять выбор</p>
+        </details>` : ""}
+        <label class="switch compact"><input type="checkbox" data-show="show_identity" ${pick.show_identity !== false ? "checked" : ""}>
+          <span class="label">Показывать пол в анкете</span></label>
+        ${withSexuality ? `<label class="switch compact"><input type="checkbox" data-show="show_orientation" ${pick.show_orientation !== false ? "checked" : ""}>
+          <span class="label">Показывать сексуальность</span></label>` : ""}
+        <p class="hint">Скрытое не видно другим. Подбор по «кого ищу» работает всё равно</p>
+      </div>`;
+    bindChoice(box, "gender", (v) => { pick.gender = v; draw(); });
+    $$('[data-name="orientation"]', box).forEach((b) => (b.onclick = () => {
+      pick.orientation = pick.orientation === b.dataset.value ? "" : b.dataset.value;
+      box.dataset.open = "1";
+      draw();
+    }));
+    $("details", box)?.addEventListener("toggle", (e) => (e.target.open ? (box.dataset.open = "1") : delete box.dataset.open));
+    $$("[data-show]", box).forEach((x) => (x.onchange = () => (pick[x.dataset.show] = x.checked)));
+  };
+  draw();
+}
+
+const identityPick = (me) => ({
+  gender: me.gender, looking_for: me.looking_for, orientation: me.orientation || "",
+  show_identity: me.show_identity !== false, show_orientation: me.show_orientation !== false,
+});
+
+const ZODIAC_SIGNS = { aries: "♈", taurus: "♉", gemini: "♊", cancer: "♋", leo: "♌", virgo: "♍", libra: "♎", scorpio: "♏", sagittarius: "♐", capricorn: "♑", aquarius: "♒", pisces: "♓" };
+
+/** Знак зодиака по дате рождения — подсказка, человек может выбрать другой или пропустить. */
+function zodiacOf(birth) {
+  if (!birth) return null;
+  const d = new Date(birth), md = (d.getMonth() + 1) * 100 + d.getDate();
+  const edges = [[120, "capricorn"], [219, "aquarius"], [321, "pisces"], [420, "aries"], [521, "taurus"], [621, "gemini"],
+    [723, "cancer"], [823, "leo"], [923, "virgo"], [1023, "libra"], [1122, "scorpio"], [1222, "sagittarius"], [1232, "capricorn"]];
+  return edges.find(([edge]) => md < edge)[1];
+}
+
+/** Рост, вес и знак зодиака: по экрану на каждый, всё можно пропустить. Подросткам вес не предлагаем. */
+function stepExtras({ fromEnd = false } = {}) {
+  const me = state.me;
+  const parts = me.age_group === "teen" ? ["height", "zodiac"] : ["height", "weight", "zodiac"];
+  const vals = { height_cm: me.height_cm || 170, weight_kg: me.weight_kg || 65, zodiac: me.zodiac || zodiacOf(me.birth_date) };
+  const chosen = { height_cm: !!me.height_cm, weight_kg: !!me.weight_kg, zodiac: !!me.zodiac };
+  let i = fromEnd ? parts.length - 1 : 0;
+  const finish = async () => {
+    const data = { extras_done: true };
+    for (const k of ["height_cm", "weight_kg", "zodiac"]) data[k] = chosen[k] ? vals[k] : 0;
+    data.zodiac = chosen.zodiac ? vals.zodiac : "";
+    try { state.me = await api.put("/api/profile", data); nextStep(); } catch (ex) { toast(ex.message, { error: true }); }
+  };
+  const next = () => (i < parts.length - 1 ? (i++, draw()) : finish());
+  const slider = (key, min, max, unit) => `
+    <div class="big-value"><b data-val>${vals[key]}</b><span>${unit}</span></div>
+    <input type="range" class="big-range" min="${min}" max="${max}" value="${vals[key]}" data-range="${key}" aria-label="${unit}">
+    <div class="range-ends muted small"><span>${min}</span><span>${max}</span></div>`;
+  const draw = () => {
+    const part = parts[i];
+    const body = {
+      height: `<h1>Ваш рост</h1>${slider("height_cm", 120, 230, "см")}`,
+      weight: `<h1>Ваш вес</h1>${slider("weight_kg", 35, 200, "кг")}`,
+      zodiac: `<h1>Знак зодиака</h1>${!me.zodiac && vals.zodiac ? `<p class="muted">Подсказали по дате рождения</p>` : ""}
+        <div class="zodiac-grid">${Object.entries(state.config.zodiac || {}).map(([k, l]) =>
+          `<button type="button" class="chip zodiac" data-z="${k}" aria-pressed="${k === vals.zodiac}"><span aria-hidden="true">${ZODIAC_SIGNS[k] || ""}</span>${esc(l)}</button>`).join("")}</div>`,
+    }[part];
+    const root = screen(`${stepsBar("extras")}
+      <div class="stack" style="gap:18px">
+        <div class="survey-head"><span class="muted small">Необязательно, можно пропустить</span><span class="survey-count">${i + 1}/${parts.length}</span></div>
+        ${body}
+        <div class="row" style="margin-top:8px">
+          ${i > 0 ? `<button class="btn ghost" data-prev>Назад</button>` : ""}
+          <button class="btn" data-next style="flex:1">Дальше</button>
+        </div>
+        <button class="link" data-skip style="align-self:center">Пропустить</button>
+      </div>`, { nav: false });
+    const range = $("[data-range]", root);
+    if (range) range.oninput = () => { vals[range.dataset.range] = Number(range.value); $("[data-val]", root).textContent = range.value; };
+    $$("[data-z]", root).forEach((b) => (b.onclick = () => {
+      vals.zodiac = b.dataset.z;
+      $$("[data-z]", root).forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    }));
+    const key = { height: "height_cm", weight: "weight_kg", zodiac: "zodiac" }[part];
+    $("[data-next]", root).onclick = () => { chosen[key] = !!vals[key]; next(); };
+    $("[data-skip]", root).onclick = () => { chosen[key] = false; next(); };
+    $("[data-prev]", root)?.addEventListener("click", () => { i--; draw(); });
+    bindBack(root, () => (i > 0 ? (i--, draw()) : STEP_BACK.extras()));
+  };
+  draw();
 }
 
 /** Администратор: только имя, остальное не нужно. */
@@ -649,7 +748,7 @@ function adminHome(root) {
   </div>`));
 }
 
-/** Шаг 1: имя, дата рождения и согласия. Пол и ориентация — только на следующем шаге,
+/** Шаг 1: имя, дата рождения и согласия. Пол и сексуальность — только на следующем шаге,
  *  когда возраст уже известен: подросток не увидит вариантов для «Знакомств». */
 function stepAbout() {
   const me = state.me;
@@ -690,10 +789,10 @@ function stepAbout() {
   };
 }
 
-/** Шаг 2: пол, ориентация (с 18 лет), кого ищу и пара слов о себе. Варианты уже по возрасту. */
+/** Шаг 2: пол, сексуальность (с 18 лет), кого ищу и пара слов о себе. Варианты уже по возрасту. */
 function stepIdentity() {
   const me = state.me;
-  const pick = { gender: me.gender, looking_for: me.looking_for, orientation: me.orientation || "", show_identity: me.show_identity !== false };
+  const pick = identityPick(me);
   const root = screen(`${stepsBar("identity")}
     <form class="stack">
       <h1>О себе</h1>
@@ -736,6 +835,7 @@ function renderSurvey({ editing = false, fromEnd = false } = {}) {
         <div class="survey-head"><span class="muted small">${editing ? "Интересы" : "Пара вопросов о вас"}</span><span class="survey-count">${i + 1}/${survey.length}</span></div>
         <h1>${esc(q.title)}</h1>
         ${q.hint ? `<p class="muted">${esc(q.hint)}</p>` : ""}
+        ${q.key !== "goals" ? `<p class="hint">Если ваших интересов здесь нет, напишите их в описании анкеты</p>` : ""}
         <div class="chips">${q.options.map((o, k) => `<button type="button" class="chip" style="--i:${k}" aria-pressed="${set.has(o)}">${esc(o)}</button>`).join("")}</div>
         <p class="error-text" hidden></p>
         <div class="row" style="margin-top:8px">
@@ -990,9 +1090,10 @@ async function renderFeed() {
     thread = mountThread($(".thread", deck), c.common.slice(0, 5));
   }
 
-  async function decide(like) {
+  async function decide(like, { silent = false } = {}) {
     const c = cards[0];
     if (!c || busy || !thread) return;
+    if (silent) { cards.shift(); thread = null; draw(); if (cards.length < 3) load(); return; } // заблокировали из анкеты
     busy = true;
     $$("button", btns).forEach((b) => (b.disabled = true));
     navigator.vibrate?.(like ? 12 : 6);
@@ -1084,6 +1185,24 @@ async function renderFeed() {
 
 // ---------------- Подробная анкета ----------------
 
+/** «Парень · Би · 182 см · 76 кг · Лев» — только то, что человек указал и разрешил показывать. */
+function aboutLine(p) {
+  const zodiac = p.zodiac ? `${ZODIAC_SIGNS[p.zodiac] || ""} ${esc(p.zodiac_label || "")}`.trim() : "";
+  return [p.gender_label, p.orientation_label].filter(Boolean).map(esc)
+    .concat(p.height_cm ? [`${p.height_cm} см`] : [], p.weight_kg ? [`${p.weight_kg} кг`] : [], zodiac ? [zodiac] : [])
+    .join(" · ");
+}
+
+/** Чёрный список: человек больше не сможет писать, вы пропадёте из ленты и чатов друг друга. */
+async function blockUser(user) {
+  if (!(await confirmDialog(`Заблокировать ${user.name}? Он(а) больше не сможет вам писать, вы пропадёте из ленты и чатов друг друга. Разблокировать можно в профиле`, "Заблокировать"))) return false;
+  try {
+    await api.post(`/api/users/${user.id}/block`);
+    toast(`${user.name} в чёрном списке`);
+    return true;
+  } catch (ex) { toast(ex.message, { error: true }); return false; }
+}
+
 async function openProfile(userId, { onDecide = null } = {}) {
   let p;
   try {
@@ -1101,7 +1220,7 @@ async function openProfile(userId, { onDecide = null } = {}) {
     <div class="profile-body">
       <div class="pname" translate="no">${esc(p.name)}<span>, ${p.age}</span></div>
       <div class="meta muted small" style="margin-top:6px">${[kmText(p.distance_km), p.verified ? "фото подтверждено" : "", p.online ? "в сети" : ""].filter(Boolean).join(" · ")}</div>
-      ${p.gender_label || p.orientation_label ? `<div class="chips identity-chips">${[p.gender_label, p.orientation_label].filter(Boolean).map((t) => `<span class="chip static">${esc(t)}</span>`).join("")}</div>` : ""}
+      ${aboutLine(p) ? `<p class="about-line">${aboutLine(p)}</p>` : ""}
       <div class="match-strip">
         <div><b>${p.match}%</b><span>совпадение</span></div>
         <div><b>${p.common.length}</b><span>${plural(p.common.length, "общий интерес", "общих интереса", "общих интересов")}</span></div>
@@ -1111,7 +1230,10 @@ async function openProfile(userId, { onDecide = null } = {}) {
       ${p.goals.length ? `<h3>Ищет</h3><div class="chips">${p.goals.map((g) => `<span class="chip static ghost">${esc(g)}</span>`).join("")}</div>` : ""}
       <h3>Интересы</h3>
       <div class="chips">${p.interests.map((x) => `<span class="chip static ${goalsSet.has(x) ? "hot" : "ghost"}">${esc(x)}</span>`).join("")}</div>
-      <button class="link report" data-report>${icons.flag} Пожаловаться на анкету</button>
+      <div class="profile-links">
+        <button class="link report" data-report>${icons.flag} Пожаловаться</button>
+        <button class="link report" data-block>${icons.block} Заблокировать</button>
+      </div>
     </div>
     <div class="profile-actions"></div>
   </section>`);
@@ -1119,6 +1241,7 @@ async function openProfile(userId, { onDecide = null } = {}) {
   const actions = $(".profile-actions", el);
   const close = () => { el.remove(); document.removeEventListener("keydown", esc_); };
   $("[data-report]", el).onclick = () => { close(); reportUser(p, go); };
+  $("[data-block]", el).onclick = async () => { if (await blockUser(p)) { close(); onDecide?.(false, { silent: true }); } };
   const esc_ = (e) => e.key === "Escape" && close();
   if (p.conversation_id) {
     actions.innerHTML = `<button class="btn block" data-write>${icons.chat} Написать сообщение</button>`;
@@ -1320,11 +1443,23 @@ async function openChat(convId) {
 
   $$("[data-call]", el).forEach((b) => (b.onclick = () => startCall(convId, other, b.dataset.call === "video")));
   $("[data-profile]", el).onclick = () => openProfile(other.id);
-  $("[data-menu]", el).onclick = async () => {
-    if (await confirmDialog(`Удалить пару с ${other.name}? Чат исчезнет у вас обоих.`, "Удалить пару")) {
-      await api.del(`/api/chats/${convId}`);
-      go("#/chats");
-    }
+  $("[data-menu]", el).onclick = () => {
+    const sheet = h(`<div class="overlay sheet-overlay" role="dialog" aria-label="Действия с чатом">
+      <div class="bottom-sheet stack">
+        <button class="btn ghost block" data-a="unmatch">${icons.trash} Удалить пару</button>
+        <button class="btn danger block" data-a="block">${icons.block} Заблокировать</button>
+        <button class="btn quiet block" data-a="close">Отмена</button>
+      </div></div>`);
+    document.body.append(sheet);
+    sheet.onclick = async (e) => {
+      const a = e.target.closest("[data-a]")?.dataset.a;
+      if (!a && e.target !== sheet) return;
+      sheet.remove();
+      if (a === "unmatch" && (await confirmDialog(`Удалить пару с ${other.name}? Чат исчезнет у вас обоих.`, "Удалить пару"))) {
+        await api.del(`/api/chats/${convId}`);
+        go("#/chats");
+      } else if (a === "block" && (await blockUser(other))) go("#/chats");
+    };
   };
 
   // --- Стикеры ---
@@ -1532,7 +1667,8 @@ function circleEl(m, mine, time) {
 function renderSettings() {
   const me = state.me;
   const step = onboardingStep(me);
-  const pick = { gender: me.gender, looking_for: me.looking_for, orientation: me.orientation || "", show_identity: me.show_identity !== false };
+  const pick = identityPick(me);
+  const inTelegram = !!tgApp()?.initData;
   const root = screen(`
     <h1>Профиль ${me.is_admin ? `<span class="admin-badge">${icons.shield} Администрация</span>` : ""}</h1>
     ${me.is_demo ? `<div class="demo-banner" style="margin-top:14px">${icons.sparkle}<span>Вы в демо-режиме. Боты отвечают в чате, данные удалятся через сутки.</span></div>` : ""}
@@ -1560,6 +1696,7 @@ function renderSettings() {
       <div class="chips" style="margin-bottom:12px">${[...me.goals, ...me.interests].map((x, i) =>
         `<span class="chip static ${i < me.goals.length ? "hot" : ""}">${esc(x)}</span>`).join("")}</div>
       <a class="btn ghost" href="#/settings/interests">Изменить интересы</a>
+      <p class="hint" style="margin-top:10px">Если ваших интересов нет в списке, напишите их в описании</p>
     </div>
 
     <form class="section stack" id="profile-form">
@@ -1570,7 +1707,13 @@ function renderSettings() {
         <span class="hint">Изменить дату можно только через <a href="#/support">поддержку</a></span></div>
       <div class="stack" data-identity></div>
       <div class="field"><span>Кого ищу</span>${choiceGroup("looking_for", state.config.looking_for, me.looking_for)}</div>
-      <label class="field"><span>Описание</span><textarea class="input" name="bio" maxlength="500">${esc(me.bio)}</textarea></label>
+      <label class="field"><span>Описание</span><textarea class="input" name="bio" maxlength="500" placeholder="О себе и интересах, которых нет в списке">${esc(me.bio)}</textarea></label>
+      <div class="extras-row">
+        <label class="field"><span>Рост, см</span><input class="input" name="height" type="number" inputmode="numeric" min="100" max="250" placeholder="—" value="${me.height_cm ?? ""}"></label>
+        ${me.age_group === "teen" ? "" : `<label class="field"><span>Вес, кг</span><input class="input" name="weight" type="number" inputmode="numeric" min="30" max="250" placeholder="—" value="${me.weight_kg ?? ""}"></label>`}
+        <label class="field"><span>Знак</span><select class="input" name="zodiac"><option value="">—</option>${Object.entries(state.config.zodiac || {}).map(([k, l]) =>
+          `<option value="${k}" ${k === me.zodiac ? "selected" : ""}>${ZODIAC_SIGNS[k] || ""} ${esc(l)}</option>`).join("")}</select></label>
+      </div>
       <label class="field"><span>Искать в радиусе <b id="dist-val">${me.max_distance_km}</b> км</span>
         <input type="range" name="dist" min="1" max="300" value="${Math.min(me.max_distance_km, 300)}"></label>
       <button type="button" class="btn ghost" id="relocate">${icons.pin} Обновить геопозицию</button>
@@ -1593,6 +1736,36 @@ function renderSettings() {
       <div class="choice-grid" style="grid-template-columns:repeat(2,1fr)" role="radiogroup" aria-label="Язык">
         ${[["ru", "Русский"], ["en", "English"]].map(([k, l]) => `<button type="button" class="chip" data-lang="${k}" translate="no" aria-pressed="${getLang() === k}">${l}</button>`).join("")}
       </div>
+    </div>
+
+    <div class="section stack">
+      <h3>Чёрный список</h3>
+      <div class="stack" data-blocks><p class="muted small">Загрузка…</p></div>
+    </div>
+
+    <div class="section stack">
+      <h3>Ярлык на экране телефона</h3>
+      <p class="hint" style="margin-top:-4px">COFI откроется одним нажатием, как обычное приложение</p>
+      ${inTelegram && tgApp()?.addToHomeScreen ? `<button type="button" class="btn ghost" id="tg-home">${icons.phoneApp} Добавить ярлык из Telegram</button>` : ""}
+      ${inTelegram ? `<button type="button" class="btn ghost" id="open-browser">${icons.globe} Открыть COFI в браузере</button>` : ""}
+      <details class="soft-details">
+        <summary><span>iPhone и iPad (Safari)</span></summary>
+        <ol class="howto">
+          <li>Откройте COFI в Safari${inTelegram ? " (кнопка «Открыть COFI в браузере» выше)" : ""}</li>
+          <li>Нажмите «Поделиться» — квадрат со стрелкой вверх внизу экрана</li>
+          <li>Пролистайте вниз и выберите «На экран „Домой“»</li>
+          <li>Нажмите «Добавить» — значок COFI появится на рабочем столе</li>
+        </ol>
+      </details>
+      <details class="soft-details">
+        <summary><span>Android (Chrome)</span></summary>
+        <ol class="howto">
+          <li>Откройте COFI в Chrome${inTelegram ? " (кнопка «Открыть COFI в браузере» выше)" : ""}</li>
+          <li>Нажмите меню ⋮ в правом верхнем углу</li>
+          <li>Выберите «Добавить на главный экран» или «Установить приложение»</li>
+          <li>Подтвердите «Добавить» — значок COFI появится на рабочем столе</li>
+        </ol>
+      </details>
     </div>
 
     <div class="section stack">
@@ -1639,6 +1812,9 @@ function renderSettings() {
       ...pick,
     };
     if (form.tgnotify) data.tg_notifications = form.tgnotify.checked;
+    data.height_cm = Number(form.height.value) || 0;
+    if (form.weight) data.weight_kg = Number(form.weight.value) || 0;
+    data.zodiac = form.zodiac.value;
     try {
       state.me = await api.put("/api/profile", data);
       toast("Изменения сохранены");
@@ -1646,6 +1822,25 @@ function renderSettings() {
   };
 
   $("#tg-link", root)?.addEventListener("click", linkTelegram);
+  $("#tg-home", root)?.addEventListener("click", () => { try { tgApp().addToHomeScreen(); } catch { toast("Обновите Telegram или добавьте ярлык через браузер", { error: true }); } });
+  $("#open-browser", root)?.addEventListener("click", () => {
+    // Вне Telegram сайт откроется в обычном браузере (Chrome, Safari), войти можно через Telegram или почту
+    const url = location.origin + "/";
+    try { tgApp().openLink(url, { try_instant_view: false }); } catch { window.open(url, "_blank"); }
+  });
+
+  const drawBlocks = async () => {
+    const box = $("[data-blocks]", root);
+    let list = [];
+    try { list = await api.get("/api/blocks"); } catch { /* офлайн */ }
+    box.innerHTML = list.length ? list.map((u) => `<div class="block-row"><img class="avatar" src="${esc(u.photo_url || "")}" alt=""><b translate="no">${esc(u.name || "Без имени")}</b>
+      <button type="button" class="btn quiet" data-unblock="${u.id}">Разблокировать</button></div>`).join("")
+      : `<p class="muted small">Пусто. Заблокировать человека можно в его анкете или в меню чата</p>`;
+    $$("[data-unblock]", box).forEach((b) => (b.onclick = async () => {
+      try { await api.del(`/api/users/${b.dataset.unblock}/block`); toast("Разблокировано"); drawBlocks(); } catch (ex) { toast(ex.message, { error: true }); }
+    }));
+  };
+  drawBlocks();
 
   $("#relocate", root).onclick = async () => {
     try {

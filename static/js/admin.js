@@ -203,7 +203,7 @@ async function openUser(id) {
         <form class="row" data-birth style="margin-top:8px;gap:8px"><input class="input" type="date" name="d" value="${u.birth_date || ""}" style="padding:8px 10px;max-width:170px">
         <button class="btn quiet" style="min-height:38px;padding:0 14px;font-size:13px">Исправить и отметить проверенным</button></form></dd>
       <dt>Пол</dt><dd>${esc(u.gender_label || "—")}${u.show_identity === false ? ' <span class="muted small">(скрыт в анкете)</span>' : ""}</dd>
-      <dt>Ориентация</dt><dd>${esc(u.orientation_label || "—")}</dd>
+      <dt>Сексуальность</dt><dd>${esc(u.orientation_label || "—")}${u.show_orientation === false ? ' <span class="muted small">(скрыта в анкете)</span>' : ""}</dd>
       <dt>Кого ищет</dt><dd>${esc(u.looking_for_label || "—")}</dd>
       <dt>Цель</dt><dd>${tags(u.goals, "hot") || "—"}</dd>
       <dt>Интересы</dt><dd>${tags(u.interests) || "—"}</dd>

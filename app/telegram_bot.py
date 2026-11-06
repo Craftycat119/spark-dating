@@ -123,7 +123,11 @@ def _site_button() -> dict:
     url = settings.base_url
     if not url.startswith("https://") or "localhost" in url or "127.0.0.1" in url:
         return {}
-    return {"reply_markup": {"inline_keyboard": [[{"text": f"Открыть {settings.app_name}", "url": url}]]}}
+    # Первая кнопка — сайт в обычном браузере (Chrome, Safari), вторая — мини-приложение внутри Telegram
+    return {"reply_markup": {"inline_keyboard": [
+        [{"text": f"🌐 Открыть {settings.app_name} в браузере", "url": url}],
+        [{"text": f"Открыть {settings.app_name} в Telegram", "web_app": {"url": url.rstrip("/") + "/"}}],
+    ]}}
 
 
 def _reachable(url: str) -> bool:

@@ -56,8 +56,14 @@ class User(Base):
     age_confirmation: Mapped[str | None] = mapped_column(String(16))
     language: Mapped[str] = mapped_column(String(8), default="ru")
     gender: Mapped[str | None] = mapped_column(String(16))  # male | female | trans_male | trans_female
-    orientation: Mapped[str | None] = mapped_column(String(16))  # hetero | bi | pan | ace (только с 18 лет)
-    show_identity: Mapped[bool] = mapped_column(Boolean, default=True)  # показывать пол и ориентацию в анкете
+    orientation: Mapped[str | None] = mapped_column(String(16))  # сексуальность: hetero | bi | gay | lesbian | queer | ace | pan (с 18 лет)
+    show_identity: Mapped[bool] = mapped_column(Boolean, default=True)  # показывать пол в анкете
+    show_orientation: Mapped[bool] = mapped_column(Boolean, default=True)  # показывать сексуальность в анкете
+    # Необязательные поля анкеты
+    height_cm: Mapped[int | None] = mapped_column(Integer)
+    weight_kg: Mapped[int | None] = mapped_column(Integer)
+    zodiac: Mapped[str | None] = mapped_column(String(16))
+    extras_done: Mapped[bool] = mapped_column(Boolean, default=False)  # прошёл (или пропустил) шаги «рост, вес, знак»
     looking_for: Mapped[str | None] = mapped_column(String(16))  # male | female | any
     bio: Mapped[str] = mapped_column(Text, default="")
     interests_json: Mapped[str] = mapped_column(Text, default="[]")
@@ -302,6 +308,16 @@ class ActivityDay(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     day: Mapped[date] = mapped_column(Date, primary_key=True, index=True)
     visits: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class Block(Base):
+    """Чёрный список: blocked не может писать blocker'у, они не видят друг друга в ленте и чатах."""
+
+    __tablename__ = "blocks"
+
+    blocker_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    blocked_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Notification(Base):

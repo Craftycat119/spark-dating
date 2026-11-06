@@ -10,7 +10,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from .. import demo, push, storage
+from .. import blocks, demo, push, storage
 from ..config import settings
 from ..database import SessionLocal, get_db
 from ..deps import COOKIE_NAME, current_user, user_from_token
@@ -38,6 +38,8 @@ def get_conversation(db: Session, conv_id: int, user: User) -> Conversation:
         raise HTTPException(404, "Чат не найден")
     if conv.other(user.id).age_group != user.age_group:
         raise HTTPException(404, "Чат не найден")  # кто-то сменил возрастную группу: переписка закрыта
+    if blocks.between(db, user.id, conv.other(user.id).id):
+        raise HTTPException(404, "Чат недоступен")  # чёрный список: переписки не видно и писать нельзя
     return conv
 
 
@@ -64,8 +66,9 @@ def list_chats(user: User = Depends(current_user), db: Session = Depends(get_db)
         )
     ).unique().all()
     result = []
+    hidden = blocks.hidden_ids(db, user.id)
     for c in convs:
-        if c.other(user.id).age_group != user.age_group:
+        if c.other(user.id).age_group != user.age_group or c.other(user.id).id in hidden:
             continue
         last = db.scalar(select(Message).where(Message.conversation_id == c.id).order_by(Message.id.desc()).limit(1))
         unread = db.scalar(
@@ -193,7 +196,7 @@ def _peer(conv_id: int, user_id: int) -> tuple[int, bool] | None:
         if not conv or not conv.has(user_id) or not conv.active:
             return None
         other = conv.other(user_id)
-        if other.age_group != conv.other(other.id).age_group:
+        if other.age_group != conv.other(other.id).age_group or blocks.between(db, user_id, other.id):
             return None
         return other.id, other.is_bot
 

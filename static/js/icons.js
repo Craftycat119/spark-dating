@@ -39,4 +39,7 @@ export const icons = {
   headset: i("headset"),
   megaphone: i("megaphone"),
   moon: i("moon"),
+  block: i("prohibit"),
+  globe: i("globe"),
+  phoneApp: i("device-mobile"),
 };

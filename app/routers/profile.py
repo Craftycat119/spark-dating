@@ -16,7 +16,7 @@ from ..database import get_db
 from ..deps import current_user
 from ..ages import MIN_AGE, TEEN_GOALS, years_between
 from ..legal import TERMS_VERSION
-from ..interests import GENDERS, GOALS, INTERESTS, LOOKING_FOR, MIN_INTERESTS, ORIENTATIONS, TEEN_GENDERS, clean
+from ..interests import GENDERS, GOALS, INTERESTS, LOOKING_FOR, MIN_INTERESTS, ORIENTATIONS, ORIENTATIONS_BY_GENDER, TEEN_GENDERS, ZODIAC, clean
 from ..models import AnimalPost, Conversation, Message, User, UserPhoto, utcnow
 from ..serializers import own_profile
 
@@ -34,6 +34,11 @@ class ProfileIn(BaseModel):
     gender: str | None = None
     orientation: str | None = None
     show_identity: bool | None = None
+    show_orientation: bool | None = None
+    height_cm: int | None = Field(None, ge=0, le=260)  # 0 — убрать
+    weight_kg: int | None = Field(None, ge=0, le=300)
+    zodiac: str | None = None
+    extras_done: bool | None = None
     looking_for: str | None = None
     interests: list[str] | None = None
     goals: list[str] | None = None
@@ -99,13 +104,31 @@ def update_profile(data: ProfileIn, user: User = Depends(current_user), db: Sess
     if user.age_group == "teen" and user.gender not in (None, *TEEN_GENDERS):
         user.gender = None  # дату указали после пола: подросток выбирает пол заново
     if data.orientation is not None:
-        if data.orientation and data.orientation not in ORIENTATIONS:
-            raise HTTPException(422, "Неизвестная ориентация")
+        if data.orientation and data.orientation not in ORIENTATIONS_BY_GENDER.get(user.gender or "", ORIENTATIONS):
+            raise HTTPException(422, "Этот вариант сексуальности не подходит к выбранному полу")
         user.orientation = data.orientation or None
+    if user.orientation and user.orientation not in ORIENTATIONS_BY_GENDER.get(user.gender or "", ORIENTATIONS):
+        user.orientation = None  # сменили пол: «гей» / «лесби» могли перестать подходить
     if user.age_group == "teen":
-        user.orientation = None  # до 18 лет ориентацию не спрашиваем и не храним
+        user.orientation = None  # до 18 лет сексуальность не спрашиваем и не храним
     if data.show_identity is not None:
         user.show_identity = data.show_identity
+    if data.show_orientation is not None:
+        user.show_orientation = data.show_orientation
+    if data.height_cm is not None:
+        if data.height_cm and not 100 <= data.height_cm <= 250:
+            raise HTTPException(422, "Рост — от 100 до 250 см")
+        user.height_cm = data.height_cm or None
+    if data.weight_kg is not None:
+        if data.weight_kg and not 30 <= data.weight_kg <= 250:
+            raise HTTPException(422, "Вес — от 30 до 250 кг")
+        user.weight_kg = data.weight_kg or None
+    if data.zodiac is not None:
+        if data.zodiac and data.zodiac not in ZODIAC:
+            raise HTTPException(422, "Неизвестный знак зодиака")
+        user.zodiac = data.zodiac or None
+    if data.extras_done is not None:
+        user.extras_done = data.extras_done
     if data.looking_for is not None:
         if data.looking_for not in LOOKING_FOR:
             raise HTTPException(422, "Укажите, кого ищете")

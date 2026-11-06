@@ -14,7 +14,7 @@ from . import captcha, face_verify, telegram_bot
 from .config import BASE_DIR, settings
 from .ages import MIN_AGE, TEEN_GOALS
 from .legal import TERMS_VERSION
-from .interests import GENDERS, LOOKING_FOR, MIN_INTERESTS, ORIENTATIONS, SURVEY, TEEN_GENDERS
+from .interests import GENDERS, LOOKING_FOR, MIN_INTERESTS, ORIENTATIONS, ORIENTATIONS_BY_GENDER, SURVEY, TEEN_GENDERS, ZODIAC
 from .database import get_db, init_db
 from .deps import current_user
 from .models import Conversation, User
@@ -58,6 +58,7 @@ app.include_router(feed.notifications_router)
 app.include_router(chat.router)
 app.include_router(chat.ws_router)
 app.include_router(users.router)
+app.include_router(users.blocks_router)
 app.include_router(animals.router)
 app.include_router(support.router)
 app.include_router(admin.router)
@@ -75,6 +76,8 @@ def public_config():
         "genders": GENDERS,
         "teen_genders": TEEN_GENDERS,
         "orientations": ORIENTATIONS,
+        "orientations_by_gender": ORIENTATIONS_BY_GENDER,
+        "zodiac": ZODIAC,
         "looking_for": LOOKING_FOR,
         "min_interests": MIN_INTERESTS,
         "telegram_bot_username": telegram_bot.bot_username() if settings.telegram_bot_token else None,

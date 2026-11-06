@@ -775,3 +775,45 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .logo-mark { display: inline-block; width: 1.35em; height: 1.35em; margin-right: .35em; vertical-align: -0.32em; border-radius: 28%; background: url(/static/img/logo-64.png) center / contain no-repeat; }
 .hero3d .brand { display: inline-flex; align-items: center; }
 .hero3d .brand .logo-mark { width: 26px; height: 26px; margin-right: 7px; vertical-align: 0; }
+
+/* ---------- Пол и сексуальность: спокойный блок, без ярких плашек ---------- */
+.identity-box { display: flex; flex-direction: column; gap: 2px; padding: 6px 14px 10px; border-radius: var(--r-box); background: var(--surface); }
+.soft-details { border-bottom: 1px solid var(--line); }
+.soft-details:last-child { border-bottom: 0; }
+.soft-details summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; cursor: pointer; list-style: none; font-size: 15px; }
+.soft-details summary::-webkit-details-marker { display: none; }
+.soft-details summary::after { content: "›"; color: var(--muted); font-size: 20px; line-height: 1; transition: transform .2s var(--ease); }
+.soft-details[open] summary::after { transform: rotate(90deg); }
+.soft-details summary .muted { margin-left: auto; font-size: 14px; }
+.soft-details .hint { margin: 8px 0 12px; }
+.small-chips { gap: 6px; }
+.small-chips .chip { min-height: 36px; padding: 0 14px; font-size: 14px; }
+.switch.compact { padding: 10px 0; font-size: 15px; }
+.switch.compact input { width: 42px; height: 26px; }
+.switch.compact input::after { width: 18px; height: 18px; }
+.switch.compact input:checked::after { transform: translateX(16px); }
+.identity-box > .hint { margin-top: 2px; }
+.section .soft-details { background: var(--surface); border-radius: var(--r-box); padding: 0 16px; border: 0; }
+.howto { margin: 0 0 14px; padding-left: 20px; display: grid; gap: 6px; font-size: 14px; color: var(--text-soft); }
+
+/* Строка «Парень · Би · 182 см · Лев» в анкете */
+.about-line { margin-top: 10px; font-size: 14px; color: var(--muted); letter-spacing: .01em; }
+.profile-links { display: flex; gap: 22px; flex-wrap: wrap; }
+
+/* Рост, вес, знак зодиака */
+.big-value { display: flex; align-items: baseline; justify-content: center; gap: 8px; margin: 18px 0 4px; }
+.big-value b { font-size: 72px; line-height: 1; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
+.big-value span { font-size: 20px; color: var(--muted); }
+.big-range { width: 100%; accent-color: var(--orange); height: 32px; }
+.range-ends { display: flex; justify-content: space-between; margin-top: -4px; }
+.zodiac-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.chip.zodiac { flex-direction: column; justify-content: center; gap: 2px; min-height: 66px; padding: 6px 4px; font-size: 13px; }
+.chip.zodiac span { font-size: 22px; line-height: 1; }
+.extras-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 10px; }
+.extras-row select.input { padding-right: 8px; }
+
+/* Чёрный список */
+.block-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+.block-row .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: var(--surface-2); }
+.block-row b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bottom-sheet .btn .ph { margin-right: 6px; }
