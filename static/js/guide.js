@@ -31,7 +31,7 @@ function miniPets() {
       <div class="pet-body"><h2 class="pet-name">${p.name}</h2><p class="muted small">${p.meta}</p>
         ${p.goal ? `<p class="pet-goal">Цель сбора: <b>${p.goal}</b></p>` : ""}<p class="pet-desc">${p.text}</p></div></article>`;
   return `
-    <div class="topbar"><span class="logo"><i class="logo-mark" aria-hidden="true"></i>cofi<span>°</span></span></div>
+    <div class="topbar"><span class="logo">cofi<span>°</span></span></div>
     <div class="feed-tabs"><a>Знакомства</a><a class="on">${icons.paw} Питомцы</a></div>
     <div class="pet-stage">${card(PETS[0])}</div>
     <div class="pet-nav"><span class="icon-btn">${icons.back}</span><span class="btn help-btn fake-help">${icons.heart} Помочь</span><span class="icon-btn flip">${icons.back}</span></div>
@@ -45,7 +45,7 @@ const wait = (ms, token) => new Promise((res, rej) => setTimeout(() => (token.st
 
 function miniPerson(p) {
   return `
-    <div class="topbar"><span class="logo"><i class="logo-mark" aria-hidden="true"></i>cofi<span>°</span></span><span class="counter">2 из 10 рядом</span></div>
+    <div class="topbar"><span class="logo">cofi<span>°</span></span><span class="counter">2 из 10 рядом</span></div>
     <article class="person enter">
       <div class="ava" data-ava>${esc(p.name.charAt(0))}</div>
       <div class="pname">${esc(p.name)}<span>, ${p.age}</span></div>
@@ -206,7 +206,7 @@ export function renderGuide(main, { loggedIn, onDemo, calls = false }) {
   main.innerHTML = `
     <div class="guide-top">
       <a class="icon-btn" href="#/${loggedIn ? "settings" : ""}" aria-label="Назад">${icons.back}</a>
-      <span class="logo"><i class="logo-mark" aria-hidden="true"></i>cofi<span>°</span></span>
+      <span class="logo">cofi<span>°</span></span>
       <span style="width:44px"></span>
     </div>
     <h1 class="guide-title">Как пользоваться</h1>

@@ -1053,7 +1053,7 @@ const kmText = (km) => (km == null ? "" : km < 1 ? "меньше 1 км от в�
 
 async function renderFeed() {
   const root = screen(`
-    <div class="topbar"><span class="row" style="gap:8px"><span class="logo"><i class="logo-mark" aria-hidden="true"></i>cofi<span>°</span></span>${state.me.is_demo ? '<span class="demo-pill">демо</span>' : ""}</span><span class="counter"></span></div>
+    <div class="topbar"><span class="row" style="gap:8px"><span class="logo">cofi<span>°</span></span>${state.me.is_demo ? '<span class="demo-pill">демо</span>' : ""}</span><span class="counter"></span></div>
     ${feedTabs("people", state.me)}
     <div class="deck" aria-live="polite"><div class="skeleton" style="position:relative;height:420px"></div></div>
     <p class="swipe-hint" hidden>Свайп по нитке вниз: нравится, вверх: дальше. Нажмите на фото, чтобы открыть анкету</p>
