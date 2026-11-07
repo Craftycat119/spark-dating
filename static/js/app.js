@@ -9,7 +9,7 @@ import { renderGuide } from "./guide.js";
 import { feedTabs, renderAnimals } from "./animals.js";
 import { takePhoto } from "./camera.js";
 import { mountCaptcha } from "./captcha.js";
-import { renderTerms } from "./terms.js";
+import { LEGAL_DOCS, renderTerms } from "./terms.js";
 import { renderAds, renderSupportHub, renderThread, reportUser } from "./support.js";
 import { currentHash, navigate, onRoute } from "./router.js";
 import { getThemePref, resolvedTheme, setTheme } from "./theme.js";
@@ -215,6 +215,7 @@ function route() {
   const page = currentHash().split("/")[1];
   if (page === "guide") return showGuide();
   if (page === "terms") return renderTerms({ screen, go });
+  if (page === "legal") return renderTerms({ screen, go, doc: currentHash().split("/")[2] });
   if (page === "ads") return renderAds({ screen, go, loggedIn: !!state.me });
   if (!state.me) { const m = nextAuthMode; nextAuthMode = "login"; return renderAuth(m); }
   const step = onboardingStep(state.me);
@@ -287,7 +288,7 @@ function startDemo() {
       <h2>Какое демо открыть</h2>
       <p class="muted">Подростки и взрослые в COFI никогда не пересекаются, поэтому ленты разные.</p>
       <button class="row-link" data-age="adult"><span><b>Мне 18 или больше</b><br><span class="muted small">Знакомства и питомцы, 10 анкет</span></span>${icons.arrow}</button>
-      <button class="row-link" data-age="teen"><span><b>Мне 12–17</b><br><span class="muted small">Лента «Дружба», 6 анкет</span></span>${icons.arrow}</button>
+      <button class="row-link" data-age="teen"><span><b>Мне 14–17</b><br><span class="muted small">Лента «Дружба», 6 анкет</span></span>${icons.arrow}</button>
       <button class="btn ghost block" data-close>Отмена</button>
     </div></div>`);
   $("[data-close]", el).onclick = () => el.remove();
@@ -328,7 +329,7 @@ function renderAuth(mode = "login") {
         <div data-captcha></div>
         <p class="error-text" id="auth-error" hidden></p>
         <button class="btn block" type="submit">${mode === "login" ? "Войти" : "Создать аккаунт"}</button>
-        ${mode === "register" ? `<p class="auth-legal">Знакомства в COFI с 18 лет, с 12 до 17 доступна только «Дружба». Создавая аккаунт, вы принимаете <a href="#/terms" data-terms>Пользовательское соглашение</a></p>` : ""}
+        ${mode === "register" ? `<p class="auth-legal">COFI в режиме бесплатного тестирования. Знакомства с 18 лет, с 14 до 17 только «Дружба». Создавая аккаунт, вы принимаете <a href="#/legal/terms" data-doc="terms">Пользовательское соглашение</a> и <a href="#/legal/rules" data-doc="rules">Правила</a></p>` : ""}
         ${mode === "login" ? `<button type="button" class="link" id="forgot" style="align-self:flex-start">Забыли пароль?</button>` : ""}
       </form>
       <div class="divider">или</div>
@@ -639,7 +640,7 @@ function ageOf(birth) {
 function ageConsentText(birth) {
   const age = ageOf(birth);
   if (age !== null && age < 18) {
-    return "Мне от 12 до 17 лет. Мои родители или законные представители знают о регистрации и согласны. Мне будет доступна только лента «Дружба»";
+    return "Мне от 14 до 17 лет. Мой законный представитель ознакомлен с документами COFI и согласен с регистрацией. Мне будет доступна только лента «Дружба»";
   }
   return "Подтверждаю, что мне исполнилось 18 лет";
 }
@@ -674,6 +675,8 @@ function identityFields(box, pick, age) {
             `<button type="button" class="chip" data-name="orientation" data-value="${k}" aria-pressed="${k === pick.orientation}">${esc(l)}</button>`).join("")}</div>
           <p class="hint">Необязательно. Нажмите ещё раз, чтобы снять выбор</p>
         </details>` : ""}
+        ${withSexuality && pick.orientation && !state.me.consent_sexuality ? `<label class="check consent small"><input type="checkbox" data-sex-consent ${pick.consent_sexuality ? "checked" : ""}>
+          <span>Даю <a href="#/legal/sexuality" data-doc="sexuality">согласие на обработку сведений о сексуальности</a></span></label>` : ""}
         <label class="switch compact"><input type="checkbox" data-show="show_identity" ${pick.show_identity !== false ? "checked" : ""}>
           <span class="label">Показывать пол в анкете</span></label>
         ${withSexuality ? `<label class="switch compact"><input type="checkbox" data-show="show_orientation" ${pick.show_orientation !== false ? "checked" : ""}>
@@ -688,6 +691,7 @@ function identityFields(box, pick, age) {
     }));
     $("details", box)?.addEventListener("toggle", (e) => (e.target.open ? (box.dataset.open = "1") : delete box.dataset.open));
     $$("[data-show]", box).forEach((x) => (x.onchange = () => (pick[x.dataset.show] = x.checked)));
+    $("[data-sex-consent]", box)?.addEventListener("change", (e) => (pick.consent_sexuality = e.target.checked));
   };
   draw();
 }
@@ -800,10 +804,12 @@ function stepAbout() {
       <h1>Знакомимся</h1>
       <label class="field"><span>Имя</span><input class="input" name="name" maxlength="64" value="${esc(me.name)}" autocomplete="given-name" required></label>
       <label class="field"><span>Дата рождения</span><input class="input" name="birth" type="date" value="${me.birth_date ?? ""}" ${me.birth_date ? "disabled" : ""} required max="${new Date().toISOString().slice(0, 10)}"></label>
-      <p class="hint">COFI доступен с 12 лет. До 18 лет доступна только лента «Дружба». Дату нельзя будет изменить самостоятельно.</p>
+      <p class="hint">COFI доступен с 14 лет. До 18 лет доступна только лента «Дружба». Дату нельзя будет изменить самостоятельно.</p>
+      <p class="legal-note small">COFI работает в режиме бесплатного некоммерческого тестирования.</p>
       <div class="consent">
         <label class="check"><input type="checkbox" name="confirm_age" ${me.terms_accepted ? "checked" : ""}><span data-age-text>${ageConsentText(me.birth_date)}</span></label>
-        <label class="check"><input type="checkbox" name="accept_terms" ${me.terms_accepted ? "checked" : ""}><span>Я прочитал(а) и принимаю <a href="#/terms" data-terms>Пользовательское соглашение</a>, включая согласие на обработку персональных данных и фото лица для проверки</span></label>
+        <label class="check"><input type="checkbox" name="accept_terms" ${me.terms_accepted ? "checked" : ""}><span>Принимаю <a href="#/legal/terms" data-doc="terms">Пользовательское соглашение</a> и <a href="#/legal/rules" data-doc="rules">Правила сообщества</a>, ознакомлен(а) с <a href="#/legal/privacy" data-doc="privacy">Политикой обработки персональных данных</a></span></label>
+        <label class="check"><input type="checkbox" name="consent_pd" ${me.terms_accepted ? "checked" : ""}><span>Даю <a href="#/legal/consent" data-doc="consent">согласие на обработку персональных данных</a></span></label>
       </div>
       <p class="error-text" hidden></p>
       <button class="btn block">Дальше</button>
@@ -819,12 +825,13 @@ function stepAbout() {
     if (!f.name.value.trim()) return fail("Укажите имя");
     if (!f.birth.value) return fail("Укажите дату рождения");
     const age = ageOf(f.birth.value);
-    if (age < 12) return fail("COFI доступен с 12 лет");
+    if (age < 14) return fail("COFI доступен с 14 лет");
     if (!f.confirm_age.checked) return fail(age >= 18 ? "Подтвердите, что вам есть 18 лет" : "Нужно согласие родителя или законного представителя");
-    if (!f.accept_terms.checked) return fail("Чтобы продолжить, примите Пользовательское соглашение");
+    if (!f.accept_terms.checked) return fail("Чтобы продолжить, примите Пользовательское соглашение и Правила");
+    if (!f.consent_pd.checked) return fail("Чтобы продолжить, дайте согласие на обработку персональных данных");
     if (!state.me.birth_date && !(await confirmDialog(`Вам ${age} ${plural(age, "год", "года", "лет")}? Дату рождения потом нельзя будет изменить самостоятельно`, "Да, всё верно"))) return;
     try {
-      const data = { name: f.name.value, confirm_age: true, accept_terms: true };
+      const data = { name: f.name.value, confirm_age: true, accept_terms: true, consent_pd: true };
       if (!state.me.birth_date) data.birth_date = f.birth.value;
       state.me = await api.put("/api/profile", data);
       nextStep();
@@ -962,6 +969,7 @@ function stepScan() {
       <p class="muted">Камера покажет овал. Держите лицо в нём и следуйте подсказкам: смотрите прямо, затем поверните голову влево и вправо. Это защищает от чужих фото.</p>
       <div class="profile-hero"><img src="${esc(state.me.photo_url)}" alt="Ваше фото"><p class="small muted">Сверяем с этим фото</p></div>
       <div id="scan-area"></div>
+      ${state.me.consent_bio ? "" : `<label class="check consent" data-bio><input type="checkbox" name="consent_bio"><span>Даю <a href="#/legal/biometric" data-doc="biometric">согласие на обработку биометрических персональных данных</a> (изображение лица) для проверки фото и ручной проверки при жалобах</span></label>`}
       <p class="error-text" id="scan-error" hidden></p>
       <button class="btn block" id="start">${icons.shield} Начать проверку</button>
       <button class="btn ghost block" id="change">Выбрать другое фото</button>
@@ -971,10 +979,13 @@ function stepScan() {
   const startBtn = $("#start", root);
   const err = $("#scan-error", root);
   startBtn.onclick = async () => {
+    const bio = $("[name=consent_bio]", root);
+    if (bio && !bio.checked) { err.textContent = "Для проверки нужно согласие на обработку биометрических данных"; err.hidden = false; return; }
+    if (bio) $("[data-bio]", root).hidden = true;
     startBtn.hidden = true;
     err.hidden = true;
     $(".profile-hero", root).hidden = true;
-    const res = await runScanner($("#scan-area", root));
+    const res = await runScanner($("#scan-area", root), { consent: true });
     if (res.ok) {
       toast("Фото подтверждено");
       return nextStep();
@@ -1814,12 +1825,15 @@ function renderSettings() {
     <div class="section stack">
       <a class="row-link" href="#/guide"><span><b>Как пользоваться</b><br><span class="muted small">${state.config.calls_enabled ? "Жесты, пары, чат и звонки" : "Жесты, пары и чат"}</span></span>${icons.arrow}</a>
       <a class="row-link" href="#/support"><span><b>Поддержка</b><br><span class="muted small">Помощь, жалобы и предложения</span></span>${icons.headset}</a>
-      <a class="row-link" href="#/terms" data-terms><span><b>Пользовательское соглашение</b><br><span class="muted small">Правила, возраст, персональные данные</span></span>${icons.arrow}</a>
+      <details class="soft-details docs-list">
+        <summary><span><b>Документы</b><br><span class="muted small">Соглашение, правила, персональные данные</span></span></summary>
+        ${LEGAL_DOCS.map((d) => `<a class="doc-link" href="#/legal/${d.key}" data-doc="${d.key}">${d.title}</a>`).join("")}
+      </details>
     </div>
 
     <a class="section ad-offer" href="#/ads">
       <span class="ad-offer-icon">${icons.megaphone}</span>
-      <span><b>Реклама в COFI</b><br>Нативные карточки в ленте, баннеры в чатах и благотворительные спецпроекты с лентой «Питомцы». Помощник расскажет об условиях.</span>
+      <span><b>Реклама в COFI</b><br>Во время тестирования реклама не размещается. Можно оставить контакт для будущего сотрудничества.</span>
       ${icons.arrow}
     </a>
 

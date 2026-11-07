@@ -813,3 +813,15 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .block-row .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: var(--surface-2); }
 .block-row b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bottom-sheet .btn .ph { margin-right: 6px; }
+
+/* Документы и согласия */
+.legal-note { padding: 12px 14px; border-radius: 16px; background: var(--surface-2); color: var(--text-soft); font-size: 14px; line-height: 1.45; }
+.legal-note.small { font-size: 13px; padding: 10px 12px; }
+.terms .legal-note { margin: 12px 0 18px; }
+.terms-docs { display: flex; flex-direction: column; gap: 8px; margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--line); }
+.terms-docs h2 { margin: 0 0 4px; }
+.docs-list { padding: 0 18px !important; }
+.docs-list summary { padding: 16px 0; }
+.doc-link { display: block; padding: 12px 0; border-top: 1px solid var(--line); color: var(--text); text-decoration: none; font-size: 15px; }
+.doc-link:last-child { margin-bottom: 6px; }
+.check.consent { font-size: 14px; }

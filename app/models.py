@@ -52,8 +52,12 @@ class User(Base):
     # Согласие с Пользовательским соглашением и подтверждение возраста при регистрации
     terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime)
     terms_version: Mapped[str | None] = mapped_column(String(16))
-    # "adult" — подтвердил, что ему есть 18; "guardian" — 12–17 лет, подтвердил согласие родителя
+    # "adult" — подтвердил, что ему есть 18; "guardian" — 14–17 лет, подтвердил согласие родителя
     age_confirmation: Mapped[str | None] = mapped_column(String(16))
+    consent_pd_at: Mapped[datetime | None] = mapped_column(DateTime)  # согласие на обработку персональных данных
+    consent_bio_at: Mapped[datetime | None] = mapped_column(DateTime)  # согласие на биометрию (проверка лица)
+    consent_sexuality_at: Mapped[datetime | None] = mapped_column(DateTime)  # согласие на сведения о сексуальности
+    consent_ip: Mapped[str | None] = mapped_column(String(64))  # с какого адреса приняты документы
     language: Mapped[str] = mapped_column(String(8), default="ru")
     gender: Mapped[str | None] = mapped_column(String(16))  # male | female | nonbinary
     orientation: Mapped[str | None] = mapped_column(String(16))  # сексуальность: hetero | bi | gay | lesbian | queer | ace | pan (с 18 лет)

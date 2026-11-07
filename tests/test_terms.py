@@ -9,17 +9,17 @@ def test_terms_and_age_confirmation_required():
     c = new_client()
     register(c, "t@x.io")
     base = {"name": "Аня", "birth_date": birth_for_age(25).isoformat(), "gender": "female", "looking_for": "any"}
-    assert c.put("/api/profile", json={**base, "accept_terms": True, "confirm_age": False}).status_code == 422
-    assert c.put("/api/profile", json={**base, "accept_terms": False, "confirm_age": True}).status_code == 422
-    me = c.put("/api/profile", json={**base, "accept_terms": True, "confirm_age": True}).json()
+    assert c.put("/api/profile", json={**base, "accept_terms": True, "consent_pd": True, "confirm_age": False}).status_code == 422
+    assert c.put("/api/profile", json={**base, "accept_terms": False, "consent_pd": True, "confirm_age": True}).status_code == 422
+    me = c.put("/api/profile", json={**base, "accept_terms": True, "consent_pd": True, "confirm_age": True}).json()
     assert me["terms_accepted"] and me["age_confirmation"] == "adult"
 
 
 def test_teen_confirms_guardian_consent():
     c = new_client()
     register(c, "kid@x.io")
-    me = c.put("/api/profile", json={"name": "Миша", "birth_date": birth_for_age(13).isoformat(), "gender": "male",
-                                     "looking_for": "any", "accept_terms": True, "confirm_age": True}).json()
+    me = c.put("/api/profile", json={"name": "Миша", "birth_date": birth_for_age(15).isoformat(), "gender": "male",
+                                     "looking_for": "any", "accept_terms": True, "consent_pd": True, "confirm_age": True}).json()
     assert me["age_confirmation"] == "guardian"
 
 
@@ -48,3 +48,20 @@ def test_old_database_gets_new_columns(tmp_path, monkeypatch):
     assert {"terms_accepted_at", "terms_version", "age_confirmation", "is_demo", "birth_date"} <= cols
     with eng.connect() as conn:
         assert conn.exec_driver_sql("SELECT name, is_demo FROM users").fetchone() == ("Старый", 0)
+
+
+def test_separate_consents_and_min_age_14():
+    c = new_client()
+    register(c, "young@x.io")
+    assert c.put("/api/profile", json={"name": "Петя", "birth_date": birth_for_age(13).isoformat()}).status_code == 422
+    base = {"name": "Аня", "birth_date": birth_for_age(25).isoformat(), "accept_terms": True, "confirm_age": True}
+    c2 = new_client()
+    register(c2, "pd@x.io")
+    assert c2.put("/api/profile", json=base).status_code == 422  # без согласия на обработку ПДн
+    assert c2.put("/api/profile", json={**base, "consent_pd": True}).json()["terms_accepted"]
+    # проверка лица без согласия на биометрию не запускается
+    c2.post("/api/profile/photo", files={"file": ("a.jpg", __import__("conftest").jpeg_bytes(), "image/jpeg")})
+    frames = {"frames": {"center": "data:image/jpeg;base64,AAAA"}}
+    assert c2.post("/api/profile/verify-face", json=frames).status_code == 422
+    r = c2.post("/api/profile/verify-face", json={**frames, "consent": True}).json()
+    assert r["ok"] and r["profile"]["consent_bio"]

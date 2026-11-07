@@ -32,6 +32,8 @@ def own_profile(user: User) -> dict:
         "age_verified": user.age_verified,
         "terms_accepted": bool(user.terms_accepted_at) and user.terms_version == TERMS_VERSION,
         "age_confirmation": user.age_confirmation,
+        "consent_bio": bool(user.consent_bio_at),
+        "consent_sexuality": bool(user.consent_sexuality_at),
         "language": user.language,
         "bio": user.bio,
         "gender": user.gender,

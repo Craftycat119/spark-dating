@@ -102,7 +102,7 @@ function ownProfile(u) {
   return {
     id: u.id, email: u.email || null, email_verified: true, email_notifications: false,
     auth_provider: u.provider || (u.is_demo ? "demo" : "email"), telegram_username: u.telegram_username || null, name: u.name, age: years(u), birth_date: u.birth_date || null, age_group: group(u),
-    age_verified: false, terms_accepted: u.terms_accepted ?? !(u.email || u.provider === "telegram"), age_confirmation: u.age_confirmation || null, language: "ru", bio: u.bio, gender: u.gender, orientation: u.orientation || null, show_identity: u.show_identity !== false, show_orientation: u.show_orientation !== false, height_cm: u.height_cm || null, weight_kg: u.weight_kg || null, zodiac: u.zodiac || null, extras_done: !!u.extras_done, looking_for: u.looking_for,
+    age_verified: false, terms_accepted: u.terms_accepted ?? !(u.email || u.provider === "telegram"), age_confirmation: u.age_confirmation || null, language: "ru", bio: u.bio, gender: u.gender, orientation: u.orientation || null, show_identity: u.show_identity !== false, show_orientation: u.show_orientation !== false, height_cm: u.height_cm || null, weight_kg: u.weight_kg || null, zodiac: u.zodiac || null, extras_done: !!u.extras_done, consent_bio: !!u.consent_bio, consent_sexuality: !!u.consent_sexuality, looking_for: u.looking_for,
     interests: u.interests, goals: u.goals, survey_done: u.interests.length >= DATA.min_interests && u.goals.length > 0,
     photo_url: u.photo_url, photos: u.photos, photo_verified: u.photo_verified, has_location: true,
     max_distance_km: u.max_distance_km, is_admin: false, is_complete: isComplete(u), is_demo: true,
@@ -303,6 +303,7 @@ route("PUT", "/api/profile", (b) => {
   }
   if (b.accept_terms !== undefined || b.confirm_age !== undefined) {
     if (!b.accept_terms) deny(422, "Чтобы продолжить, примите Пользовательское соглашение");
+    if (!b.consent_pd) deny(422, "Чтобы продолжить, дайте согласие на обработку персональных данных");
     if (!b.confirm_age) deny(422, group(u) === "adult" ? "Подтвердите возраст" : "Нужно согласие родителя или законного представителя");
     u.terms_accepted = true;
     u.age_confirmation = group(u) === "adult" ? "adult" : "guardian";
@@ -312,6 +313,8 @@ route("PUT", "/api/profile", (b) => {
     if (group(u) === "teen" && !(b.gender in DATA.teen_genders)) deny(422, "В ленте «Дружба» можно выбрать «Парень» или «Девушка»");
     u.gender = b.gender;
   }
+  if (b.consent_sexuality) u.consent_sexuality = true;
+  if (b.orientation && b.orientation !== u.orientation && !u.consent_sexuality && group(u) !== "teen") deny(422, "Чтобы указать сексуальность, дайте согласие на обработку этих сведений");
   if (b.orientation !== undefined && b.orientation !== null) {
     if (b.orientation && !(DATA.orientations_by_gender[u.gender] || []).includes(b.orientation)) deny(422, "Этот вариант сексуальности не подходит к выбранному полу");
     u.orientation = group(u) === "teen" ? null : b.orientation || null;
@@ -358,7 +361,13 @@ route("DELETE", "/api/profile/photos/(\\d+)", (_, [pid]) => {
   save();
   return ownProfile(u);
 });
-route("POST", "/api/profile/verify-face", () => ({ ok: true, score: 1, reason: "", profile: ownProfile(requireMe()) }));
+route("POST", "/api/profile/verify-face", (b) => {
+  const u = requireMe();
+  if (b && b.consent) u.consent_bio = true;
+  if (!u.consent_bio && !u.is_demo) deny(422, "Для проверки нужно согласие на обработку биометрических данных");
+  save();
+  return { ok: true, score: 1, reason: "", profile: ownProfile(u) };
+});
 route("POST", "/api/profile/location", () => ({ status: "ok" }));
 route("DELETE", "/api/profile", () => { S = fresh(); save(); return { status: "deleted" }; });
 

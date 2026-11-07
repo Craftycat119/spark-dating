@@ -21,7 +21,7 @@ function grab(video) {
 }
 
 /** Показывает сканер внутри root. Возвращает {ok, reason, profile}. */
-export async function runScanner(root) {
+export async function runScanner(root, { consent = false } = {}) {
   const el = h(`<div class="stack">
     <div class="scanner">
       <video playsinline muted autoplay></video>
@@ -72,7 +72,7 @@ export async function runScanner(root) {
   instruction.textContent = "Сверяем лицо с фото…";
   oval.className = "oval active";
   try {
-    const res = await api.post("/api/profile/verify-face", { frames });
+    const res = await api.post("/api/profile/verify-face", { frames, consent });
     oval.className = res.ok ? "oval ok" : "oval";
     instruction.textContent = res.ok ? "Готово, это вы" : "Не получилось";
     return res;

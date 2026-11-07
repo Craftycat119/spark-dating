@@ -5,7 +5,7 @@ import logging
 import shutil
 from datetime import date
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from .. import face_verify, feed_index, storage, telegram_bot
 from ..config import settings
 from ..database import get_db
-from ..deps import current_user
+from ..deps import client_ip, current_user
 from ..ages import MIN_AGE, TEEN_GOALS, years_between
 from ..legal import TERMS_VERSION
 from ..interests import GENDERS, GOALS, INTERESTS, LOOKING_FOR, MIN_INTERESTS, ORIENTATIONS, ORIENTATIONS_BY_GENDER, TEEN_GENDERS, ZODIAC, clean
@@ -47,11 +47,14 @@ class ProfileIn(BaseModel):
     max_distance_km: int | None = None
     language: str | None = None
     accept_terms: bool | None = None  # отметил «Принимаю Пользовательское соглашение»
-    confirm_age: bool | None = None  # отметил «Мне есть 18» (или «Родитель согласен» для 12–17 лет)
+    consent_pd: bool | None = None  # отдельное согласие на обработку персональных данных
+    consent_sexuality: bool | None = None  # отдельное согласие на сведения о сексуальности
+    confirm_age: bool | None = None  # отметил «Мне есть 18» (или «Родитель согласен» для 14–17 лет)
 
 
 class FramesIn(BaseModel):
     frames: dict[str, str]
+    consent: bool = False  # отметил согласие на обработку биометрических данных
 
 
 class LocationIn(BaseModel):
@@ -65,7 +68,7 @@ def get_profile(user: User = Depends(current_user)):
 
 
 @router.put("")
-def update_profile(data: ProfileIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def update_profile(data: ProfileIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
     if data.name is not None:
         name = data.name.strip()
         if not name:
@@ -89,7 +92,10 @@ def update_profile(data: ProfileIn, user: User = Depends(current_user), db: Sess
             raise HTTPException(422, "Чтобы продолжить, примите Пользовательское соглашение")
         if not data.confirm_age:
             raise HTTPException(422, "Подтвердите возраст" if user.age_group == "adult" else "Нужно согласие родителя или законного представителя")
-        user.terms_accepted_at = utcnow()
+        if not data.consent_pd:
+            raise HTTPException(422, "Чтобы продолжить, дайте согласие на обработку персональных данных")
+        user.terms_accepted_at = user.consent_pd_at = utcnow()
+        user.consent_ip = client_ip(request)
         user.terms_version = TERMS_VERSION
         user.age_confirmation = "adult" if user.age_group == "adult" else "guardian"
     if data.language in ("ru", "en"):
@@ -104,7 +110,11 @@ def update_profile(data: ProfileIn, user: User = Depends(current_user), db: Sess
         user.gender = data.gender
     if user.age_group == "teen" and user.gender not in (None, *TEEN_GENDERS):
         user.gender = None  # дату указали после пола: подросток выбирает пол заново
+    if data.consent_sexuality:
+        user.consent_sexuality_at = user.consent_sexuality_at or utcnow()
     if data.orientation is not None:
+        if data.orientation and data.orientation != user.orientation and not user.consent_sexuality_at and user.age_group != "teen":
+            raise HTTPException(422, "Чтобы указать сексуальность, дайте согласие на обработку этих сведений")
         if data.orientation and data.orientation not in ORIENTATIONS_BY_GENDER.get(user.gender or "", ORIENTATIONS):
             raise HTTPException(422, "Этот вариант сексуальности не подходит к выбранному полу")
         user.orientation = data.orientation or None
@@ -223,6 +233,10 @@ def delete_photo(photo_id: int, user: User = Depends(current_user), db: Session 
 def verify_face(data: FramesIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
     if not user.photo_path:
         raise HTTPException(400, "Сначала загрузите фото")
+    if data.consent and not user.consent_bio_at:
+        user.consent_bio_at = utcnow()
+    if not user.consent_bio_at:
+        raise HTTPException(422, "Для проверки нужно согласие на обработку биометрических данных")
     hit(f"face:{user.id}", 20, 600)
     if len(data.frames) > 6 or any(len(v) > 3_000_000 for v in data.frames.values()):
         raise HTTPException(413, "Слишком большие кадры")

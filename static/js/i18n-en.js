@@ -3,6 +3,18 @@
 const w = (x) => EN[x] ?? x;
 
 export const EN = {
+  // документы и согласия
+  "Мне от 14 до 17 лет. Мой законный представитель ознакомлен с документами COFI и согласен с регистрацией. Мне будет доступна только лента «Дружба»": "I am 14 to 17. My legal guardian has read COFI's documents and agrees to my sign-up. Only the Friends feed will be available to me",
+  "COFI в режиме бесплатного тестирования. Знакомства с 18 лет, с 14 до 17 только «Дружба». Создавая аккаунт, вы принимаете": "COFI is in free beta. Dating is 18+, ages 14–17 get Friends only. By creating an account you accept the",
+  "COFI работает в режиме бесплатного некоммерческого тестирования.": "COFI is in a free non-commercial beta.",
+  "Принимаю": "I accept the", "Правила сообщества": "Community Rules", "Правила": "Rules", "ознакомлен(а) с": "and have read the",
+  "Политикой обработки персональных данных": "Privacy Policy", "Даю": "I give",
+  "согласие на обработку персональных данных": "consent to personal data processing",
+  "согласие на обработку биометрических персональных данных": "consent to biometric data processing",
+  "(изображение лица) для проверки фото и ручной проверки при жалобах": "(face images) for photo checks and manual review of reports",
+  "согласие на обработку сведений о сексуальности": "consent to processing of my sexuality",
+  "Документы": "Documents", "Соглашение, правила, персональные данные": "Terms, rules, personal data",
+  "Во время тестирования реклама не размещается. Можно оставить контакт для будущего сотрудничества.": "No ads are shown during the beta. You can leave a contact for future cooperation.",
   // пол, сексуальность, рост/вес/знак, чёрный список, ярлык
   "Пол": "Gender", "Небинар": "Non-binary", "Сексуальность": "Sexuality", "не указана": "not set",
   "Гетеро": "Straight", "Би": "Bi", "Гей": "Gay", "Лесби": "Lesbian", "Квир": "Queer", "Асексуал": "Asexual", "Пансексуал": "Pansexual",
@@ -44,7 +56,7 @@ export const EN = {
   "Знакомимся": "Let's get to know you", "Имя": "Name", "Дата рождения": "Date of birth", "Я": "I am", "Кого ищу": "Looking for",
   "Коротко о себе": "About you", "Дальше": "Next", "Назад": "Back", "Готово": "Done", "Отмена": "Cancel",
   "Например: варю фильтр-кофе, по субботам бегаю в парке": "For example: I brew filter coffee and run in the park on Saturdays",
-  "COFI доступен с 12 лет. До 18 лет доступна только лента «Дружба». Дату нельзя будет изменить самостоятельно.":
+  "COFI доступен с 14 лет. До 18 лет доступна только лента «Дружба». Дату нельзя будет изменить самостоятельно.":
     "COFI is for ages 12 and up. Under 18 only the Friends feed is available. You can't change this date yourself later.",
   "Укажите дату рождения": "Enter your date of birth", "Выберите пол и кого ищете": "Choose your gender and who you're looking for",
   "Парень": "Guy", "Девушка": "Girl", "Парня": "A guy", "Девушку": "A girl", "Всех": "Everyone",
@@ -223,7 +235,7 @@ export const EN = {
   "Свайп по нитке вниз: нравится": "Swipe the thread down: like", "Свайп по нитке вверх: дальше": "Swipe the thread up: skip",
   "Или кнопка с крестиком. Остальную часть экрана, включая фото, можно спокойно листать пальцем: на анкету это не отвечает. На компьютере работают стрелки ↓ и ↑.":
     "Or the cross button. You can scroll the rest of the screen, photo included, freely, it won't answer the profile. On a computer use the ↓ and ↑ keys.", "Демо": "Demo",
-  "Мне 12–17": "I'm 12–17", "Знакомства и питомцы, 10 анкет": "Dating and pets, 10 profiles", "Лента «Дружба», 6 анкет": "Friends feed, 6 profiles",
+  "Мне 14–17": "I'm 14–17", "Знакомства и питомцы, 10 анкет": "Dating and pets, 10 profiles", "Лента «Дружба», 6 анкет": "Friends feed, 6 profiles",
   "Это демо ленты «Дружба»: свайп по нитке вниз, чтобы добавить в друзья": "This is the Friends demo: swipe the thread down to add a friend",
   "Нативные карточки в ленте, баннеры в чатах и благотворительные спецпроекты с лентой «Питомцы». Помощник расскажет об условиях.":
     "Native cards in the feed, banners in chats and charity projects with the Pets feed. The assistant will explain the terms.",
@@ -234,8 +246,8 @@ export const EN = {
   "Подробная карточка": "Full details",
   "Нажмите на объявление: все фото, полное описание, цель сбора и сколько человек уже откликнулось. Объявления проверяет и добавляет администрация COFI.":
     "Tap a post: all photos, the full description, the fundraising goal and how many people responded. Posts are checked and added by the COFI team.",
-  "Указывается один раз и сама не меняется. С 12 до 17 лет открыта только «Дружба», с 18 лет знакомства. Исправить дату можно через поддержку.":
-    "Set once and can't be changed by you. Ages 12–17 only get Friends, dating starts at 18. Support can fix the date.",
+  "Указывается один раз и сама не меняется. С 14 до 17 лет открыта только «Дружба», с 18 лет знакомства. Исправить дату можно через поддержку.":
+    "Set once and can't be changed by you. Ages 14–17 only get Friends, dating starts at 18. Support can fix the date.",
   "Стерилизация бездомных животных": "Sterilising stray animals", "20 000 ₽": "20,000 ₽",
   "Здравствуйте! Это демо, здесь отвечает автоматический оператор. В приложении ответит живой сотрудник из админ-панели.": "Hello! This is a demo, an automatic operator replies here. In the app a real staff member answers from the admin panel.",
   "Здравствуйте! Это поддержка COFI. Опишите, пожалуйста, ваш вопрос: что случилось и на каком экране.": "Hello! This is COFI support. Please describe your question: what happened and on which screen.",
@@ -282,14 +294,12 @@ export const EN = {
   "Это имитация бота: в демо по ссылке настоящий Telegram недоступен. В приложении откроется чат с ботом COFI.": "This is a bot imitation: real Telegram isn't available in the link demo. The app opens a chat with the COFI bot.",
   "✅ Войти": "✅ Sign in",
   "Подтверждаю, что мне исполнилось 18 лет": "I confirm that I am 18 or older",
-  "Мне от 12 до 17 лет. Мои родители или законные представители знают о регистрации и согласны. Мне будет доступна только лента «Дружба»": "I am 12 to 17. My parents or legal guardians know about this sign-up and agree. Only the Friends feed will be available to me",
   "Я прочитал(а) и принимаю": "I have read and accept the", "Пользовательское соглашение": "Terms of Use",
   ", включая согласие на обработку персональных данных и фото лица для проверки": ", including consent to processing my personal data and face photo for verification",
   "Подтвердите, что вам есть 18 лет": "Confirm that you are 18 or older", "Подтвердите возраст": "Confirm your age",
   "Нужно согласие родителя или законного представителя": "Parent or legal guardian consent is required",
   "Чтобы продолжить, примите Пользовательское соглашение": "Accept the Terms of Use to continue",
   "Примите Пользовательское соглашение": "Accept the Terms of Use",
-  "Знакомства в COFI с 18 лет, с 12 до 17 доступна только «Дружба». Создавая аккаунт, вы принимаете": "Dating on COFI is 18+, ages 12 to 17 get the Friends feed only. By creating an account you accept the",
   "Правила, возраст, персональные данные": "Rules, age, personal data", "Понятно": "Got it",
   "Продолжить запись": "Resume recording", "Остановить и посмотреть": "Stop and preview",
   "Обрезаем кружок…": "Trimming the video note…", "Потяните края полосы, чтобы обрезать начало и конец": "Drag the edges of the bar to trim the start and end",

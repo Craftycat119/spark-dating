@@ -197,7 +197,7 @@ async function openUser(id) {
       <dt>Дата рождения</dt><dd>${u.birth_date && u.age < 0
         ? `<span class="tag warn">${new Date(u.birth_date).toLocaleDateString("ru-RU")} — дата в будущем, исправьте ниже</span>`
         : u.birth_date
-        ? `${new Date(u.birth_date).toLocaleDateString("ru-RU")}, ${u.age} ${plural(u.age, "год", "года", "лет")} <span class="tag">${u.age_group === "teen" ? "12–17, «Дружба»" : "18+, «Знакомства»"}</span>`
+        ? `${new Date(u.birth_date).toLocaleDateString("ru-RU")}, ${u.age} ${plural(u.age, "год", "года", "лет")} <span class="tag">${u.age_group === "teen" ? "14–17, «Дружба»" : "18+, «Знакомства»"}</span>`
         : '<span class="muted">не указана: человек ещё не прошёл шаг «Знакомимся»</span>'}
         ${u.age_verified ? '<span class="tag ok">проверен по документу</span>' : ""}
         <form class="row" data-birth style="margin-top:8px;gap:8px"><input class="input" type="date" name="d" value="${u.birth_date || ""}" style="padding:8px 10px;max-width:170px">

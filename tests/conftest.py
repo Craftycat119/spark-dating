@@ -61,11 +61,11 @@ def make_user(email, name="Тест", lat=55.75, lon=37.61, age=25, bio="При�
     register(c, email)
     r = c.put("/api/profile", json={"name": name, "birth_date": birth_for_age(age).isoformat(), "bio": bio, "gender": gender,
                                     "looking_for": looking_for, "interests": list(interests), "goals": list(goals),
-                                    "accept_terms": True, "confirm_age": True})
+                                    "accept_terms": True, "consent_pd": True, "confirm_age": True})
     assert r.status_code == 200, r.text
     r = c.post("/api/profile/photo", files={"file": ("a.jpg", jpeg_bytes(), "image/jpeg")})
     assert r.status_code == 200, r.text
-    r = c.post("/api/profile/verify-face", json={"frames": {"center": "data:image/jpeg;base64,AAAA"}})
+    r = c.post("/api/profile/verify-face", json={"frames": {"center": "data:image/jpeg;base64,AAAA"}, "consent": True})
     assert r.json()["ok"], r.text
     assert c.post("/api/profile/location", json={"lat": lat, "lon": lon}).status_code == 200
     c.user_id = c.get("/api/auth/me").json()["id"]

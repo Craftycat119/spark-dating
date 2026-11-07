@@ -54,6 +54,8 @@ def user_row(u: User) -> dict:
         "registration_ip": u.registration_ip,
         "registration_lat": u.registration_lat,
         "registration_lon": u.registration_lon,
+        "consents": {"terms": _iso(u.terms_accepted_at), "terms_version": u.terms_version, "pd": _iso(u.consent_pd_at),
+                     "bio": _iso(u.consent_bio_at), "sexuality": _iso(u.consent_sexuality_at), "ip": u.consent_ip},
         "is_admin": u.is_admin,
         "is_banned": u.is_banned,
         "is_demo": u.is_demo,

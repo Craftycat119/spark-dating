@@ -103,7 +103,7 @@ def test_support_and_ads_threads():
     guest.post(f"/api/support/threads/{ad['id']}/messages", json={"text": "Какие форматы рекламы?"})
     guest.post(f"/api/support/threads/{ad['id']}/messages", json={"text": "Какая аудитория?"})
     msgs = guest.get(f"/api/support/threads/{ad['id']}").json()["messages"]
-    assert "Форматы" in msgs[2]["text"] and "анкет" in msgs[4]["text"]
+    assert "тестовый период" in msgs[2]["text"] and "анкет" in msgs[4]["text"]
     assert len(boss.get("/api/admin/support?topic=ads").json()) == 1
 
 
@@ -122,8 +122,8 @@ def test_animal_details():
 
 
 def test_teens_choose_who_they_look_for():
-    boy = make_user("boy@x.io", name="Миша", age=13, gender="male", looking_for="female", goals=("Дружба",))
-    make_user("girl@x.io", name="Катя", age=12, gender="female", looking_for="any", goals=("Дружба",))
+    boy = make_user("boy@x.io", name="Миша", age=15, gender="male", looking_for="female", goals=("Дружба",))
+    make_user("girl@x.io", name="Катя", age=14, gender="female", looking_for="any", goals=("Дружба",))
     make_user("boy2@x.io", name="Петя", age=14, gender="male", looking_for="any", goals=("Дружба",))
     assert boy.get("/api/profile").json()["looking_for"] == "female"
     assert [c["name"] for c in boy.get("/api/feed").json()["cards"]] == ["Катя"]

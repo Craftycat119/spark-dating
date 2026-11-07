@@ -7,7 +7,7 @@ export function useMemoryRouting(start = "#/") {
   memory = start;
   document.addEventListener("click", (e) => {
     const a = e.target.closest?.('a[href^="#"]');
-    if (!a) return;
+    if (!a || a.matches("[data-doc], [data-terms]")) return; // документы открываются поверх экрана
     e.preventDefault();
     navigate(a.getAttribute("href"));
   });

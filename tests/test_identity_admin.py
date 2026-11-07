@@ -10,7 +10,7 @@ def test_gender_matching_and_teen_limit():
     assert not compatible("female", "female", "male", "any")
     c = new_client()
     register(c, "teen@x.io")
-    base = {"name": "Миша", "birth_date": birth_for_age(15).isoformat(), "looking_for": "any", "accept_terms": True, "confirm_age": True}
+    base = {"name": "Миша", "birth_date": birth_for_age(15).isoformat(), "looking_for": "any", "accept_terms": True, "consent_pd": True, "confirm_age": True}
     assert c.put("/api/profile", json={**base, "gender": "trans_male"}).status_code == 422
     me = c.put("/api/profile", json={**base, "gender": "male", "orientation": "bi"}).json()
     assert me["gender"] == "male" and me["orientation"] is None  # подросткам сексуальность не храним
@@ -20,7 +20,8 @@ def test_sexuality_depends_on_gender_and_separate_toggles():
     a = make_user("i1@x.io", gender="female", looking_for="any")
     b = make_user("i2@x.io", gender="male", looking_for="any")
     assert b.put("/api/profile", json={"orientation": "lesbian"}).status_code == 422
-    assert b.put("/api/profile", json={"orientation": "gay"}).status_code == 200
+    assert b.put("/api/profile", json={"orientation": "gay"}).status_code == 422  # без согласия нельзя
+    assert b.put("/api/profile", json={"orientation": "gay", "consent_sexuality": True}).status_code == 200
     card = a.get(f"/api/users/{b.user_id}").json()
     assert card["gender_label"] == "Парень" and card["orientation_label"] == "Гей"
     b.put("/api/profile", json={"show_identity": False})
@@ -32,7 +33,7 @@ def test_sexuality_depends_on_gender_and_separate_toggles():
     me = b.put("/api/profile", json={"gender": "female"}).json()
     assert me["orientation"] is None
     n = make_user("i3@x.io", gender="nonbinary", looking_for="any")
-    assert n.put("/api/profile", json={"orientation": "lesbian"}).status_code == 200
+    assert n.put("/api/profile", json={"orientation": "lesbian", "consent_sexuality": True}).status_code == 200
     assert n.put("/api/profile", json={"orientation": "gay"}).status_code == 200
 
 
@@ -88,7 +89,7 @@ def test_review_fixes():
     adult = make_user("r1@x.io", name="Взрослый")
     teen = new_client()
     register(teen, "r2@x.io")
-    teen.put("/api/profile", json={"name": "Тайное Имя", "birth_date": birth_for_age(15).isoformat(), "accept_terms": True, "confirm_age": True})
+    teen.put("/api/profile", json={"name": "Тайное Имя", "birth_date": birth_for_age(15).isoformat(), "accept_terms": True, "consent_pd": True, "confirm_age": True})
     teen_id = teen.get("/api/auth/me").json()["id"]
     t = adult.post("/api/support/threads", json={"category": "complaint", "about_user_id": teen_id}).json()
     assert t["about_user_id"] is None and "Тайное" not in str(t)
