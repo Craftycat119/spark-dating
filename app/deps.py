@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 from fastapi import Depends, HTTPException, Request, Response
 from sqlalchemy import select
@@ -8,16 +8,15 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import get_db
-from .models import AuthSession, User, utcnow
+from .models import ActivityDay, AuthSession, User, utcnow
 from .security import hash_secret, new_session_token
 
 COOKIE_NAME = "spark_session"
 
 
 def client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    """Адрес клиента. X-Forwarded-For сам по себе не читаем: его может подставить кто угодно.
+    uvicorn (proxy_headers) берёт адрес из заголовка, только если запрос пришёл от прокси на этом же компьютере (cloudflared, nginx)."""
     return request.client.host if request.client else ""
 
 
@@ -31,7 +30,10 @@ def start_session(db: Session, user: User, request: Request, response: Response)
             ip=client_ip(request),
         )
     )
-    user.last_seen_at = utcnow()
+    now = utcnow()
+    if not user.last_seen_at or (now - user.last_seen_at).total_seconds() > VISIT_GAP or local_day(user.last_seen_at) != local_day(now):
+        _count_visit(db, user.id, local_day(now))  # вход в аккаунт — тоже посещение
+    user.last_seen_at = now
     db.commit()
     response.set_cookie(
         COOKIE_NAME,
@@ -39,7 +41,8 @@ def start_session(db: Session, user: User, request: Request, response: Response)
         max_age=settings.session_days * 86400,
         httponly=True,
         samesite="lax",
-        secure=settings.cookie_secure,
+        # по https cookie входа уходит только по шифрованному каналу (в том числе через туннель cloudflared)
+        secure=settings.cookie_secure or request.url.scheme == "https",
     )
 
 
@@ -60,10 +63,29 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     if not user:
         raise HTTPException(401, "Нужно войти в аккаунт")
     now = utcnow()
-    if not user.last_seen_at or (now - user.last_seen_at).total_seconds() > 60:
+    gap = (now - user.last_seen_at).total_seconds() if user.last_seen_at else None
+    if gap is None or gap > 60:
+        today = local_day(now)
+        if gap is None or gap > VISIT_GAP or local_day(user.last_seen_at) != today:
+            _count_visit(db, user.id, today)
         user.last_seen_at = now
         db.commit()
     return user
+
+
+VISIT_GAP = 30 * 60  # вернулся после 30 минут тишины — новое посещение
+
+
+def local_day(dt) -> date:
+    return (dt + timedelta(hours=settings.stats_tz_hours)).date()
+
+
+def _count_visit(db: Session, user_id: int, day: date) -> None:
+    row = db.get(ActivityDay, (user_id, day))
+    if row:
+        row.visits += 1
+    else:
+        db.add(ActivityDay(user_id=user_id, day=day, visits=1))
 
 
 def admin_user(user: User = Depends(current_user)) -> User:

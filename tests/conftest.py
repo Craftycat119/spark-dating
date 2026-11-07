@@ -8,17 +8,27 @@ os.environ["FACE_MODE"] = "dev"
 os.environ["DEV_MODE"] = "1"
 os.environ["SMTP_HOST"] = ""
 os.environ["ADMIN_EMAILS"] = "boss@example.com"
+os.environ["DEMO_REPLY_DELAY"] = "0"
+os.environ["CALLS_ENABLED"] = "1"  # звонки тестируем включёнными; выключенный режим — в test_security.py
+os.environ["CAPTCHA"] = "off"  # проверку на робота тестируем отдельно (test_captcha.py)
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from PIL import Image  # noqa: E402
 
+from app.ages import birth_for_age  # noqa: E402
 from app.database import Base, engine  # noqa: E402
 from app.main import app  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
 def fresh_db():
+    from app import ratelimit
+
+    ratelimit._hits.clear()
+    from app import feed_index
+
+    feed_index.invalidate()  # у каждого теста своя база  # у всех тестов один «IP», счётчики попыток не должны переходить между тестами
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     yield
@@ -42,15 +52,20 @@ def register(client, email, password="Secret123"):
     return r.json()
 
 
-def make_user(email, name="Тест", lat=55.75, lon=37.61, feeds=("dating",), age=25, bio="Привет"):
+DEFAULT_INTERESTS = ("Кофейни", "Бег", "Техно")
+
+
+def make_user(email, name="Тест", lat=55.75, lon=37.61, age=25, bio="Привет", gender="female",
+              looking_for="any", interests=DEFAULT_INTERESTS, goals=("Свидания",)):
     c = new_client()
     register(c, email)
-    r = c.put("/api/profile", json={"name": name, "age": age, "bio": bio,
-                                    "feeds": {f: {"enabled": True} for f in feeds}})
+    r = c.put("/api/profile", json={"name": name, "birth_date": birth_for_age(age).isoformat(), "bio": bio, "gender": gender,
+                                    "looking_for": looking_for, "interests": list(interests), "goals": list(goals),
+                                    "accept_terms": True, "consent_pd": True, "confirm_age": True})
     assert r.status_code == 200, r.text
     r = c.post("/api/profile/photo", files={"file": ("a.jpg", jpeg_bytes(), "image/jpeg")})
     assert r.status_code == 200, r.text
-    r = c.post("/api/profile/verify-face", json={"frames": {"center": "data:image/jpeg;base64,AAAA"}})
+    r = c.post("/api/profile/verify-face", json={"frames": {"center": "data:image/jpeg;base64,AAAA"}, "consent": True})
     assert r.json()["ok"], r.text
     assert c.post("/api/profile/location", json={"lat": lat, "lon": lon}).status_code == 200
     c.user_id = c.get("/api/auth/me").json()["id"]
