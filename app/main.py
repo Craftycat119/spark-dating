@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import timedelta
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from . import captcha, face_verify, telegram_bot
@@ -37,6 +38,12 @@ async def lifespan(_app: FastAPI):
         removed = cleanup(db)
         if removed:
             log.info("Удалено устаревших демо-аккаунтов: %s", removed)
+        # просроченные входы и коды подтверждения больше не нужны: не копим их в базе
+        from .models import AuthSession, EmailCode, utcnow
+
+        db.execute(delete(AuthSession).where(AuthSession.expires_at < utcnow()))
+        db.execute(delete(EmailCode).where(EmailCode.expires_at < utcnow() - timedelta(days=1)))
+        db.commit()
     if settings.secret_key == "dev-secret-change-me" and not settings.dev_mode:
         log.error("SECRET_KEY не задан! Установите его в .env перед запуском в продакшене.")
     if settings.dev_mode and settings.base_url.startswith("https://") and "localhost" not in settings.base_url:
@@ -117,7 +124,20 @@ async def security_headers(request: Request, call_next):
     h = response.headers
     h.setdefault("X-Content-Type-Options", "nosniff")
     h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-    h.setdefault("Content-Security-Policy", "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org; object-src 'none'; base-uri 'self'")
+    host = request.headers.get("host", "")
+    h.setdefault("Content-Security-Policy", "; ".join([
+        "default-src 'self'",
+        "script-src 'self' https://telegram.org https://challenges.cloudflare.com",  # только свои файлы, Telegram и капча Cloudflare
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com data:",
+        "img-src 'self' data: blob: https:",
+        "media-src 'self' data: blob:",
+        f"connect-src 'self' wss://{host} ws://{host}",
+        "frame-src https://challenges.cloudflare.com",
+        "worker-src 'self' blob:",
+        "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org",
+        "object-src 'none'", "base-uri 'self'", "form-action 'self'",
+    ]))
     h.setdefault("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(self), payment=()")
     if request.url.scheme == "https":
         h.setdefault("Strict-Transport-Security", "max-age=31536000")

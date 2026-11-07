@@ -62,7 +62,7 @@ const css = readFileSync(resolve(root, "static/css/app.css"), "utf8").replaceAll
 // 4. Разметка из index.html: фильтры «надутого» материала и контейнеры
 const index = readFileSync(resolve(root, "static/index.html"), "utf8");
 const svgDefs = index.match(/<svg width="0"[\s\S]*?<\/svg>/)[0];
-const themeScript = index.match(/<script>\/\* тема[\s\S]*?<\/script>/)[0];
+const themeScript = `<script>${readFileSync(resolve(root, "static/js/theme-boot.js"), "utf8")}</script>`; // в демо всё в одном файле
 
 const html = `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>COFI демо</title>

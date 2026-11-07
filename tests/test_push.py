@@ -43,7 +43,10 @@ def test_link_telegram_to_email_account(monkeypatch):
     url = c.post("/api/profile/telegram-link").json()["url"]
     token = url.split("start=link_")[1]
     calls = telegram_bot.handle_update({"message": {"chat": {"id": 555}, "from": {"id": 555, "username": "me"}, "text": f"/start link_{token}"}})
-    assert "подключены" in calls[0][1]["text"]
+    assert "ma***@x.io" in calls[0][1]["text"] and not c.get("/api/profile").json()["telegram_linked"]  # сначала вопрос
+    calls = telegram_bot.handle_update({"callback_query": {"id": "q", "data": f"lnk:{token}", "from": {"id": 555, "username": "me"},
+                                                          "message": {"chat": {"id": 555}, "message_id": 1}}})
+    assert "подключены" in calls[1][1]["text"]
     assert c.get("/api/profile").json()["telegram_linked"]
 
 

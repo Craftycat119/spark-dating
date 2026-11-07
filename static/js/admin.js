@@ -149,9 +149,16 @@ const plural = (n, one, few, many) => {
 };
 
 /** Фото или аккуратная заглушка: пустой src давал значок «битой» картинки. */
+// Фото не загрузилось — заглушка «Файл не найден» (без встроенного onerror: его запрещает CSP)
+document.addEventListener("error", (e) => {
+  const img = e.target;
+  if (!(img instanceof HTMLImageElement) || !img.dataset.fallback) return;
+  img.replaceWith(Object.assign(document.createElement("div"), { className: `pic-empty${img.dataset.fallback === "small" ? " small" : ""}`, textContent: "Файл не найден" }));
+}, true);
+
 function pic(url, empty, small = false) {
   if (!url) return small ? `<span class="pic-empty small">${icons.user}</span>` : `<div class="pic-empty">${icons.user}<span>${esc(empty)}</span></div>`;
-  return `<img src="${esc(url)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'pic-empty${small ? " small" : ""}',textContent:'Файл не найден'}))">`;
+  return `<img src="${esc(url)}" alt="" loading="lazy" data-fallback="${small ? "small" : "big"}">`;
 }
 
 function closeDrawer() { drawer.hidden = true; drawer.innerHTML = ""; }

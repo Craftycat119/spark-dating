@@ -108,7 +108,7 @@ export const EN = {
   "У вас общего:": "In common:", "демо": "demo",
   "Взаимно": "It's a match", "Написать сообщение": "Send a message", "Смотреть дальше": "Keep browsing",
   "Взаимная симпатия": "Mutual like", "Закрыть": "Close", "Да": "Yes", "Нет": "No",
-  "О себе": "About", "Ищет": "Looking for", "Пожаловаться на анкету": "Report profile",
+  "Ищет": "Looking for", "Пожаловаться на анкету": "Report profile",
   "Написать можно после взаимной симпатии": "You can message after a mutual like",
   "Вы отметили симпатию. Чат откроется, когда она станет взаимной": "You liked them. The chat opens when it's mutual",
   "совпадение": "match", "в сети": "online", "не в сети": "offline", "Открыть анкету": "Open profile",
@@ -318,7 +318,7 @@ export const EN = {
   "Непрочитанные сообщения, пропущенные звонки и пары, когда вы не в приложении": "Unread messages, missed calls and matches when you're not in the app",
   "О себе": "About me", "С кем хочу дружить": "Who I want to be friends with", "Да, всё верно": "Yes, that's right",
   "Вам доступна лента «Дружба»: здесь ищут друзей и компанию по интересам.": "You have the Friends feed: people here look for friends and company by interests.",
-  "Аудитория": "Audience", "Укажите имя": "Enter your name",
+  "Аудитория": "Audience",
   "Барсик": "Barsik", "Луна": "Luna", "38 000 ₽": "38,000 ₽", "Дружить": "Be friends", "Новый друг": "New friend", "Войти через Telegram": "Sign in with Telegram",
   "Имя в Telegram": "Telegram name", 
 };

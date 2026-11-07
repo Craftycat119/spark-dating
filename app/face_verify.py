@@ -14,7 +14,9 @@
 from __future__ import annotations
 
 import base64
+import io
 import logging
+import threading
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +32,7 @@ MODELS = {
     "face_recognition_sface_2021dec.onnx": "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
 }
 MAX_SIDE = 800
+MAX_PIXELS = 40_000_000  # больше — подозрительно: маленький файл, который раскрывается в гигабайты памяти
 REQUIRED_POSES = ("center", "left", "right")
 
 
@@ -68,6 +71,14 @@ def decode_image(data: bytes | str):
             data = base64.b64decode(data, validate=False)
         except ValueError as exc:
             raise FaceError("Не удалось прочитать кадр") from exc
+    try:  # размер читаем из заголовка, не раскрывая картинку
+        from PIL import Image
+
+        w, h = Image.open(io.BytesIO(data)).size
+    except Exception as exc:  # noqa: BLE001
+        raise FaceError("Не удалось прочитать изображение") from exc
+    if w * h > MAX_PIXELS:
+        raise FaceError("Слишком большое изображение")
     arr = np.frombuffer(data, dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if img is None:
@@ -84,6 +95,8 @@ class FaceEngine:
         self.models_dir = models_dir
         self._detector = None
         self._recognizer = None
+        # Нейросети OpenCV не потокобезопасны (setInputSize + detect): два одновременных запроса портили бы друг другу результат
+        self.lock = threading.RLock()
 
     def _load(self):
         import cv2
@@ -102,25 +115,28 @@ class FaceEngine:
 
     def detect(self, img) -> np.ndarray:
         """Возвращает массив лиц (строки по 15 чисел YuNet), самые крупные — первыми."""
-        self._load()
-        h, w = img.shape[:2]
-        self._detector.setInputSize((w, h))
-        _, faces = self._detector.detect(img)
+        with self.lock:
+            self._load()
+            h, w = img.shape[:2]
+            self._detector.setInputSize((w, h))
+            _, faces = self._detector.detect(img)
         if faces is None:
             return np.zeros((0, 15), dtype=np.float32)
         order = np.argsort(-(faces[:, 2] * faces[:, 3]))
         return faces[order]
 
     def feature(self, img, face) -> np.ndarray:
-        self._load()
-        aligned = self._recognizer.alignCrop(img, face)
-        return self._recognizer.feature(aligned)
+        with self.lock:
+            self._load()
+            aligned = self._recognizer.alignCrop(img, face)
+            return self._recognizer.feature(aligned)
 
     def similarity(self, f1, f2) -> float:
         import cv2
 
-        self._load()
-        return float(self._recognizer.match(f1, f2, cv2.FaceRecognizerSF_FR_COSINE))
+        with self.lock:
+            self._load()
+            return float(self._recognizer.match(f1, f2, cv2.FaceRecognizerSF_FR_COSINE))
 
 
 def yaw(face) -> float:

@@ -77,13 +77,35 @@ def new_link(user_id: int) -> str:
     return f"https://t.me/{_bot_username}?start=link_{token}"
 
 
+def _link_question(token: str, chat_id: int) -> dict:
+    """Сначала спрашиваем, к какому аккаунту подключаем: чужая ссылка не привяжет ваш Telegram к чужому аккаунту незаметно."""
+    from .database import SessionLocal
+    from .models import User
+
+    with _lock:
+        entry = _links.get(token)
+    if not entry:
+        return {"chat_id": chat_id, "text": "Ссылка устарела. Нажмите «Подключить уведомления в Telegram» в профиле COFI ещё раз."}
+    with SessionLocal() as db:
+        user = db.get(User, entry[0])
+        who = f"«{user.name or 'без имени'}»" + (f" ({_mask(user.email)})" if user and user.email else "") if user else "—"
+    return {"chat_id": chat_id, "text": f"Подключить уведомления к аккаунту COFI {who}?\n\nЕсли это не ваш аккаунт или ссылку прислал кто-то другой, нажмите «Отмена».",
+            "reply_markup": {"inline_keyboard": [[{"text": "✅ Подключить", "callback_data": f"lnk:{token}"},
+                                                  {"text": "Отмена", "callback_data": f"lnkno:{token}"}]]}}
+
+
+def _mask(email: str) -> str:
+    name, _, domain = email.partition("@")
+    return f"{name[:2]}***@{domain}"
+
+
 def _link_account(token: str, frm: dict) -> str:
     from .database import SessionLocal
     from .models import User
 
     with _lock:
         entry = _links.pop(token, None)
-    if not entry:
+    if not entry or time.time() - entry[1] > LOGIN_TTL:
         return "Ссылка устарела. Нажмите «Подключить уведомления в Telegram» в профиле COFI ещё раз."
     with SessionLocal() as db:
         taken = db.query(User).filter(User.telegram_id == frm["id"], User.id != entry[0]).first()
@@ -187,7 +209,7 @@ def handle_update(upd: dict) -> list[tuple[str, dict]]:
         chat_id = msg["chat"]["id"]
         text = (msg.get("text") or "").strip()
         if text.startswith("/start link_"):
-            calls.append(("sendMessage", {"chat_id": chat_id, "text": _link_account(text.removeprefix("/start link_").strip(), msg.get("from") or {"id": chat_id})}))
+            calls.append(("sendMessage", _link_question(text.removeprefix("/start link_").strip(), chat_id)))
         elif text.startswith("/start login_"):
             token = text.removeprefix("/start login_").strip()
             with _lock:
@@ -209,6 +231,17 @@ def handle_update(upd: dict) -> list[tuple[str, dict]]:
     elif cb := upd.get("callback_query"):
         action, _, token = (cb.get("data") or "").partition(":")
         frm = cb.get("from") or {}
+        if action in ("lnk", "lnkno"):  # подключение уведомлений: подтвердили или отменили
+            if action == "lnk":
+                reply = _link_account(token, frm)
+            else:
+                with _lock:
+                    _links.pop(token, None)
+                reply = "Подключение отменено."
+            calls.append(("answerCallbackQuery", {"callback_query_id": cb["id"]}))
+            if m := cb.get("message"):
+                calls.append(("editMessageText", {"chat_id": m["chat"]["id"], "message_id": m["message_id"], "text": reply}))
+            return calls
         if action == "callno":  # «Отклонить» на звонке
             from . import push
 
