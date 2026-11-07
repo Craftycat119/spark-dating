@@ -25,6 +25,7 @@ async function boot() {
   window.addEventListener("hashchange", route);
   connectSocket();
   route();
+  api.get("/api/admin/help-requests?status=new").then((r) => setHelpBadge(r.new)).catch(() => {});
 }
 
 function route() {
@@ -379,7 +380,14 @@ async function animals() {
         <button class="btn">Опубликовать</button>
       </form>
     </details>
-    <div id="pets" style="margin-top:22px"><div class="spinner"></div></div>`;
+    <h3 style="margin-top:22px">Заявки «Помочь» из приложения</h3>
+    <div class="toolbar"><select class="input" data-help-status><option value="new">Новые</option><option value="done">Обработанные</option><option value="">Все</option></select></div>
+    <div id="help-requests"><div class="spinner"></div></div>
+    <h3 style="margin-top:22px">Объявления</h3>
+    <div id="pets"><div class="spinner"></div></div>`;
+  $("[data-help-status]", view).value = helpState.status;
+  $("[data-help-status]", view).onchange = (e) => { helpState.status = e.target.value; loadHelp(); };
+  loadHelp();
   const form = $(".pet-form form", view);
   const syncGoal = () => ($("[data-goal]", form).hidden = form.category.value !== "charity");
   $$("input[name=category]", form).forEach((r) => (r.onchange = syncGoal));
@@ -402,6 +410,42 @@ async function animals() {
   };
   loadPets();
 }
+
+const helpState = { status: "new" };
+
+async function loadHelp() {
+  const res = await api.get(`/api/admin/help-requests?status=${helpState.status}`);
+  setHelpBadge(res.new);
+  const box = $("#help-requests");
+  if (!box) return;
+  const who = (u) => (u ? `${esc(u.name || "Без имени")} <a href="#users" data-user="${u.id}">#${u.id}</a>` : "Анкета удалена");
+  box.innerHTML = res.items.length ? `<table class="grid"><thead><tr><th>Когда</th><th>Объявление</th><th>Кто</th><th>Связь</th><th>Сообщение</th><th></th></tr></thead><tbody>
+    ${res.items.map((r) => `<tr class="${r.status === "new" ? "row-new" : ""}"><td class="small">${dt(r.created_at)}</td>
+      <td>${r.post ? `<b>${esc(r.post.name)}</b><br><span class="muted small">${esc(r.post.category)}</span>` : "Удалено"}</td>
+      <td>${who(r.user)}</td>
+      <td>${esc(r.contact || "—")}${r.user?.telegram_username ? `<br><a href="https://t.me/${encodeURIComponent(r.user.telegram_username)}" target="_blank" rel="noopener">написать в Telegram</a>` : ""}</td>
+      <td>${esc(r.message || "—")}</td>
+      <td><button class="btn ${r.status === "new" ? "dark" : "quiet"} tiny" data-help="${r.id}" data-st="${r.status}">${r.status === "new" ? "Обработано" : "Вернуть в новые"}</button></td></tr>`).join("")}</tbody></table>`
+    : `<p class="muted">${helpState.status === "new" ? "Новых заявок нет." : "Заявок нет."}</p>`;
+  $$("[data-help]", box).forEach((b) => (b.onclick = async () => {
+    await api.post(`/api/admin/help-requests/${b.dataset.help}/status`, { status: b.dataset.st === "new" ? "done" : "new" });
+    loadHelp();
+  }));
+  $$("[data-user]", box).forEach((a) => (a.onclick = (e) => { e.preventDefault(); openUser(Number(a.dataset.user)); }));
+}
+
+/** Число новых заявок рядом с «Питомцы» в меню. */
+function setHelpBadge(n) {
+  const a = $('.rail nav a[data-view="animals"]');
+  if (a) a.innerHTML = `Питомцы${n ? ` <span class="nav-badge">${n}</span>` : ""}`;
+}
+
+// заявка «Помочь» из приложения появляется сразу
+on("help_request", (d) => {
+  toast(`Заявка «Помочь»: ${d.from || "пользователь"} → ${d.post}`);
+  if (location.hash.startsWith("#animals")) loadHelp();
+  else api.get("/api/admin/help-requests?status=new").then((r) => setHelpBadge(r.new)).catch(() => {});
+});
 
 async function loadPets() {
   const list = await api.get("/api/admin/animals");

@@ -372,6 +372,39 @@ def animals(_: User = Depends(admin_user), db: Session = Depends(get_db)):
     } for p in rows]
 
 
+@router.get("/help-requests")
+def help_requests(status: str = "", _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Заявки «Хочу помочь», отправленные через приложение: кто, по какому объявлению, контакт и сообщение."""
+    from ..models import HelpRequest
+    from .animals import CATEGORIES
+
+    q = select(HelpRequest).order_by(HelpRequest.id.desc()).limit(300)
+    if status in ("new", "done"):
+        q = q.where(HelpRequest.status == status)
+    out = []
+    for r in db.scalars(q):
+        post, user = db.get(AnimalPost, r.post_id), db.get(User, r.user_id)
+        out.append({
+            "id": r.id, "status": r.status, "message": r.message, "contact": r.contact, "delivered": r.delivered,
+            "created_at": _iso(r.created_at),
+            "post": {"id": post.id, "name": post.name, "category": CATEGORIES.get(post.category, post.category)} if post else None,
+            "user": {"id": user.id, "name": user.name, "telegram_username": user.telegram_username, "email": user.email} if user else None,
+        })
+    return {"items": out, "new": db.scalar(select(func.count(HelpRequest.id)).where(HelpRequest.status == "new")) or 0}
+
+
+@router.post("/help-requests/{request_id}/status")
+def help_request_status(request_id: int, data: StatusIn, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    from ..models import HelpRequest
+
+    r = db.get(HelpRequest, request_id)
+    if not r or data.status not in ("new", "done"):
+        raise HTTPException(404, "Заявка не найдена")
+    r.status = data.status
+    db.commit()
+    return {"status": r.status}
+
+
 @router.delete("/animals/{post_id}")
 def delete_animal(post_id: int, _: User = Depends(admin_user), db: Session = Depends(get_db)):
     from .. import storage

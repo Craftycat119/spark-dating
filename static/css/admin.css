@@ -88,3 +88,8 @@ dl.kv dd { margin: 0; word-break: break-word; }
 .rail .brand img { width: 32px; height: 32px; border-radius: 9px; vertical-align: middle; margin-right: 8px; }
 .grid.audience { margin: 14px 0 8px; max-width: 720px; }
 .grid.audience td b { font: 700 18px var(--num); color: var(--orange); }
+
+/* Заявки «Помочь» */
+.nav-badge { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 6px; border-radius: 999px; background: var(--orange, #f2621f); color: #fff; font-size: 12px; font-weight: 700; vertical-align: 1px; }
+.row-new td { background: color-mix(in srgb, var(--orange, #f2621f) 8%, transparent); }
+.rail nav a.on .nav-badge { background: #fff; color: #c9461a; }

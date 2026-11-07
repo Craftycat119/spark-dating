@@ -17,6 +17,7 @@ from ..deps import current_user
 from ..geo import haversine_km
 from ..models import AnimalPost, HelpRequest, User
 from ..ratelimit import hit
+from ..realtime import notify
 from ..serializers import media_url
 
 router = APIRouter(prefix="/api/animals", tags=["animals"])
@@ -45,7 +46,7 @@ def post_out(p: AnimalPost, me: User) -> dict:
         "photos": [media_url(x) for x in p.photos],
         "distance_km": distance,
         "author": {"id": p.author.id, "name": p.author.name},
-        "is_mine": p.author_id == me.id,
+        "can_manage": me.is_admin,  # управлять объявлениями может только администрация
         "created_at": p.created_at.isoformat() + "Z",
     }
 
@@ -69,7 +70,7 @@ def _require_adult(me: User) -> None:
 def get_post(post_id: int, me: User = Depends(current_user), db: Session = Depends(get_db)):
     """Подробная карточка: всё из ленты плюс число откликов."""
     post = db.get(AnimalPost, post_id)
-    if not post or (not post.active and post.author_id != me.id):
+    if not post or (not post.active and not me.is_admin):
         raise HTTPException(404, "Объявление не найдено")
     out = post_out(post, me)
     out["help_count"] = db.scalar(select(func.count(HelpRequest.id)).where(HelpRequest.post_id == post.id)) or 0
@@ -120,15 +121,18 @@ class PostPatch(BaseModel):
 
 
 def _own(db: Session, post_id: int, me: User) -> AnimalPost:
+    """Менять и удалять объявления может только администрация (даже автор, если его лишили прав, уже не может)."""
+    if not me.is_admin:
+        raise HTTPException(403, "Объявлениями управляет администрация COFI")
     post = db.get(AnimalPost, post_id)
-    if not post or (post.author_id != me.id and not me.is_admin):
+    if not post:
         raise HTTPException(404, "Объявление не найдено")
     return post
 
 
 @router.patch("/{post_id}")
 def update_post(post_id: int, data: PostPatch, me: User = Depends(current_user), db: Session = Depends(get_db)):
-    """Автор открывает и закрывает сбор, снимает объявление с публикации."""
+    """Администрация открывает и закрывает сбор, снимает объявление с публикации."""
     post = _own(db, post_id, me)
     if data.fundraising_open is not None:
         if post.category != "charity":
@@ -190,4 +194,6 @@ def help_post(post_id: int, data: HelpIn, background: BackgroundTasks, me: User 
     # Заявка уходит в общую группу волонтёров (если настроена) и автору, если он входил через Telegram
     targets = [settings.telegram_requests_chat_id, post.author.telegram_id]
     background.add_task(_deliver, req.id, targets, text)
+    for admin_id in db.scalars(select(User.id).where(User.is_admin.is_(True))):  # и в админ-панель, если она открыта
+        notify(admin_id, {"type": "help_request", "id": req.id, "post": post.name, "from": me.name})
     return {"status": "sent", "contact_url": telegram_notify.normalize_contact(post.contact)}

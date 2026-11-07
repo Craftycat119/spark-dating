@@ -73,7 +73,7 @@ def test_animals_feed_and_help():
         r = helper.post(f"/api/animals/{post['id']}/help", json={"message": "Переведу 1000", "contact": "@helper"})
     assert r.status_code == 200 and r.json()["contact_url"] == "https://t.me/barsik_help"
     assert teen.post(f"/api/animals/{post['id']}/help", json={}).status_code == 403
-    assert helper.patch(f"/api/animals/{post['id']}", json={"fundraising_open": False}).status_code == 404  # не автор
+    assert helper.patch(f"/api/animals/{post['id']}", json={"fundraising_open": False}).status_code == 403  # не автор
     assert owner.patch(f"/api/animals/{post['id']}", json={"fundraising_open": False}).json()["fundraising_open"] is False
     assert helper.post(f"/api/animals/{post['id']}/help", json={}).status_code == 409  # сбор закрыт
     _ = sent
@@ -117,8 +117,20 @@ def test_animal_details():
     d = other.get(f"/api/animals/{pid}").json()
     assert d["help_count"] == 1 and d["description"] == "Длинное описание" and d["author"]["name"] == "Волонтёр"
     owner.patch(f"/api/animals/{pid}", json={"active": False})
-    assert other.get(f"/api/animals/{pid}").status_code == 404   # снятое видит только автор
+    assert other.get(f"/api/animals/{pid}").status_code == 404   # снятое видит только администрация
     assert owner.get(f"/api/animals/{pid}").status_code == 200
+    # заявка из приложения видна в админ-панели, её можно отметить обработанной
+    reqs = owner.get("/api/admin/help-requests?status=new").json()
+    assert reqs["new"] == 1 and reqs["items"][0]["message"] == "Могу взять" and reqs["items"][0]["post"]["name"] == "Луна"
+    rid = reqs["items"][0]["id"]
+    assert owner.post(f"/api/admin/help-requests/{rid}/status", json={"status": "done"}).json()["status"] == "done"
+    assert owner.get("/api/admin/help-requests?status=new").json()["new"] == 0
+    assert other.get("/api/admin/help-requests").status_code == 403
+    # обычный пользователь не может ни добавить, ни изменить, ни удалить объявление
+    assert other.post("/api/animals", data={"category": "foster", "name": "Кот", "contact": "@cat"}).status_code == 403
+    assert other.patch(f"/api/animals/{pid}", json={"active": True}).status_code == 403
+    assert other.delete(f"/api/animals/{pid}").status_code == 403
+    assert owner.get(f"/api/animals/{pid}").json()["can_manage"] and not other.get("/api/animals").json()["items"][0]["can_manage"] if other.get("/api/animals").json()["items"] else True
 
 
 def test_teens_choose_who_they_look_for():

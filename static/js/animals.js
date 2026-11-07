@@ -75,7 +75,7 @@ export async function renderAnimals({ screen, state, go }) {
         ${p.description ? `<p class="pet-desc" translate="no">${esc(p.description)}</p>` : ""}
         <p class="muted small">Разместил: <span translate="no">${esc(p.author.name)}</span></p>
         <button class="link more-link" data-more>Подробнее и все фото ${icons.arrow}</button>
-        ${p.is_mine ? `<div class="owner-tools">
+        ${p.can_manage ? `<div class="owner-tools">
           ${p.category === "charity" ? `<div class="seg"><button class="chip" data-fund="1" aria-pressed="${p.fundraising_open}">Сбор открыт</button><button class="chip" data-fund="0" aria-pressed="${!p.fundraising_open}">Сбор закрыт</button></div>` : ""}
           <button class="btn danger" data-remove>Снять с публикации</button></div>` : ""}
       </div></article>`));
@@ -173,7 +173,7 @@ export async function openPet(postId, { adult, onChange = () => {} }) {
       ${p.description ? `<h3>Описание</h3><p class="pet-full" translate="no">${esc(p.description)}</p>` : ""}
       <h3>Подробности</h3>
       <dl class="pet-facts">${rows.map(([k, v, raw]) => `<dt>${k}</dt><dd ${raw ? 'translate="no"' : ""}>${esc(v)}</dd>`).join("")}</dl>
-      ${p.is_mine ? `<h3>Управление</h3><div class="owner-tools">
+      ${p.can_manage ? `<h3>Управление</h3><div class="owner-tools">
         ${p.category === "charity" ? `<div class="seg"><button class="chip" data-fund="1" aria-pressed="${p.fundraising_open}">Сбор открыт</button><button class="chip" data-fund="0" aria-pressed="${!p.fundraising_open}">Сбор закрыт</button></div>` : ""}
       </div>` : ""}
     </div>

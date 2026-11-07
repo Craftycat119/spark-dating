@@ -1833,7 +1833,7 @@ function renderSettings() {
 
     <a class="section ad-offer" href="#/ads">
       <span class="ad-offer-icon">${icons.megaphone}</span>
-      <span><b>Реклама в COFI</b><br>Во время тестирования реклама не размещается. Можно оставить контакт для будущего сотрудничества.</span>
+      <span><b>Реклама в COFI</b><br>Во время тестирования реклама не размещается. Для будущего сотрудничества пишите на craftycat119@mail.ru или в этот чат.</span>
       ${icons.arrow}
     </a>
 

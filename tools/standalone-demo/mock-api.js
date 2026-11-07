@@ -551,7 +551,7 @@ async function petOut(p, u) {
     contact_url: tgUrl(p.contact), fundraising_open: p.category === "charity" ? p.fundraising_open : null,
     fundraising_goal: p.category === "charity" ? p.fundraising_goal : "",
     photos: await Promise.all(p.photos.map((x) => (x.startsWith("@pet:") ? petFor(...x.slice(5).split(":")) : x))),
-    distance_km: 2.4, author: p.author, is_mine: p.author_id === u.id, created_at: p.created_at };
+    distance_km: 2.4, author: p.author, can_manage: false, created_at: p.created_at };
 }
 route("GET", "/api/animals", async (_, __, url) => {
   const u = requireMe();
@@ -585,6 +585,7 @@ route("POST", "/api/animals", async (fd) => {
 });
 route("PATCH", "/api/animals/(\\d+)", async (b, [pid]) => {
   const u = requireMe();
+  deny(403, "Объявлениями управляет администрация COFI");
   const p = (S.pets || []).find((x) => x.id === +pid && x.author_id === u.id);
   if (!p) deny(404, "Объявление не найдено");
   if (b.fundraising_open !== undefined) p.fundraising_open = b.fundraising_open;

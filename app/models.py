@@ -271,6 +271,7 @@ class HelpRequest(Base):
     message: Mapped[str] = mapped_column(Text, default="")
     contact: Mapped[str] = mapped_column(String(128), default="")
     delivered: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(16), default="new")  # new — новая, done — обработана в админ-панели
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
