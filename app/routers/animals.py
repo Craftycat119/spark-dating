@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from .. import storage, telegram_notify
+from .. import push, storage, telegram_notify
 from ..config import settings
 from ..database import get_db
 from ..deps import current_user
@@ -161,10 +161,13 @@ class HelpIn(BaseModel):
     contact: str = Field("", max_length=128)
 
 
-def _deliver(request_id: int, chat_ids: list, text: str) -> None:
+def _deliver(request_id: int, chat_ids: list, admin_ids: list, text: str) -> None:
     from ..database import SessionLocal
 
-    delivered = any([telegram_notify.send_message(c, text) for c in chat_ids if c])
+    sent = [telegram_notify.send_message(c, text) for c in chat_ids]
+    # администрации — с кнопкой, которая открывает список заявок в админ-панели
+    sent += [push._send(c, text, [push.admin_button("animals")]) is not None for c in admin_ids]
+    delivered = any(sent)
     with SessionLocal() as db:
         r = db.get(HelpRequest, request_id)
         if r:
@@ -191,9 +194,11 @@ def help_post(post_id: int, data: HelpIn, background: BackgroundTasks, me: User 
         f"От: {me.name}, связь: {contact or 'не указана'}\n"
         f"{('Сообщение: ' + req.message) if req.message else ''}"
     ).strip()
-    # Заявка уходит в общую группу волонтёров (если настроена) и автору, если он входил через Telegram
-    targets = [settings.telegram_requests_chat_id, post.author.telegram_id]
-    background.add_task(_deliver, req.id, targets, text)
+    # Заявка уходит через бота администрации, в группу волонтёров (если настроена) и автору объявления
+    admins = [c for c in dict.fromkeys(push.admin_chats(db)) if c] if push.enabled() else []
+    others = [c for c in dict.fromkeys([settings.telegram_requests_chat_id, post.author.telegram_id])
+              if c and str(c) not in {str(a) for a in admins}]
+    background.add_task(_deliver, req.id, others, admins, text)
     for admin_id in db.scalars(select(User.id).where(User.is_admin.is_(True))):  # и в админ-панель, если она открыта
         notify(admin_id, {"type": "help_request", "id": req.id, "post": post.name, "from": me.name})
     return {"status": "sent", "contact_url": telegram_notify.normalize_contact(post.contact)}

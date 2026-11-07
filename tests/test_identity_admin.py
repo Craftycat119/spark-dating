@@ -107,3 +107,26 @@ def test_review_fixes():
     a.post(f"/api/users/{b.user_id}/block")
     a.post(f"/api/users/{b.user_id}/block")  # повторное нажатие — без ошибки
     assert b.post("/api/feed/undo", json={"user_id": a.user_id}).status_code == 404
+
+
+def test_bot_sends_help_requests_and_ads_to_admins(monkeypatch):
+    boss = make_user("boss@example.com", name="Админ")
+    bot = FakeBot()
+    monkeypatch.setattr(config.settings, "telegram_bot_token", TOKEN)
+    monkeypatch.setattr(config.settings, "telegram_admin_chat_id", "-100777")
+    monkeypatch.setattr(telegram_bot, "api", bot)
+    monkeypatch.setattr(push, "_in_background", lambda fn, *a: fn(*a))
+    from unittest import mock
+    pid = boss.post("/api/animals", data={"category": "foster", "name": "Луна", "contact": "@luna"}).json()["id"]
+    helper = make_user("helper2@x.io", name="Оля")
+    with mock.patch("app.telegram_notify.send_message", return_value=True):
+        helper.post(f"/api/animals/{pid}/help", json={"message": "Могу взять", "contact": "@olya"})
+    sent = [p for m, p in bot.sent if m == "sendMessage"]
+    assert any(p["chat_id"] == "-100777" and "Хочу помочь" in p["text"] and "Луна" in p["text"] and "@olya" in p["text"] for p in sent)
+    # заявка рекламодателя без аккаунта
+    push._last_support_notice.clear()  # номера обращений в тестах повторяются
+    guest = new_client()
+    t = guest.post("/api/support/threads", json={"topic": "ads", "contact": "ads@brand.ru"}).json()
+    guest.post(f"/api/support/threads/{t['id']}/messages", json={"text": "Хотим рекламу кофейни"})
+    sent = [p for m, p in bot.sent if m == "sendMessage"]
+    assert any(p["chat_id"] == "-100777" and "📣 Реклама" in p["text"] and "ads@brand.ru" in p["text"] and "кофейни" in p["text"] for p in sent)
