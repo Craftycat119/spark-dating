@@ -82,6 +82,8 @@ class Settings:
     telegram_requests_chat_id: str = os.environ.get("TELEGRAM_REQUESTS_CHAT_ID", "")
     # Куда бот присылает обращения в поддержку, жалобы, предложения и заявки на рекламу. Пусто — всем админам с Telegram
     telegram_admin_chat_id: str = os.environ.get("TELEGRAM_ADMIN_CHAT_ID", "")
+    # Отдельная группа для обращений в поддержку (помощь, жалобы, предложения). Пусто — туда же, куда TELEGRAM_ADMIN_CHAT_ID
+    telegram_support_chat_id: str = os.environ.get("TELEGRAM_SUPPORT_CHAT_ID", "")
 
     # Часовой пояс для статистики посещений (сутки считаются по нему). По умолчанию Москва, UTC+3
     stats_tz_hours: int = int(os.environ.get("STATS_TZ_HOURS", "3"))

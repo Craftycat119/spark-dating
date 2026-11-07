@@ -267,7 +267,8 @@ def notify_admins(db, thread, text: str) -> None:
         if now - _last_support_notice.get(thread.id, 0) < 20:  # переписка идёт — не дёргаем на каждое слово
             return
         _last_support_notice[thread.id] = now
-    chats = admin_chats(db)
+    # поддержка (помощь, жалобы, предложения) — в свою группу, если она задана; реклама — в группу администрации
+    chats = [settings.telegram_support_chat_id] if thread.topic == "support" and settings.telegram_support_chat_id else admin_chats(db)
     if not chats:
         log.info("Обращение #%s: некому отправить в Telegram. Привяжите Telegram к аккаунту админа или задайте TELEGRAM_ADMIN_CHAT_ID", thread.id)
         return

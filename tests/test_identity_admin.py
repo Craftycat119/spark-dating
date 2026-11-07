@@ -130,3 +130,20 @@ def test_bot_sends_help_requests_and_ads_to_admins(monkeypatch):
     guest.post(f"/api/support/threads/{t['id']}/messages", json={"text": "Хотим рекламу кофейни"})
     sent = [p for m, p in bot.sent if m == "sendMessage"]
     assert any(p["chat_id"] == "-100777" and "📣 Реклама" in p["text"] and "ads@brand.ru" in p["text"] and "кофейни" in p["text"] for p in sent)
+
+
+def test_support_goes_to_separate_group(monkeypatch):
+    bot = FakeBot()
+    monkeypatch.setattr(config.settings, "telegram_bot_token", TOKEN)
+    monkeypatch.setattr(config.settings, "telegram_admin_chat_id", "-100777")
+    monkeypatch.setattr(config.settings, "telegram_support_chat_id", "-100555")
+    monkeypatch.setattr(telegram_bot, "api", bot)
+    monkeypatch.setattr(push, "_in_background", lambda fn, *a: fn(*a))
+    push._last_support_notice.clear()
+    u = make_user("sup@x.io", name="Вася")
+    u.post("/api/support/threads", json={"category": "help", "text": "Не грузится фото"})
+    guest = new_client()
+    t = guest.post("/api/support/threads", json={"topic": "ads", "contact": "a@b.ru"}).json()
+    guest.post(f"/api/support/threads/{t['id']}/messages", json={"text": "Реклама"})
+    chats = {p["chat_id"]: p["text"] for m, p in bot.sent if m == "sendMessage"}
+    assert "Не грузится фото" in chats["-100555"] and "📣 Реклама" in chats["-100777"]
