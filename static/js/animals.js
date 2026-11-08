@@ -214,9 +214,9 @@ function helpSheet(p, adult) {
     <div class="bottom-sheet">
       <h2>Помочь: <span translate="no">${esc(p.name)}</span></h2>
       ${adult ? `
-        <p class="muted">Напишите автору в Telegram или оставьте заявку: она придёт волонтёрам в Telegram.</p>
-        ${p.contact_url ? `<a class="btn tg block" href="${esc(p.contact_url)}" target="_blank" rel="noopener">${icons.send} Написать в Telegram</a>` : ""}
-        <div class="divider">или</div>
+        <p class="muted">${p.contact_url ? "Напишите автору в Telegram или оставьте заявку: она придёт администрации COFI и волонтёрам." : "Оставьте заявку: она придёт администрации COFI, с вами свяжутся."}</p>
+        ${p.contact_url ? `<a class="btn tg block" href="${esc(p.contact_url)}" target="_blank" rel="noopener">${icons.send} Написать в Telegram</a>
+        <div class="divider">или</div>` : ""}
         <form class="stack">
           <label class="field"><span>Сообщение</span><textarea class="input" name="message" maxlength="1000" placeholder="Например: могу забрать на передержку на две недели"></textarea></label>
           <label class="field"><span>Как с вами связаться</span><input class="input" name="contact" maxlength="128" placeholder="@telegram или телефон"></label>
@@ -233,7 +233,7 @@ function helpSheet(p, adult) {
     const f = e.target;
     try {
       await api.post(`/api/animals/${p.id}/help`, { message: f.message.value, contact: f.contact.value });
-      toast("Заявка отправлена волонтёрам. Спасибо!");
+      toast("Заявка отправлена. Спасибо!");
       close();
     } catch (ex) { toast(ex.message, { error: true }); }
   });

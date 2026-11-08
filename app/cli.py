@@ -160,6 +160,7 @@ def main() -> None:
     s.add_argument("--lon", type=float, default=37.6173)
     s.add_argument("--count", type=int, default=12)
     sub.add_parser("download-models")
+    sub.add_parser("seed-pets", help="добавить готовые объявления о питомцах из app/seed/pets")
     sub.add_parser("outlook-login", help="подключить личную почту Outlook.com для отправки кодов")
     t = sub.add_parser("test-email", help="отправить пробное письмо")
     t.add_argument("to")
@@ -172,6 +173,12 @@ def main() -> None:
         create_admin(args.name, args.email, args.password)
     elif args.cmd == "seed":
         seed(args.lat, args.lon, args.count)
+    elif args.cmd == "seed-pets":
+        from .database import SessionLocal
+        from .seed_pets import seed_pets
+
+        with SessionLocal() as db:
+            print(f"Добавлено объявлений: {seed_pets(db)}")
     elif args.cmd == "download-models":
         download_models()
         print("Готово")

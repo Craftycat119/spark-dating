@@ -20,6 +20,7 @@ from .database import get_db, init_db
 from .deps import current_user
 from .models import Conversation, User
 from .realtime import set_loop
+from .seed_pets import seed_pets
 from .routers import admin, animals, auth, chat, feed, profile, support, users
 from .storage import resolve
 
@@ -44,6 +45,10 @@ async def lifespan(_app: FastAPI):
         db.execute(delete(AuthSession).where(AuthSession.expires_at < utcnow()))
         db.execute(delete(EmailCode).where(EmailCode.expires_at < utcnow() - timedelta(days=1)))
         db.commit()
+        try:  # готовые объявления «Питомцы» из app/seed/pets
+            seed_pets(db)
+        except Exception:  # noqa: BLE001 — объявления не должны мешать запуску
+            log.exception("Не удалось добавить готовые объявления о питомцах")
     if settings.secret_key == "dev-secret-change-me" and not settings.dev_mode:
         log.error("SECRET_KEY не задан! Установите его в .env перед запуском в продакшене.")
     if settings.dev_mode and settings.base_url.startswith("https://") and "localhost" not in settings.base_url:

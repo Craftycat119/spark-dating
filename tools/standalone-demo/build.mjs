@@ -16,6 +16,15 @@ import json, sys
 sys.path.insert(0, ".")
 from app import ages, cli, demo, interests
 from app.routers import support
+import base64, io
+from PIL import Image
+from app.seed_pets import SEED_DIR
+
+def _small(name):  # готовые фото питомцев, уменьшенные для демо-страницы
+    im = Image.open(SEED_DIR / name).convert("RGB"); im.thumbnail((720, 720)); buf = io.BytesIO(); im.save(buf, "JPEG", quality=78)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+
+real_pets = [{**p, "photos": [_small(n) for n in p["photos"]]} for p in json.loads((SEED_DIR / "pets.json").read_text(encoding="utf-8"))]
 print(json.dumps({
   "bots": [{k: b[k] for k in ("key","name","age","gender","km","likes_you","scenes","goals","interests","bio","replies","fit")} for b in demo.BOTS],
   "guest": {k: v for k, v in demo.GUEST.items() if k != "photo"},
@@ -26,6 +35,7 @@ print(json.dumps({
   "survey": interests.SURVEY, "genders": interests.GENDERS, "teen_genders": interests.TEEN_GENDERS, "orientations": interests.ORIENTATIONS, "orientations_by_gender": interests.ORIENTATIONS_BY_GENDER, "zodiac": interests.ZODIAC, "looking_for": interests.LOOKING_FOR,
   "min_interests": interests.MIN_INTERESTS,
   "teen_goals": ages.TEEN_GOALS, "min_age": ages.MIN_AGE,
+  "real_pets": real_pets,
   "animals": [dict(zip(("category","name","species","age_text","description","fundraising_goal","color"), a)) for a in cli.ANIMALS],
   "support": {
     "ads_greeting": support.ADS_GREETING, "support_greeting": support.SUPPORT_GREETING, "handoff": support.HANDOFF,

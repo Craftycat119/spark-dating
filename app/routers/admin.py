@@ -74,6 +74,9 @@ class BroadcastIn(BaseModel):
 
 @router.get("/stats")
 def stats(_: User = Depends(admin_user), db: Session = Depends(get_db)):
+    from ..seed_pets import seed_pets
+
+    seed_pets(db)  # первый администратор появился уже после запуска: готовые объявления добавятся при открытии панели
     day_ago = utcnow() - timedelta(days=1)
     counts: dict[str, int] = {}
     for raw in db.scalars(select(User.interests_json)):

@@ -3,6 +3,9 @@
 const w = (x) => EN[x] ?? x;
 
 export const EN = {
+  "Напишите автору в Telegram или оставьте заявку: она придёт администрации COFI и волонтёрам.": "Message the author on Telegram or leave a request: it goes to the COFI team and volunteers.",
+  "Оставьте заявку: она придёт администрации COFI, с вами свяжутся.": "Leave a request: it goes to the COFI team and they'll contact you.",
+  "Заявка отправлена. Спасибо!": "Request sent. Thank you!",
   // документы и согласия
   "Мне от 14 до 17 лет. Мой законный представитель ознакомлен с документами COFI и согласен с регистрацией. Мне будет доступна только лента «Дружба»": "I am 14 to 17. My legal guardian has read COFI's documents and agrees to my sign-up. Only the Friends feed will be available to me",
   "COFI в режиме бесплатного тестирования. Знакомства с 18 лет, с 14 до 17 только «Дружба». Создавая аккаунт, вы принимаете": "COFI is in free beta. Dating is 18+, ages 14–17 get Friends only. By creating an account you accept the",
@@ -121,7 +124,7 @@ export const EN = {
   "Напишите автору в Telegram или оставьте заявку: она придёт волонтёрам в Telegram.": "Message the author on Telegram or leave a request: volunteers get it on Telegram.",
   "Написать в Telegram": "Message on Telegram", "Сообщение": "Message", "Как с вами связаться": "How to reach you",
   "Например: могу забрать на передержку на две недели": "For example: I can foster for two weeks", "@telegram или телефон": "@telegram or phone",
-  "Отправить заявку": "Send request", "Заявка отправлена волонтёрам. Спасибо!": "Request sent to the volunteers. Thank you!",
+  "Отправить заявку": "Send request",
   "Связаться с волонтёрами можно с 18 лет. Расскажите об объявлении взрослым, они смогут помочь.": "Contacting volunteers is for 18+. Tell an adult about this post, they can help.",
   "Категория": "Category", "Кличка или название": "Name", "Кто это": "Species", "Кошка": "Cat", "Собака": "Dog", "Другое": "Other",
   "Возраст": "Age", "Город": "City", "Описание": "Description", "Цель сбора": "Fundraising goal", 

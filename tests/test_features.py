@@ -139,3 +139,21 @@ def test_teens_choose_who_they_look_for():
     make_user("boy2@x.io", name="Петя", age=14, gender="male", looking_for="any", goals=("Дружба",))
     assert boy.get("/api/profile").json()["looking_for"] == "female"
     assert [c["name"] for c in boy.get("/api/feed").json()["cards"]] == ["Катя"]
+
+
+def test_seed_pets_once():
+    from app.database import SessionLocal
+    from app.seed_pets import seed_pets
+
+    with SessionLocal() as db:
+        assert seed_pets(db) == 0  # администратора ещё нет — ждём
+    boss = make_user("boss@example.com", name="Андрей")
+    assert boss.get("/api/admin/stats").status_code == 200  # открыли панель — объявления добавились
+    items = boss.get("/api/animals?category=adoption").json()["items"]
+    names = [p["name"] for p in items]
+    assert names[:4] == ["Ушастая малышка", "Рыжая малышка", "Лиса-Алиса", "Девочка со стройки"]  # в порядке анкет
+    lisa = next(p for p in items if p["name"] == "Лиса-Алиса")
+    assert len(lisa["photos"]) == 3 and lisa["city"] == "Нячанг"
+    boss.delete(f"/api/animals/{lisa['id']}")
+    with SessionLocal() as db:
+        assert seed_pets(db) == 0  # удалённое не возвращается

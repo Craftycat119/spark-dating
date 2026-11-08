@@ -334,3 +334,12 @@ class Notification(Base):
     payload: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     read: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class AppFlag(Base):
+    """Одноразовые служебные отметки, например «готовое объявление о питомце уже добавлено»."""
+
+    __tablename__ = "app_flags"
+
+    key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

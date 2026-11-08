@@ -539,12 +539,17 @@ const CAT_TITLE = { adoption: "Ищет хозяина", foster: "Передер
 const CAT_ORDER = Object.keys(CAT_TITLE);
 const tgUrl = (c) => { const m = (c || "").trim().match(/^(?:@|https?:\/\/t\.me\/|t\.me\/)?([A-Za-z0-9_+/-]{3,64})\/?$/); return m ? `https://t.me/${m[1]}` : null; };
 function ensurePets() {
-  if (S.pets && S.pets.some((p) => p.photos.length >= 3)) return;
+  if (S.pets && S.petsVer === 2) return;
+  S.petsVer = 2;
   if (S.pets) S.pets = S.pets.filter((p) => p.author_id !== 0); else S.pets = [];
   const mine = S.pets;
   S.pets = DATA.animals.map((a, i) => ({ id: 9000 + i, ...a, city: "Москва", contact: "@cofi_volunteers", fundraising_open: true, active: true,
     photos: [0, 1, 2].map((n) => `@pet:${a.name}:${a.species}:${n}`), author: { id: 0, name: "Волонтёры COFI" }, author_id: 0,
     created_at: new Date(Date.now() - (i + 1) * 86400000 * 2).toISOString(), help_count: [7, 2, 4, 23][i] ?? 0 })).concat(mine);
+  // настоящие объявления из app/seed/pets — первыми
+  S.pets = DATA.real_pets.map((a, i) => ({ id: 9199 - i, category: a.category, name: a.name, species: a.species, age_text: a.age_text, city: a.city,
+    description: a.description, contact: "", fundraising_goal: "", fundraising_open: true, active: true, photos: a.photos,
+    author: { id: 0, name: "Администрация COFI" }, author_id: 0, created_at: new Date(Date.now() - i * 3600000).toISOString(), help_count: 0 })).concat(S.pets);
 }
 async function petOut(p, u) {
   return { id: p.id, category: p.category, name: p.name, species: p.species, age_text: p.age_text, city: p.city, description: p.description,
