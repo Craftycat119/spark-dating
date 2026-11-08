@@ -201,12 +201,56 @@ def setup_profile() -> None:
         log.warning("Telegram: не удалось обновить кнопку мини-приложения")
 
 
+def remember_contact(username: str | None, chat_id: int) -> None:
+    """Запоминаем @username → id чата: по @username из настроек бот сможет написать этому человеку."""
+    if not username:
+        return
+    from .database import SessionLocal
+    from .models import TelegramContact
+
+    try:
+        with SessionLocal() as db:
+            row = db.get(TelegramContact, username.lower())
+            if row:
+                row.chat_id = chat_id
+            else:
+                db.add(TelegramContact(username=username.lower(), chat_id=chat_id))
+            db.commit()
+    except Exception:  # noqa: BLE001 — не мешаем ответу бота
+        log.warning("Telegram: не удалось запомнить @%s", username)
+
+
+def resolve_chats(db, value: str) -> list:
+    """«-100123, @volunteer, 555» → id чатов. @username ищем среди тех, кто писал боту или входил в COFI через Telegram."""
+    from sqlalchemy import func, select
+
+    from .models import TelegramContact, User
+
+    out = []
+    for raw in (x.strip() for x in value.split(",")):
+        if not raw:
+            continue
+        if raw.lstrip("-").isdigit():
+            out.append(int(raw))
+            continue
+        name = raw.lstrip("@").lower()
+        chat = db.scalar(select(TelegramContact.chat_id).where(TelegramContact.username == name)) or db.scalar(
+            select(User.telegram_id).where(func.lower(User.telegram_username) == name, User.telegram_id.is_not(None)))
+        if chat:
+            out.append(chat)
+        else:
+            log.warning("Telegram: не знаю, куда писать @%s — пусть этот человек откроет бота @%s и нажмёт «Запустить»", name, _bot_username)
+    return out
+
+
 def handle_update(upd: dict) -> list[tuple[str, dict]]:
     """Обрабатывает одно обновление бота и возвращает вызовы API, которые нужно сделать.
     Вынесено отдельно, чтобы проверять логику без сети."""
     calls: list[tuple[str, dict]] = []
     if msg := upd.get("message"):
         chat_id = msg["chat"]["id"]
+        if msg.get("chat", {}).get("type", "private") == "private":
+            remember_contact((msg.get("from") or {}).get("username"), chat_id)
         text = (msg.get("text") or "").strip()
         if text.startswith("/start link_"):
             calls.append(("sendMessage", _link_question(text.removeprefix("/start link_").strip(), chat_id)))

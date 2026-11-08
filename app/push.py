@@ -256,6 +256,23 @@ def admin_button(section: str) -> dict | None:
     return {"text": "Открыть в админ-панели", "url": f"{settings.base_url.rstrip('/')}/admin#{section}"} if app_link() else None
 
 
+def _who(thread) -> str:
+    """«Вася (#12), Telegram @vasya, почта v@mail.ru» — чтобы администрация сразу видела, кому отвечать."""
+    u = thread.user
+    if not u:
+        return f"гостя без аккаунта, контакт: {thread.contact}" if thread.contact else "гостя без аккаунта (контакт не оставлен)"
+    parts = [f"{u.name or 'без имени'} (#{u.id})"]
+    if u.telegram_username:
+        parts.append(f"Telegram @{u.telegram_username}")
+    elif u.telegram_id:
+        parts.append(f"Telegram id {u.telegram_id}")
+    if u.email:
+        parts.append(f"почта {u.email}")
+    if thread.contact:
+        parts.append(f"контакт: {thread.contact}")
+    return ", ".join(parts)
+
+
 def notify_admins(db, thread, text: str) -> None:
     """Новое сообщение в обращении: администраторам в Telegram (или в группу TELEGRAM_ADMIN_CHAT_ID)."""
     if not enabled():
@@ -272,7 +289,7 @@ def notify_admins(db, thread, text: str) -> None:
     if not chats:
         log.info("Обращение #%s: некому отправить в Telegram. Привяжите Telegram к аккаунту админа или задайте TELEGRAM_ADMIN_CHAT_ID", thread.id)
         return
-    who = thread.user.name if thread.user else (thread.contact or "гость без аккаунта")
+    who = _who(thread)
     target = db.get(User, thread.about_user_id) if thread.about_user_id else None
     about = f"\nНа анкету: {target.name or 'без имени'} (#{target.id})" if target else ""
     title = SUPPORT_TITLES.get(thread.category, "🆘 Обращение")

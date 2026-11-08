@@ -147,3 +147,31 @@ def test_support_goes_to_separate_group(monkeypatch):
     guest.post(f"/api/support/threads/{t['id']}/messages", json={"text": "Реклама"})
     chats = {p["chat_id"]: p["text"] for m, p in bot.sent if m == "sendMessage"}
     assert "Не грузится фото" in chats["-100555"] and "📣 Реклама" in chats["-100777"]
+
+
+def test_help_needs_telegram_and_goes_to_extra_people(monkeypatch):
+    boss = make_user("boss@example.com", name="Админ")
+    bot = FakeBot()
+    monkeypatch.setattr(config.settings, "telegram_bot_token", TOKEN)
+    monkeypatch.setattr(config.settings, "telegram_admin_chat_id", "-100777")
+    monkeypatch.setattr(telegram_bot, "api", bot)
+    monkeypatch.setattr(push, "_in_background", lambda fn, *a: fn(*a))
+    # волонтёр написал боту — теперь его можно указать по @username
+    telegram_bot.handle_update({"message": {"chat": {"id": 4242, "type": "private"}, "from": {"id": 4242, "username": "Volunteer_Masha"}, "text": "/start"}})
+    monkeypatch.setattr(config.settings, "telegram_requests_chat_id", "@volunteer_masha, 999")
+    pid = boss.post("/api/animals", data={"category": "foster", "name": "Луна", "contact": "@luna"}).json()["id"]
+    helper = make_user("h3@x.io", name="Оля")
+    assert helper.post(f"/api/animals/{pid}/help", json={"message": "Могу"}).status_code == 422  # без Telegram нельзя
+    assert helper.post(f"/api/animals/{pid}/help", json={"contact": "+7 900 000"}).status_code == 422
+    from unittest import mock
+    with mock.patch("app.telegram_notify.send_message", return_value=True) as tg:
+        assert helper.post(f"/api/animals/{pid}/help", json={"message": "Могу", "contact": "t.me/olya_help"}).status_code == 200
+    sent_to = {c.args[0] for c in tg.call_args_list}
+    assert {4242, 999} <= sent_to and "@olya_help" in tg.call_args_list[0].args[1] and "h3@x.io" in tg.call_args_list[0].args[1]
+    # обращение: администрация видит Telegram и почту автора
+    push._last_support_notice.clear()
+    helper.post("/api/support/threads", json={"category": "complaint", "text": "Жалоба"})
+    msg = [p for m, p in bot.sent if m == "sendMessage" and "Жалоба" in p["text"]][0]["text"]
+    assert "Оля" in msg and "h3@x.io" in msg
+    t = boss.get("/api/admin/support").json()[0]
+    assert t["user"]["email"] == "h3@x.io" and "telegram_username" in t["user"]

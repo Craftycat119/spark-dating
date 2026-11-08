@@ -5,12 +5,14 @@
 """
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from .. import push, storage, telegram_notify
+from .. import push, storage, telegram_bot, telegram_notify
 from ..config import settings
 from ..database import get_db
 from ..deps import current_user
@@ -156,6 +158,9 @@ def delete_post(post_id: int, me: User = Depends(current_user), db: Session = De
     return {"status": "deleted"}
 
 
+TG_USER_RE = re.compile(r"^(?:@|https?://t\.me/|t\.me/)?([A-Za-z][A-Za-z0-9_]{3,31})/?$")
+
+
 class HelpIn(BaseModel):
     message: str = Field("", max_length=1000)
     contact: str = Field("", max_length=128)
@@ -184,19 +189,24 @@ def help_post(post_id: int, data: HelpIn, background: BackgroundTasks, me: User 
         raise HTTPException(404, "Объявление не найдено")
     if post.category == "charity" and not post.fundraising_open:
         raise HTTPException(409, "Сбор уже закрыт, спасибо!")
-    contact = data.contact.strip() or (f"@{me.telegram_username}" if me.telegram_username else (me.email or ""))
+    raw = data.contact.strip() or (f"@{me.telegram_username}" if me.telegram_username else "")
+    m = TG_USER_RE.match(raw)
+    if not m:
+        raise HTTPException(422, "Укажите ваш Telegram для связи: @username")
+    contact = f"@{m.group(1)}"
     req = HelpRequest(post_id=post.id, user_id=me.id, message=data.message.strip(), contact=contact)
     db.add(req)
     db.commit()
     text = (
         f"🐾 Заявка «Хочу помочь» в COFI\n"
         f"Объявление: {post.name} ({CATEGORIES[post.category]})\n"
-        f"От: {me.name}, связь: {contact or 'не указана'}\n"
+        f"От: {me.name}\nTelegram для связи: {contact}" + (f"\nПочта: {me.email}" if me.email else "") + "\n"
         f"{('Сообщение: ' + req.message) if req.message else ''}"
     ).strip()
     # Заявка уходит через бота администрации, в группу волонтёров (если настроена) и автору объявления
     admins = [c for c in dict.fromkeys(push.admin_chats(db)) if c] if push.enabled() else []
-    others = [c for c in dict.fromkeys([settings.telegram_requests_chat_id, post.author.telegram_id])
+    extra = telegram_bot.resolve_chats(db, settings.telegram_requests_chat_id) if push.enabled() else []
+    others = [c for c in dict.fromkeys([*extra, post.author.telegram_id])
               if c and str(c) not in {str(a) for a in admins}]
     background.add_task(_deliver, req.id, others, admins, text)
     for admin_id in db.scalars(select(User.id).where(User.is_admin.is_(True))):  # и в админ-панель, если она открыта

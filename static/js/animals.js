@@ -14,7 +14,10 @@ export function feedTabs(active, me) {
     <a href="#/animals" role="tab" class="${active === "animals" ? "on" : ""}">${icons.paw} Питомцы</a></div>`;
 }
 
+let currentMe = null; // для подстановки своего Telegram в заявку «Помочь»
+
 export async function renderAnimals({ screen, state, go }) {
+  currentMe = state.me;
   let category = sessionStorage.getItem("animals-cat") || "";
   let items = [], index = 0;
   const adult = state.me.age_group === "adult";
@@ -210,6 +213,7 @@ export async function openPet(postId, { adult, onChange = () => {} }) {
 }
 
 function helpSheet(p, adult) {
+  const me = currentMe;
   const el = h(`<div class="overlay sheet-overlay" role="dialog" aria-label="Помочь">
     <div class="bottom-sheet">
       <h2>Помочь: <span translate="no">${esc(p.name)}</span></h2>
@@ -219,7 +223,7 @@ function helpSheet(p, adult) {
         <div class="divider">или</div>` : ""}
         <form class="stack">
           <label class="field"><span>Сообщение</span><textarea class="input" name="message" maxlength="1000" placeholder="Например: могу забрать на передержку на две недели"></textarea></label>
-          <label class="field"><span>Как с вами связаться</span><input class="input" name="contact" maxlength="128" placeholder="@telegram или телефон"></label>
+          <label class="field"><span>Ваш Telegram для связи</span><input class="input" name="contact" maxlength="64" required placeholder="@username" autocomplete="off" value="${esc(me?.telegram_username ? "@" + me.telegram_username : "")}"></label>
           <button class="btn block">Отправить заявку</button>
         </form>`
       : `<p class="muted">Связаться с волонтёрами можно с 18 лет. Расскажите об объявлении взрослым, они смогут помочь.</p>`}

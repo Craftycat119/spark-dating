@@ -598,8 +598,9 @@ route("PATCH", "/api/animals/(\\d+)", async (b, [pid]) => {
   save();
   return petOut(p, u);
 });
-route("POST", "/api/animals/(\\d+)/help", (_, [pid]) => {
+route("POST", "/api/animals/(\\d+)/help", (b, [pid]) => {
   const u = requireMe();
+  if (!/^(?:@|https?:\/\/t\.me\/|t\.me\/)?[A-Za-z][A-Za-z0-9_]{3,31}\/?$/.test((b?.contact || "").trim())) deny(422, "Укажите ваш Telegram для связи: @username");
   if (group(u) !== "adult") deny(403, "Отправлять заявки можно с 18 лет");
   const p = (S.pets || []).find((x) => x.id === +pid);
   if (!p) deny(404, "Объявление не найдено");

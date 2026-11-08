@@ -336,6 +336,16 @@ class Notification(Base):
     read: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class TelegramContact(Base):
+    """Кто писал боту: @username → id чата. Так бот может прислать заявку человеку по @username из настроек."""
+
+    __tablename__ = "telegram_contacts"
+
+    username: Mapped[str] = mapped_column(String(64), primary_key=True)  # в нижнем регистре, без @
+    chat_id: Mapped[int] = mapped_column(BigInteger)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
 class AppFlag(Base):
     """Одноразовые служебные отметки, например «готовое объявление о питомце уже добавлено»."""
 

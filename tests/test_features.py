@@ -113,7 +113,7 @@ def test_animal_details():
     pid = owner.post("/api/animals", data={"category": "foster", "name": "Луна", "contact": "@luna",
                                            "description": "Длинное описание"}).json()["id"]
     with mock.patch("app.telegram_notify.send_message", return_value=False):
-        other.post(f"/api/animals/{pid}/help", json={"message": "Могу взять"})
+        other.post(f"/api/animals/{pid}/help", json={"message": "Могу взять", "contact": "@other_user"})
     d = other.get(f"/api/animals/{pid}").json()
     assert d["help_count"] == 1 and d["description"] == "Длинное описание" and d["author"]["name"] == "Волонтёр"
     owner.patch(f"/api/animals/{pid}", json={"active": False})

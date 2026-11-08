@@ -3,6 +3,7 @@
 const w = (x) => EN[x] ?? x;
 
 export const EN = {
+  "Ваш Telegram для связи": "Your Telegram for contact",
   "Напишите автору в Telegram или оставьте заявку: она придёт администрации COFI и волонтёрам.": "Message the author on Telegram or leave a request: it goes to the COFI team and volunteers.",
   "Оставьте заявку: она придёт администрации COFI, с вами свяжутся.": "Leave a request: it goes to the COFI team and they'll contact you.",
   "Заявка отправлена. Спасибо!": "Request sent. Thank you!",

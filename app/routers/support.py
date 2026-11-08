@@ -75,7 +75,8 @@ def _thread_out(t: SupportThread, db: Session, with_messages: bool = True) -> di
         "id": t.id, "topic": t.topic, "category": t.category, "status": t.status, "contact": t.contact,
         "about_user_id": t.about_user_id, "created_at": t.created_at.isoformat() + "Z",
         "updated_at": t.updated_at.isoformat() + "Z",
-        "user": {"id": t.user.id, "name": t.user.name, "email": t.user.email} if t.user else None,
+        "user": {"id": t.user.id, "name": t.user.name, "email": t.user.email,
+                 "telegram_username": t.user.telegram_username, "telegram_id": t.user.telegram_id} if t.user else None,
     }
     if with_messages:
         msgs = db.scalars(select(SupportMessage).where(SupportMessage.thread_id == t.id).order_by(SupportMessage.id)).all()

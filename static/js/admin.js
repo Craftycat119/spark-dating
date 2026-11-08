@@ -316,10 +316,22 @@ async function loadThreads() {
   if (!box) return;
   box.innerHTML = list.map((t) => `<div class="conv-row" data-id="${t.id}">
       <span class="tag ${t.topic === "ads" ? "hot" : t.category === "complaint" ? "warn" : ""}">${CAT[t.category]}</span>
-      <span style="flex:1"><b>${t.user ? esc(t.user.name || t.user.email || "#" + t.user.id) : "Гость" + (t.contact ? `, ${esc(t.contact)}` : "")}</b> №${t.id}<br>
+      <span style="flex:1"><b>${t.user ? esc(t.user.name || t.user.email || "#" + t.user.id) : "Гость" + (t.contact ? `, ${esc(t.contact)}` : "")}</b> №${t.id}
+      ${t.user && (t.user.telegram_username || t.user.email) ? `<span class="muted small"> · ${esc(t.user.telegram_username ? "@" + t.user.telegram_username : t.user.email)}</span>` : ""}<br>
       <span class="muted">${t.last ? esc(((t.last.author === "user" ? "" : t.last.author === "staff" ? "Вы: " : "Бот: ") + t.last.text).slice(0, 90)) : ""}</span></span>
       <span class="muted">${dt(t.updated_at)}</span></div>`).join("") || '<p class="muted">Обращений нет.</p>';
   $$(".conv-row", box).forEach((r) => (r.onclick = () => openThread(Number(r.dataset.id))));
+}
+
+/** Telegram и почта автора обращения: ссылками, чтобы ответить в один клик. */
+function contactLinks(t) {
+  const u = t.user || {};
+  const items = [];
+  if (u.telegram_username) items.push(`<a href="https://t.me/${encodeURIComponent(u.telegram_username)}" target="_blank" rel="noopener">Telegram @${esc(u.telegram_username)}</a>`);
+  else if (u.telegram_id) items.push(`<span>Telegram id ${esc(String(u.telegram_id))} (без username)</span>`);
+  if (u.email) items.push(`<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>`);
+  if (t.contact) items.push(`<span>Контакт: ${esc(t.contact)}</span>`);
+  return items.length ? items.join("") : '<span class="muted">Контактов нет: ответить можно только здесь</span>';
 }
 
 async function openThread(id) {
@@ -328,7 +340,9 @@ async function openThread(id) {
   drawer.hidden = false;
   drawer.innerHTML = `<button class="icon-btn close" aria-label="Закрыть">${icons.x}</button>
     <h2>${CAT[t.category]} №${t.id}</h2>
-    <p class="muted small">${t.user ? `Пользователь <a href="#users" data-user="${t.user.id}">#${t.user.id}</a>` : "Без аккаунта"}${t.contact ? `, контакт: ${esc(t.contact)}` : ""}${t.about_user_id ? `, жалоба на <a href="#users" data-user="${t.about_user_id}">анкету #${t.about_user_id}</a>` : ""}</p>
+    <div class="sender">${t.user ? `<b>${esc(t.user.name || "Без имени")}</b> <a href="#users" data-user="${t.user.id}">#${t.user.id}</a>` : "<b>Гость без аккаунта</b>"}
+      ${contactLinks(t)}
+      ${t.about_user_id ? `<span>Жалоба на <a href="#users" data-user="${t.about_user_id}">анкету #${t.about_user_id}</a></span>` : ""}</div>
     <div class="transcript">${t.messages.map((m) => `<div class="msg ${m.author === "staff" ? "mine" : ""}">
       <div class="who">${esc(who[m.author])} · ${dt(m.created_at)}</div><div class="bubble">${esc(m.text)}</div></div>`).join("")}</div>
     <form class="stack" style="margin-top:16px" data-reply>
