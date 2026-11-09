@@ -49,6 +49,7 @@ def post_out(p: AnimalPost, me: User) -> dict:
         "distance_km": distance,
         "author": {"id": p.author.id, "name": p.author.name},
         "can_manage": me.is_admin,  # управлять объявлениями может только администрация
+        **({"contact": p.contact} if me.is_admin else {}),  # исходный контакт — для формы редактирования
         "created_at": p.created_at.isoformat() + "Z",
     }
 
@@ -120,6 +121,13 @@ class PostPatch(BaseModel):
     fundraising_open: bool | None = None
     active: bool | None = None
     description: str | None = Field(None, max_length=3000)
+    category: str | None = None
+    name: str | None = Field(None, max_length=64)
+    species: str | None = Field(None, max_length=32)
+    age_text: str | None = Field(None, max_length=32)
+    city: str | None = Field(None, max_length=64)
+    contact: str | None = Field(None, max_length=128)  # "" — без Telegram, заявки только через форму
+    fundraising_goal: str | None = Field(None, max_length=64)
 
 
 def _own(db: Session, post_id: int, me: User) -> AnimalPost:
@@ -144,6 +152,56 @@ def update_post(post_id: int, data: PostPatch, me: User = Depends(current_user),
         post.active = data.active
     if data.description is not None:
         post.description = data.description.strip()
+    if data.category is not None:
+        if data.category not in CATEGORIES:
+            raise HTTPException(422, "Выберите категорию")
+        post.category = data.category
+    if data.name is not None:
+        if not data.name.strip():
+            raise HTTPException(422, "Укажите кличку или название")
+        post.name = data.name.strip()
+    if data.contact is not None:
+        if data.contact.strip() and not telegram_notify.normalize_contact(data.contact):
+            raise HTTPException(422, "Укажите Telegram: @username или ссылку t.me/…")
+        post.contact = data.contact.strip()
+    for field in ("species", "age_text", "city", "fundraising_goal"):
+        if (value := getattr(data, field)) is not None:
+            setattr(post, field, value.strip())
+    db.commit()
+    return post_out(post, me)
+
+
+@router.post("/{post_id}/photos")
+def add_post_photos(post_id: int, files: list[UploadFile] = File(...), me: User = Depends(current_user), db: Session = Depends(get_db)):
+    post = _own(db, post_id, me)
+    if len(post.photos) + len(files) > MAX_PHOTOS:
+        raise HTTPException(422, f"Не больше {MAX_PHOTOS} фото в объявлении")
+    post.photos = post.photos + [storage.save_image(storage.read_limited(f, settings.max_image_mb), "animals") for f in files]
+    db.commit()
+    return post_out(post, me)
+
+
+@router.delete("/{post_id}/photos/{index}")
+def delete_post_photo(post_id: int, index: int, me: User = Depends(current_user), db: Session = Depends(get_db)):
+    post = _own(db, post_id, me)
+    photos = post.photos
+    if not 0 <= index < len(photos):
+        raise HTTPException(404, "Фото не найдено")
+    storage.delete_file(photos.pop(index))
+    post.photos = photos
+    db.commit()
+    return post_out(post, me)
+
+
+@router.post("/{post_id}/photos/{index}/first")
+def make_photo_first(post_id: int, index: int, me: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Сделать фото первым: его видно в ленте."""
+    post = _own(db, post_id, me)
+    photos = post.photos
+    if not 0 <= index < len(photos):
+        raise HTTPException(404, "Фото не найдено")
+    photos.insert(0, photos.pop(index))
+    post.photos = photos
     db.commit()
     return post_out(post, me)
 

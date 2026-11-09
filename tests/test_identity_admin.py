@@ -175,3 +175,38 @@ def test_help_needs_telegram_and_goes_to_extra_people(monkeypatch):
     assert "Оля" in msg and "h3@x.io" in msg
     t = boss.get("/api/admin/support").json()[0]
     assert t["user"]["email"] == "h3@x.io" and "telegram_username" in t["user"]
+
+
+def test_admin_edits_profiles_and_pets():
+    from conftest import jpeg_bytes
+
+    boss = make_user("boss@example.com", name="Админ")
+    u = make_user("edit@x.io", name="Петя", gender="male", looking_for="female")
+    r = boss.put(f"/api/admin/users/{u.user_id}/profile", json={
+        "name": "Пётр", "bio": "Новое описание", "height_cm": 182, "zodiac": "leo", "looking_for": "any",
+        "interests": ["Бег", "Йога", "Кофейни"], "goals": ["Дружба"]})
+    assert r.status_code == 200, r.text
+    me = u.get("/api/profile").json()
+    assert me["name"] == "Пётр" and me["bio"] == "Новое описание" and me["height_cm"] == 182 and me["looking_for"] == "any"
+    # правила те же: неверные данные не пройдут, сексуальность без согласия человека не ставится
+    assert boss.put(f"/api/admin/users/{u.user_id}/profile", json={"interests": ["Бег"]}).status_code == 422
+    assert boss.put(f"/api/admin/users/{u.user_id}/profile", json={"orientation": "gay"}).status_code == 422
+    # фото: удалить главное скрывает анкету, ручное подтверждение возвращает
+    d = boss.post(f"/api/admin/users/{u.user_id}/photos", files={"file": ("g.jpg", jpeg_bytes(), "image/jpeg")}).json()
+    pid = d["gallery_items"][0]["id"]
+    assert len(boss.delete(f"/api/admin/users/{u.user_id}/photos/{pid}").json()["gallery_items"]) == 0
+    assert boss.delete(f"/api/admin/users/{u.user_id}/photo").json()["photo_verified"] is False
+    boss.post(f"/api/admin/users/{u.user_id}/photo", files={"file": ("p.jpg", jpeg_bytes(), "image/jpeg")})
+    assert boss.post(f"/api/admin/users/{u.user_id}/verify-photo").json()["photo_verified"] is True
+    # обычный пользователь так не может
+    assert u.put(f"/api/admin/users/{boss.user_id}/profile", json={"name": "Хакер"}).status_code == 403
+    # питомец: все поля и фото
+    post = boss.post("/api/animals", data={"category": "foster", "name": "Луна", "contact": "@luna"},
+                     files=[("files", ("a.jpg", jpeg_bytes("red"), "image/jpeg")), ("files", ("b.jpg", jpeg_bytes("blue"), "image/jpeg"))]).json()
+    p = boss.patch(f"/api/animals/{post['id']}", json={"name": "Луна-2", "category": "adoption", "city": "Нячанг", "contact": "", "age_text": "1 год"}).json()
+    assert p["name"] == "Луна-2" and p["category"] == "adoption" and p["contact_url"] is None and p["city"] == "Нячанг"
+    second = p["photos"][1]
+    assert boss.post(f"/api/animals/{post['id']}/photos/1/first").json()["photos"][0] == second
+    assert len(boss.delete(f"/api/animals/{post['id']}/photos/0").json()["photos"]) == 1
+    assert len(boss.post(f"/api/animals/{post['id']}/photos", files=[("files", ("c.jpg", jpeg_bytes(), "image/jpeg"))]).json()["photos"]) == 2
+    assert u.patch(f"/api/animals/{post['id']}", json={"name": "x"}).status_code == 403

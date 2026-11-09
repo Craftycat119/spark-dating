@@ -69,6 +69,12 @@ def get_profile(user: User = Depends(current_user)):
 
 @router.put("")
 def update_profile(data: ProfileIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    apply_profile(db, user, data, client_ip(request))
+    return own_profile(user)
+
+
+def apply_profile(db: Session, user: User, data: ProfileIn, ip: str | None = None) -> None:
+    """Проверяет и сохраняет поля анкеты. Те же правила для самого человека и для правок из админ-панели."""
     if data.name is not None:
         name = data.name.strip()
         if not name:
@@ -95,7 +101,7 @@ def update_profile(data: ProfileIn, request: Request, user: User = Depends(curre
         if not data.consent_pd:
             raise HTTPException(422, "Чтобы продолжить, дайте согласие на обработку персональных данных")
         user.terms_accepted_at = user.consent_pd_at = utcnow()
-        user.consent_ip = client_ip(request)
+        user.consent_ip = ip
         user.terms_version = TERMS_VERSION
         user.age_confirmation = "adult" if user.age_group == "adult" else "guardian"
     if data.language in ("ru", "en"):
@@ -166,7 +172,6 @@ def update_profile(data: ProfileIn, request: Request, user: User = Depends(curre
     db.commit()
     feed_index.invalidate()  # лента увидит изменения сразу
     db.refresh(user)
-    return own_profile(user)
 
 
 @router.post("/telegram-link")

@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 from datetime import date, timedelta
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from .. import feed_index, push
+from .. import feed_index, push, storage
+from ..config import settings
 from ..interests import GENDERS, INTERESTS, LOOKING_FOR, ORIENTATIONS
 from ..database import get_db
 from ..deps import admin_user, local_day
@@ -155,6 +156,11 @@ def user_detail(user_id: int, _: User = Depends(admin_user), db: Session = Depen
         "bio": u.bio,
         "selfie_url": f"/media/{u.selfie_path}" if u.selfie_path else None,
         "gallery": [media_url(p.path) for p in u.photos],
+        "gallery_items": [{"id": p.id, "url": media_url(p.path)} for p in u.photos],
+        "profile": {"gender": u.gender, "orientation": u.orientation, "show_identity": u.show_identity,
+                    "show_orientation": u.show_orientation, "looking_for": u.looking_for, "height_cm": u.height_cm,
+                    "weight_kg": u.weight_kg, "zodiac": u.zodiac, "max_distance_km": u.max_distance_km,
+                    "consent_sexuality": bool(u.consent_sexuality_at)},
         "face_score": u.face_score,
         "photo_verified_at": _iso(u.photo_verified_at),
         "registration_user_agent": u.registration_user_agent,
@@ -188,6 +194,95 @@ def ban(user_id: int, data: BanIn, admin: User = Depends(admin_user), db: Sessio
     db.commit()
     feed_index.invalidate()
     return user_row(u)
+
+
+class AdminProfileIn(BaseModel):
+    """Что администрация может поменять в анкете. Согласия за человека дать нельзя: их полей здесь нет."""
+    name: str | None = Field(None, max_length=64)
+    bio: str | None = Field(None, max_length=500)
+    gender: str | None = None
+    orientation: str | None = None  # "" — убрать
+    show_identity: bool | None = None
+    show_orientation: bool | None = None
+    height_cm: int | None = Field(None, ge=0, le=260)
+    weight_kg: int | None = Field(None, ge=0, le=300)
+    zodiac: str | None = None
+    looking_for: str | None = None
+    interests: list[str] | None = None
+    goals: list[str] | None = None
+    max_distance_km: int | None = None
+
+
+@router.put("/users/{user_id}/profile")
+def edit_profile(user_id: int, data: AdminProfileIn, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    from .profile import ProfileIn, apply_profile
+
+    u = _get_user(db, user_id)
+    apply_profile(db, u, ProfileIn(**data.model_dump(exclude_none=True)))
+    return user_detail(user_id, _, db)
+
+
+@router.post("/users/{user_id}/photo")
+def replace_photo(user_id: int, file: UploadFile = File(...), keep_verified: bool = Form(False),
+                  _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Заменить главное фото. По умолчанию проверка сбрасывается: человек снова пройдёт сканер."""
+    u = _get_user(db, user_id)
+    rel = storage.save_image(storage.read_limited(file, settings.max_image_mb), "photos")
+    storage.delete_file(u.photo_path)
+    u.photo_path = rel
+    if not keep_verified:
+        u.photo_verified, u.photo_verified_at, u.face_score = False, None, None
+    db.commit()
+    feed_index.invalidate()
+    return user_detail(user_id, _, db)
+
+
+@router.delete("/users/{user_id}/photo")
+def remove_photo(user_id: int, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Удалить главное фото (например, чужое или неприличное): анкета скрывается, пока человек не загрузит новое."""
+    u = _get_user(db, user_id)
+    storage.delete_file(u.photo_path)
+    u.photo_path, u.photo_verified, u.photo_verified_at, u.face_score = None, False, None, None
+    db.commit()
+    feed_index.invalidate()
+    return user_detail(user_id, _, db)
+
+
+@router.post("/users/{user_id}/photos")
+def add_gallery_photo(user_id: int, file: UploadFile = File(...), _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    from ..models import UserPhoto
+    from .profile import MAX_GALLERY
+
+    u = _get_user(db, user_id)
+    if len(u.photos) >= MAX_GALLERY:
+        raise HTTPException(400, f"Можно добавить не больше {MAX_GALLERY} фото")
+    u.photos.append(UserPhoto(path=storage.save_image(storage.read_limited(file, settings.max_image_mb), "gallery")))
+    db.commit()
+    return user_detail(user_id, _, db)
+
+
+@router.delete("/users/{user_id}/photos/{photo_id}")
+def remove_gallery_photo(user_id: int, photo_id: int, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    u = _get_user(db, user_id)
+    photo = next((p for p in u.photos if p.id == photo_id), None)
+    if not photo:
+        raise HTTPException(404, "Фото не найдено")
+    storage.delete_file(photo.path)
+    u.photos.remove(photo)
+    db.commit()
+    return user_detail(user_id, _, db)
+
+
+@router.post("/users/{user_id}/verify-photo")
+def verify_photo_manually(user_id: int, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Подтвердить фото вручную: например, сканер ошибся, а по кадрам видно, что это тот же человек."""
+    u = _get_user(db, user_id)
+    if not u.photo_path:
+        raise HTTPException(400, "Сначала нужно фото анкеты")
+    u.photo_verified, u.photo_verified_at = True, utcnow()
+    db.commit()
+    feed_index.invalidate()
+    return user_detail(user_id, _, db)
 
 
 @router.post("/users/{user_id}/reset-verification")

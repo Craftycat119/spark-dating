@@ -7,6 +7,7 @@ const view = $("#view");
 const drawer = $("#drawer");
 const usersState = { q: "", interest: "", page: 1 };
 let catalog = [];
+let cfg = {}; // настройки приложения: пол, сексуальность, знаки, опрос — для форм редактирования
 
 const dt = (iso) => (iso ? new Date(iso).toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" }) : "—");
 const tags = (items, cls = "") => items.map((f) => `<span class="tag ${cls}">${esc(f)}</span>`).join("");
@@ -16,7 +17,8 @@ async function boot() {
   try {
     const me = await api.get("/api/auth/me");
     if (!me.is_admin) throw new Error();
-    catalog = (await api.get("/api/config")).survey.slice(1).flatMap((q) => q.options);
+    cfg = await api.get("/api/config");
+    catalog = cfg.survey.slice(1).flatMap((q) => q.options);
   } catch {
     view.innerHTML = `<h1>Нет доступа</h1><p class="muted">Войдите в приложение под аккаунтом администратора.</p><p style="margin-top:16px"><a class="btn" href="/">Войти</a></p>`;
     $(".rail nav").hidden = true;
@@ -178,11 +180,17 @@ async function openUser(id) {
     <h2>${esc(u.name || "Без имени")}${u.age > 0 ? `, ${u.age}` : ""}</h2>
     <p class="muted small">#${u.id} · ${u.online ? "в сети" : `был(а) ${dt(u.last_seen_at)}`}</p>
     <div class="photos">
-      <figure>${pic(u.photo_url, "Фото ещё не загружено")}<figcaption>Фото анкеты</figcaption></figure>
+      <figure>${pic(u.photo_url, "Фото ещё не загружено")}<figcaption>Фото анкеты
+        <span class="photo-tools"><button class="link" data-photo-replace>Заменить</button>${u.photo_url ? `<button class="link danger-link" data-photo-remove>Удалить</button>` : ""}</span></figcaption></figure>
       <figure>${pic(u.selfie_url, "Проверку лица ещё не проходил(а)")}<figcaption>Кадр со сканера${u.face_score != null ? `, сходство ${u.face_score.toFixed(2)}` : ""}</figcaption></figure>
     </div>
-    ${u.gallery.length ? `<div class="photos" style="grid-template-columns:repeat(3,1fr)">${u.gallery.map((g) => `<figure><a href="${esc(g)}" target="_blank"><img src="${esc(g)}" alt=""></a></figure>`).join("")}</div>` : ""}
+    <div class="photos gallery-admin">${u.gallery_items.map((g) => `<figure><a href="${esc(g.url)}" target="_blank"><img src="${esc(g.url)}" alt=""></a>
+      <button class="icon-btn tiny-x" data-gallery-del="${g.id}" aria-label="Удалить фото">${icons.x}</button></figure>`).join("")}
+      ${u.gallery_items.length < 6 ? `<button class="add-photo" data-gallery-add>${icons.plus}<span>Фото в галерею</span></button>` : ""}</div>
+    <input type="file" accept="image/*" hidden data-file-main><input type="file" accept="image/*" hidden data-file-gallery>
     <div class="actions">
+      <button class="btn" data-edit>Редактировать анкету</button>
+      ${u.photo_url && !u.photo_verified ? `<button class="btn quiet" data-verify-photo>Подтвердить фото вручную</button>` : ""}
       <button class="btn quiet" data-ban>${u.is_banned ? "Разблокировать" : "Заблокировать"}</button>
       <button class="btn quiet" data-reverify>Сбросить проверку фото</button>
       <button class="btn danger" data-delete>Удалить анкету</button>
@@ -220,6 +228,30 @@ async function openUser(id) {
     <h3>Переписки (${u.conversations.length})</h3>
     <div>${u.conversations.map((c) => convRow(c)).join("") || '<p class="muted small">Пар пока нет</p>'}</div>`;
   $(".close", drawer).onclick = closeDrawer;
+  const run = async (fn, ok) => { try { await fn(); toast(ok); openUser(id); loadUsers(); } catch (ex) { toast(ex.message, { error: true }); } };
+  const upload = (input, url, extra = {}) => {
+    input.onchange = () => {
+      if (!input.files[0]) return;
+      const fd = new FormData();
+      fd.append("file", input.files[0]);
+      for (const [k, v] of Object.entries(extra)) fd.append(k, v);
+      run(() => api.post(url, fd), "Фото загружено");
+    };
+    input.click();
+  };
+  $("[data-edit]", drawer).onclick = () => editUser(u);
+  $("[data-verify-photo]", drawer)?.addEventListener("click", () => run(() => api.post(`/api/admin/users/${id}/verify-photo`), "Фото подтверждено, анкета видна в ленте"));
+  $("[data-photo-replace]", drawer).onclick = async () => {
+    const keep = u.photo_verified && await confirmDialog("Оставить отметку «фото подтверждено»? Если нет, человеку придётся снова пройти сканер", "Оставить отметку");
+    upload($("[data-file-main]", drawer), `/api/admin/users/${id}/photo`, { keep_verified: keep ? "true" : "false" });
+  };
+  $("[data-photo-remove]", drawer)?.addEventListener("click", async () => {
+    if (await confirmDialog("Удалить фото анкеты? Анкета скроется из ленты, пока человек не загрузит новое", "Удалить фото")) run(() => api.del(`/api/admin/users/${id}/photo`), "Фото удалено");
+  });
+  $("[data-gallery-add]", drawer)?.addEventListener("click", () => upload($("[data-file-gallery]", drawer), `/api/admin/users/${id}/photos`));
+  $$("[data-gallery-del]", drawer).forEach((b) => (b.onclick = async () => {
+    if (await confirmDialog("Удалить это фото из галереи?", "Удалить")) run(() => api.del(`/api/admin/users/${id}/photos/${b.dataset.galleryDel}`), "Фото удалено");
+  }));
   $("[data-birth]", drawer).onsubmit = async (e) => {
     e.preventDefault();
     try {
@@ -248,6 +280,67 @@ async function openUser(id) {
       toast("Анкета удалена");
       closeDrawer(); loadUsers();
     } catch (e) { toast(e.message, { error: true }); }
+  };
+}
+
+/** Форма редактирования анкеты: те же поля и правила, что у самого человека. */
+function editUser(u) {
+  const pr = u.profile;
+  const teen = u.age_group === "teen";
+  const opts = (map, value, empty) => (empty ? `<option value="">${empty}</option>` : "") +
+    Object.entries(map).map(([k, l]) => `<option value="${esc(k)}" ${k === value ? "selected" : ""}>${esc(l)}</option>`).join("");
+  const goals = teen ? cfg.teen_goals : cfg.survey[0].options;
+  const sexOptions = (gender) => {
+    const keys = cfg.orientations_by_gender?.[gender] || Object.keys(cfg.orientations);
+    // без согласия человека новую сексуальность поставить нельзя — только оставить текущую или убрать
+    const allowed = pr.consent_sexuality ? keys : keys.filter((k) => k === pr.orientation);
+    return opts(Object.fromEntries(allowed.map((k) => [k, cfg.orientations[k]])), pr.orientation, "не указана");
+  };
+  drawer.innerHTML = `
+    <button class="icon-btn close" aria-label="Закрыть">${icons.x}</button>
+    <h2>Редактирование: ${esc(u.name || "без имени")}</h2>
+    <p class="muted small">#${u.id}. Дата рождения меняется в карточке анкеты, согласия за человека дать нельзя.</p>
+    <form class="stack edit-form">
+      <label class="field"><span>Имя</span><input class="input" name="name" maxlength="64" value="${esc(u.name || "")}"></label>
+      <label class="field"><span>О себе</span><textarea class="input" name="bio" rows="5" maxlength="500">${esc(u.bio || "")}</textarea></label>
+      <div class="grid2">
+        <label class="field"><span>Пол</span><select class="input" name="gender">${opts(teen ? cfg.teen_genders : cfg.genders, pr.gender, "—")}</select></label>
+        <label class="field"><span>Кого ищет</span><select class="input" name="looking_for">${opts(cfg.looking_for, pr.looking_for, "—")}</select></label>
+        ${teen ? "" : `<label class="field"><span>Сексуальность${pr.consent_sexuality ? "" : " <small class=\"muted\">(нет согласия: можно только убрать)</small>"}</span><select class="input" name="orientation">${sexOptions(pr.gender)}</select></label>`}
+        <label class="field"><span>Знак зодиака</span><select class="input" name="zodiac">${opts(cfg.zodiac, pr.zodiac, "—")}</select></label>
+        <label class="field"><span>Рост, см</span><input class="input" type="number" name="height_cm" min="100" max="250" value="${pr.height_cm ?? ""}"></label>
+        ${teen ? "" : `<label class="field"><span>Вес, кг</span><input class="input" type="number" name="weight_kg" min="30" max="250" value="${pr.weight_kg ?? ""}"></label>`}
+        <label class="field"><span>Радиус поиска, км</span><input class="input" type="number" name="max_distance_km" min="1" max="20000" value="${pr.max_distance_km ?? 50}"></label>
+      </div>
+      <label class="check-row"><input type="checkbox" name="show_identity" ${pr.show_identity !== false ? "checked" : ""}> Показывать пол в анкете</label>
+      ${teen ? "" : `<label class="check-row"><input type="checkbox" name="show_orientation" ${pr.show_orientation !== false ? "checked" : ""}> Показывать сексуальность</label>`}
+      <div class="field"><span>Что ищет</span><div class="checks">${goals.map((g) => `<label class="chip"><input type="checkbox" name="goals" value="${esc(g)}" ${u.goals.includes(g) ? "checked" : ""}> ${esc(g)}</label>`).join("")}</div></div>
+      <div class="field"><span>Интересы <small class="muted">(не меньше ${cfg.min_interests})</small></span>
+        ${cfg.survey.slice(1).map((q) => `<details class="int-group" ${q.options.some((o) => u.interests.includes(o)) ? "open" : ""}><summary>${esc(q.title)}</summary><div class="checks">${q.options.map((o) =>
+          `<label class="chip"><input type="checkbox" name="interests" value="${esc(o)}" ${u.interests.includes(o) ? "checked" : ""}> ${esc(o)}</label>`).join("")}</div></details>`).join("")}</div>
+      <div class="row" style="gap:10px"><button class="btn">Сохранить</button><button type="button" class="btn quiet" data-cancel>Отмена</button></div>
+    </form>`;
+  const f = $(".edit-form", drawer);
+  $(".close", drawer).onclick = closeDrawer;
+  $("[data-cancel]", drawer).onclick = () => openUser(u.id);
+  f.gender.onchange = () => { if (f.orientation) f.orientation.innerHTML = sexOptions(f.gender.value); };
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const num = (el) => (el && el.value !== "" ? Number(el.value) : el ? 0 : undefined);
+    const data = {
+      name: f.name.value, bio: f.bio.value, gender: f.gender.value || undefined, looking_for: f.looking_for.value || undefined,
+      zodiac: f.zodiac.value, height_cm: num(f.height_cm), weight_kg: num(f.weight_kg), max_distance_km: num(f.max_distance_km) || undefined,
+      show_identity: f.show_identity.checked, show_orientation: f.show_orientation?.checked,
+      goals: [...f.querySelectorAll("[name=goals]:checked")].map((x) => x.value),
+      interests: [...f.querySelectorAll("[name=interests]:checked")].map((x) => x.value),
+    };
+    if (f.orientation) data.orientation = f.orientation.value;
+    try {
+      await api.put(`/api/admin/users/${u.id}/profile`, data);
+      toast("Анкета сохранена");
+      openUser(u.id);
+      loadUsers();
+    } catch (ex) { toast(ex.message, { error: true }); }
   };
 }
 
@@ -477,7 +570,7 @@ async function loadPets() {
       <td>${esc(p.category)}</td><td>${esc(p.contact)}</td><td>${p.requests}</td>
       <td>${p.fundraising_open === null ? "—" : `<button class="btn ${p.fundraising_open ? "quiet" : "dark"} tiny" data-fund="${p.id}" data-open="${p.fundraising_open}">${p.fundraising_open ? "Открыт: закрыть" : "Закрыт: открыть"}</button>`}</td>
       <td><button class="btn quiet tiny" data-active="${p.id}" data-on="${p.active}">${p.active ? "Снять" : "Вернуть"}</button></td>
-      <td><button class="btn danger tiny" data-del="${p.id}">Удалить</button></td></tr>`).join("")}</tbody></table>`
+      <td><button class="btn quiet tiny" data-edit-pet="${p.id}">Изменить</button> <button class="btn danger tiny" data-del="${p.id}">Удалить</button></td></tr>`).join("")}</tbody></table>`
     : '<p class="muted">Объявлений пока нет. Добавьте первое кнопкой выше.</p>';
   $$("[data-fund]", box).forEach((b) => (b.onclick = async () => {
     await api.patch(`/api/animals/${b.dataset.fund}`, { fundraising_open: b.dataset.open !== "true" });
@@ -487,11 +580,71 @@ async function loadPets() {
     await api.patch(`/api/animals/${b.dataset.active}`, { active: b.dataset.on !== "true" });
     loadPets();
   }));
+  $$("[data-edit-pet]", box).forEach((b) => (b.onclick = () => editPet(Number(b.dataset.editPet))));
   $$("[data-del]", box).forEach((b) => (b.onclick = async () => {
     if (!(await confirmDialog("Удалить объявление вместе с фото?", "Удалить"))) return;
     await api.del(`/api/admin/animals/${b.dataset.del}`);
     loadPets();
   }));
+}
+
+/** Редактор объявления о питомце: все поля, порядок и состав фото. */
+async function editPet(id) {
+  let p;
+  try { p = await api.get(`/api/animals/${id}`); } catch (ex) { return toast(ex.message, { error: true }); }
+  drawer.hidden = false;
+  drawer.innerHTML = `
+    <button class="icon-btn close" aria-label="Закрыть">${icons.x}</button>
+    <h2>${esc(p.name)}</h2>
+    <p class="muted small">Первое фото видно в ленте</p>
+    <div class="photos pet-admin-photos">${p.photos.map((url, i) => `<figure><img src="${esc(url)}" alt="">
+      <figcaption>${i === 0 ? '<span class="tag hot">В ленте</span>' : `<button class="link" data-first="${i}">Сделать первым</button>`}
+      <button class="link danger-link" data-del-photo="${i}">Удалить</button></figcaption></figure>`).join("")}
+      ${p.photos.length < 5 ? `<button class="add-photo" data-add-photos>${icons.plus}<span>Добавить фото</span></button>` : ""}</div>
+    <input type="file" accept="image/*" multiple hidden data-pet-files>
+    <form class="stack edit-form">
+      <div class="row" style="gap:8px;flex-wrap:wrap">${Object.entries(PET_CATS).map(([k, l]) =>
+        `<label class="chip"><input type="radio" name="category" value="${k}" ${p.category === k ? "checked" : ""}> ${l}</label>`).join("")}</div>
+      <div class="grid2">
+        <label class="field"><span>Кличка или название</span><input class="input" name="name" maxlength="64" required value="${esc(p.name)}"></label>
+        <label class="field"><span>Кто это</span><input class="input" name="species" maxlength="32" value="${esc(p.species || "")}"></label>
+        <label class="field"><span>Возраст</span><input class="input" name="age_text" maxlength="32" value="${esc(p.age_text || "")}"></label>
+        <label class="field"><span>Город</span><input class="input" name="city" maxlength="64" value="${esc(p.city || "")}"></label>
+        <label class="field"><span>Telegram для связи <small class="muted">(можно пусто)</small></span><input class="input" name="contact" maxlength="128" value="${esc(p.contact || "")}" placeholder="@username"></label>
+        <label class="field" data-goal><span>Цель сбора</span><input class="input" name="fundraising_goal" maxlength="64" value="${esc(p.fundraising_goal || "")}"></label>
+      </div>
+      <label class="field"><span>Описание</span><textarea class="input" name="description" rows="12" maxlength="3000">${esc(p.description || "")}</textarea></label>
+      <div class="row" style="gap:10px"><button class="btn">Сохранить</button><button type="button" class="btn quiet" data-cancel>Закрыть</button></div>
+    </form>`;
+  const f = $(".edit-form", drawer);
+  const syncGoal = () => ($("[data-goal]", f).hidden = f.category.value !== "charity");
+  $$("input[name=category]", f).forEach((r) => (r.onchange = syncGoal));
+  syncGoal();
+  $(".close", drawer).onclick = closeDrawer;
+  $("[data-cancel]", drawer).onclick = closeDrawer;
+  const act = async (fn, ok) => { try { await fn(); toast(ok); editPet(id); loadPets(); } catch (ex) { toast(ex.message, { error: true }); } };
+  $$("[data-first]", drawer).forEach((b) => (b.onclick = () => act(() => api.post(`/api/animals/${id}/photos/${b.dataset.first}/first`), "Фото стало первым")));
+  $$("[data-del-photo]", drawer).forEach((b) => (b.onclick = async () => {
+    if (await confirmDialog("Удалить это фото?", "Удалить")) act(() => api.del(`/api/animals/${id}/photos/${b.dataset.delPhoto}`), "Фото удалено");
+  }));
+  const input = $("[data-pet-files]", drawer);
+  $("[data-add-photos]", drawer)?.addEventListener("click", () => input.click());
+  input.onchange = () => {
+    const fd = new FormData();
+    [...input.files].forEach((file) => fd.append("files", file));
+    act(() => api.post(`/api/animals/${id}/photos`, fd), "Фото добавлены");
+  };
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const data = Object.fromEntries(["name", "species", "age_text", "city", "contact", "description", "fundraising_goal"].map((k) => [k, f[k].value]));
+    data.category = f.category.value;
+    try {
+      await api.patch(`/api/animals/${id}`, data);
+      toast("Объявление сохранено");
+      loadPets();
+      editPet(id);
+    } catch (ex) { toast(ex.message, { error: true }); }
+  };
 }
 
 // ---------- Рассылка ----------
