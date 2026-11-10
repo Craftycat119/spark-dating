@@ -27,7 +27,10 @@ ask() { local var=$1 prompt=$2 def=${3:-}; local val; read -r -p "$prompt${def:+
 existing() { [[ -f $ENV_FILE ]] && grep -E "^$1=" "$ENV_FILE" | head -1 | cut -d= -f2- || true; }
 
 DOMAIN=${DOMAIN:-$(existing BASE_URL | sed 's#https\?://##')}
-[[ -n ${DOMAIN:-} ]] || ask DOMAIN "Домен сайта, например cofi-app.ru (он уже должен указывать на IP этого сервера)"
+until [[ ${DOMAIN:-} =~ ^[a-z0-9.-]+\.[a-z]{2,}$ ]]; do   # пустой или с https:// — спросим ещё раз
+  ask DOMAIN "Домен сайта, например cofi-app.ru (он уже должен указывать на IP этого сервера)"
+  DOMAIN=$(echo "$DOMAIN" | tr 'A-Z' 'a-z' | sed 's#^https\?://##; s#/.*##; s/[[:space:]]//g')
+done
 ask LE_EMAIL "Почта для сертификата Let's Encrypt (придут письма, если сертификат не продлится)" "${LE_EMAIL:-$(existing ADMIN_EMAILS | cut -d, -f1)}"
 ask ADMIN_EMAILS "Почта администратора COFI" "${ADMIN_EMAILS:-$(existing ADMIN_EMAILS)}"
 ask BOT_TOKEN "Токен Telegram-бота от @BotFather (Enter — пропустить)" "$(existing TELEGRAM_BOT_TOKEN)"
