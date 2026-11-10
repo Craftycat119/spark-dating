@@ -86,6 +86,12 @@ class Settings:
     telegram_admin_chat_id: str = os.environ.get("TELEGRAM_ADMIN_CHAT_ID", "")
     # Отдельная группа для обращений в поддержку (помощь, жалобы, предложения). Пусто — туда же, куда TELEGRAM_ADMIN_CHAT_ID
     telegram_support_chat_id: str = os.environ.get("TELEGRAM_SUPPORT_CHAT_ID", "")
+    # Жалобы и предложения — отдельно (пусто — туда же, куда TELEGRAM_SUPPORT_CHAT_ID)
+    telegram_complaints_chat_id: str = os.environ.get("TELEGRAM_COMPLAINTS_CHAT_ID", "")
+    # Сообщения рекламодателей — отдельно (пусто — в TELEGRAM_ADMIN_CHAT_ID)
+    telegram_ads_chat_id: str = os.environ.get("TELEGRAM_ADS_CHAT_ID", "")
+    # Куда ведёт кнопка «Написать в Telegram» у питомцев, если у объявления не указан свой контакт: @username или t.me/…
+    telegram_pets_contact: str = os.environ.get("TELEGRAM_PETS_CONTACT", "")
 
     # Часовой пояс для статистики посещений (сутки считаются по нему). По умолчанию Москва, UTC+3
     stats_tz_hours: int = int(os.environ.get("STATS_TZ_HOURS", "3"))

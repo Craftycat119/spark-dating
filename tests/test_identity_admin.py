@@ -145,7 +145,7 @@ def test_support_goes_to_separate_group(monkeypatch):
     guest = new_client()
     t = guest.post("/api/support/threads", json={"topic": "ads", "contact": "a@b.ru"}).json()
     guest.post(f"/api/support/threads/{t['id']}/messages", json={"text": "Реклама"})
-    chats = {p["chat_id"]: p["text"] for m, p in bot.sent if m == "sendMessage"}
+    chats = {str(p["chat_id"]): p["text"] for m, p in bot.sent if m == "sendMessage"}
     assert "Не грузится фото" in chats["-100555"] and "📣 Реклама" in chats["-100777"]
 
 
@@ -210,3 +210,36 @@ def test_admin_edits_profiles_and_pets():
     assert len(boss.delete(f"/api/animals/{post['id']}/photos/0").json()["photos"]) == 1
     assert len(boss.post(f"/api/animals/{post['id']}/photos", files=[("files", ("c.jpg", jpeg_bytes(), "image/jpeg"))]).json()["photos"]) == 2
     assert u.patch(f"/api/animals/{post['id']}", json={"name": "x"}).status_code == 403
+
+
+def test_separate_groups_and_pets_contact(monkeypatch):
+    boss = make_user("boss@example.com", name="Админ")
+    bot = FakeBot()
+    monkeypatch.setattr(config.settings, "telegram_bot_token", TOKEN)
+    monkeypatch.setattr(config.settings, "telegram_admin_chat_id", "-1001")
+    monkeypatch.setattr(config.settings, "telegram_support_chat_id", "-1002")
+    monkeypatch.setattr(config.settings, "telegram_complaints_chat_id", "-1003")
+    monkeypatch.setattr(config.settings, "telegram_ads_chat_id", "-1004")
+    monkeypatch.setattr(config.settings, "telegram_pets_contact", "@cofi_pets")
+    monkeypatch.setattr(telegram_bot, "api", bot)
+    monkeypatch.setattr(push, "_in_background", lambda fn, *a: fn(*a))
+    push._last_support_notice.clear()
+    u = make_user("route@x.io", name="Вася")
+    for cat, text in (("help", "Не грузится"), ("complaint", "Грубят"), ("suggestion", "Идея")):
+        u.post("/api/support/threads", json={"category": cat, "text": text})
+    guest = new_client()
+    t = guest.post("/api/support/threads", json={"topic": "ads", "contact": "a@b.ru"}).json()
+    guest.post(f"/api/support/threads/{t['id']}/messages", json={"text": "Реклама кофейни"})
+    got = {}
+    for m, p in bot.sent:
+        if m == "sendMessage":
+            got.setdefault(str(p["chat_id"]), []).append(p["text"])
+    assert any("Не грузится" in x for x in got["-1002"])
+    assert any("Грубят" in x for x in got["-1003"]) and any("Идея" in x for x in got["-1003"])
+    assert any("кофейни" in x for x in got["-1004"]) and "-1001" not in got
+    # у объявления без своего контакта кнопка ведёт на общий Telegram
+    pid = boss.post("/api/animals", data={"category": "foster", "name": "Луна", "contact": "@luna"}).json()["id"]
+    boss.patch(f"/api/animals/{pid}", json={"contact": ""})
+    assert u.get(f"/api/animals/{pid}").json()["contact_url"] == "https://t.me/cofi_pets"
+    boss.patch(f"/api/animals/{pid}", json={"contact": "@luna"})
+    assert u.get(f"/api/animals/{pid}").json()["contact_url"] == "https://t.me/luna"

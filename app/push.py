@@ -256,6 +256,23 @@ def admin_button(section: str) -> dict | None:
     return {"text": "Открыть в админ-панели", "url": f"{settings.base_url.rstrip('/')}/admin#{section}"} if app_link() else None
 
 
+def thread_chats(db, thread) -> list:
+    """Куда слать обращение: реклама → TELEGRAM_ADS_CHAT_ID, жалобы и предложения → TELEGRAM_COMPLAINTS_CHAT_ID,
+    «Нужна помощь» → TELEGRAM_SUPPORT_CHAT_ID. Если нужная строка пустая — в группу поддержки, затем администрации."""
+    from .telegram_bot import resolve_chats
+
+    if thread.topic == "ads":
+        order = [settings.telegram_ads_chat_id]
+    elif thread.category in ("complaint", "suggestion"):
+        order = [settings.telegram_complaints_chat_id, settings.telegram_support_chat_id]
+    else:
+        order = [settings.telegram_support_chat_id]
+    for value in order:
+        if value and (chats := resolve_chats(db, value)):
+            return chats
+    return admin_chats(db)
+
+
 def _who(thread) -> str:
     """«Вася (#12), Telegram @vasya, почта v@mail.ru» — чтобы администрация сразу видела, кому отвечать."""
     u = thread.user
@@ -284,8 +301,7 @@ def notify_admins(db, thread, text: str) -> None:
         if now - _last_support_notice.get(thread.id, 0) < 20:  # переписка идёт — не дёргаем на каждое слово
             return
         _last_support_notice[thread.id] = now
-    # поддержка (помощь, жалобы, предложения) — в свою группу, если она задана; реклама — в группу администрации
-    chats = [settings.telegram_support_chat_id] if thread.topic == "support" and settings.telegram_support_chat_id else admin_chats(db)
+    chats = thread_chats(db, thread)
     if not chats:
         log.info("Обращение #%s: некому отправить в Telegram. Привяжите Telegram к аккаунту админа или задайте TELEGRAM_ADMIN_CHAT_ID", thread.id)
         return

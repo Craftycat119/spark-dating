@@ -30,6 +30,11 @@ CATEGORY_ORDER = case({k: i for i, k in enumerate(CATEGORIES)}, value=AnimalPost
 MAX_PHOTOS = 5
 
 
+def contact_url(p: AnimalPost) -> str | None:
+    """Кнопка «Написать в Telegram»: свой контакт объявления, иначе общий из TELEGRAM_PETS_CONTACT."""
+    return telegram_notify.normalize_contact(p.contact or settings.telegram_pets_contact or "")
+
+
 def post_out(p: AnimalPost, me: User) -> dict:
     distance = None
     if me.lat is not None and p.lat is not None:
@@ -42,7 +47,7 @@ def post_out(p: AnimalPost, me: User) -> dict:
         "age_text": p.age_text,
         "city": p.city,
         "description": p.description,
-        "contact_url": telegram_notify.normalize_contact(p.contact),
+        "contact_url": contact_url(p),
         "fundraising_open": p.fundraising_open if p.category == "charity" else None,
         "fundraising_goal": p.fundraising_goal if p.category == "charity" else "",
         "photos": [media_url(x) for x in p.photos],
@@ -269,4 +274,4 @@ def help_post(post_id: int, data: HelpIn, background: BackgroundTasks, me: User 
     background.add_task(_deliver, req.id, others, admins, text)
     for admin_id in db.scalars(select(User.id).where(User.is_admin.is_(True))):  # и в админ-панель, если она открыта
         notify(admin_id, {"type": "help_request", "id": req.id, "post": post.name, "from": me.name})
-    return {"status": "sent", "contact_url": telegram_notify.normalize_contact(post.contact)}
+    return {"status": "sent", "contact_url": contact_url(post)}

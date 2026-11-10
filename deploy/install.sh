@@ -92,10 +92,13 @@ CALLS_ENABLED=0
 
 # Telegram: вход, уведомления, заявки. Домен в @BotFather указывать не нужно
 TELEGRAM_BOT_TOKEN=$BOT_TOKEN
-# Группа администрации (реклама, заявки по животным) и отдельная группа поддержки; пусто — админам в личку
+# Куда бот шлёт уведомления (id группы -100… или @username; пусто — админам в личку). Подробно: .env.example
 TELEGRAM_ADMIN_CHAT_ID=
 TELEGRAM_SUPPORT_CHAT_ID=
+TELEGRAM_COMPLAINTS_CHAT_ID=
+TELEGRAM_ADS_CHAT_ID=
 TELEGRAM_REQUESTS_CHAT_ID=
+TELEGRAM_PETS_CONTACT=
 
 # Звонки: свой TURN на этом же сервере (coturn)
 TURN_URLS=turn:$DOMAIN:3478,turn:$DOMAIN:3478?transport=tcp,turns:$DOMAIN:5349?transport=tcp
