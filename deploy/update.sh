@@ -9,6 +9,11 @@ set -euo pipefail
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_DIR=/opt/cofi
 
+# Новая версия скрипта резервных копий (старая хранила 14 полных архивов файлов и забивала диск)
+command -v rsync >/dev/null || apt-get install -y -qq rsync
+install -m 700 "$SRC/deploy/cofi-backup.sh" /usr/local/bin/cofi-backup
+grep -q '^DATA_DIR=' /etc/cron.d/cofi-backup 2>/dev/null || printf 'DATA_DIR=/var/lib/cofi\nBACKUP_DIR=/var/backups/cofi\n15 4 * * * root /usr/local/bin/cofi-backup >> /var/log/cofi-backup.log 2>&1\n' > /etc/cron.d/cofi-backup
+
 echo "Резервная копия перед обновлением"
 /usr/local/bin/cofi-backup || true
 

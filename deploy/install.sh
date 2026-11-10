@@ -267,18 +267,10 @@ fi
 
 # ---------- 9. Резервные копии ----------
 step "9/9 Ежедневные резервные копии"
-cat > /usr/local/bin/cofi-backup <<EOF
-#!/bin/sh
-# Копия базы (без остановки сервера) и файлов. Хранятся 14 последних дней в $BACKUP_DIR
-set -e
-STAMP=\$(date +%F)
-sqlite3 $DATA_DIR/spark.db ".backup '$BACKUP_DIR/db-\$STAMP.sqlite'" 2>/dev/null || true
-tar -czf $BACKUP_DIR/media-\$STAMP.tar.gz -C $DATA_DIR --exclude=models --exclude='spark.db*' . 2>/dev/null || true
-find $BACKUP_DIR -type f -mtime +14 -delete
-EOF
-chmod 700 /usr/local/bin/cofi-backup
-echo "15 4 * * * root /usr/local/bin/cofi-backup" > /etc/cron.d/cofi-backup
-chmod 700 $BACKUP_DIR
+# база — каждый день, хранится 14 дней; файлы — одно зеркало, которое дополняется (см. deploy/cofi-backup.sh)
+install -m 700 "$SRC/deploy/cofi-backup.sh" /usr/local/bin/cofi-backup
+printf 'DATA_DIR=%s\nBACKUP_DIR=%s\n15 4 * * * root /usr/local/bin/cofi-backup >> /var/log/cofi-backup.log 2>&1\n' "$DATA_DIR" "$BACKUP_DIR" > /etc/cron.d/cofi-backup
+mkdir -p $BACKUP_DIR && chmod 700 $BACKUP_DIR
 
 # ---------- Итог ----------
 sleep 2
