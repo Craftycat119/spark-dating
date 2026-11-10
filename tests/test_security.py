@@ -133,3 +133,17 @@ def test_suspicious_activity_alert(monkeypatch):
     alerts = [p for m, p in bot.sent if m == "sendMessage" and "подозрительная активность" in p["text"]]
     assert alerts and alerts[0]["chat_id"] == "-1009" and "неудачный вход" in alerts[0]["text"]
     ratelimit._hits.clear()
+
+
+def test_failed_email_does_not_block_retry(monkeypatch):
+    from app import emailer
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "smtp_host", "smtp.example")
+    monkeypatch.setattr(settings, "dev_mode", False)
+    monkeypatch.setattr(emailer, "send_code", lambda *a: False)  # почтовый сервис отказал
+    c = new_client()
+    r = c.post("/api/auth/register", json={"email": "fail@x.io", "password": "Secret123"})
+    assert r.status_code == 502
+    r = c.post("/api/auth/register", json={"email": "fail@x.io", "password": "Secret123"})
+    assert r.status_code == 502  # снова честная ошибка, а не «код уже отправлен»

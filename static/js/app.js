@@ -501,7 +501,7 @@ function renderCode(email, devCode) {
     ${backBtn()}
     <div class="stack">
       <h1>Проверьте почту</h1>
-      <p class="muted">Мы отправили 6-значный код на <b style="color:var(--text)">${esc(email)}</b>. На эту почту будут приходить новости о метчах и обновлениях.</p>
+      <p class="muted">Мы отправили 6-значный код на <b style="color:var(--text)">${esc(email)}</b>. Если письма нет пару минут, проверьте папку «Спам».</p>
       ${devCode ? `<p class="hint">Режим разработки, почта не настроена. Код: <b>${esc(devCode)}</b></p>` : ""}
       ${codeBoxesHtml}
       <p class="error-text" id="code-error" hidden></p>

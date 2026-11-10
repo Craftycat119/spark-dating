@@ -84,14 +84,13 @@ def _issue_code(db: Session, email: str, purpose: str, request: Request) -> dict
         raise HTTPException(429, f"Новый код можно запросить через {wait} с")
 
     code = new_code()
-    db.add(
-        EmailCode(
-            email=email,
-            purpose=purpose,
-            code_hash=hash_secret(code),
-            expires_at=utcnow() + timedelta(minutes=settings.code_ttl_minutes),
-        )
+    rec = EmailCode(
+        email=email,
+        purpose=purpose,
+        code_hash=hash_secret(code),
+        expires_at=utcnow() + timedelta(minutes=settings.code_ttl_minutes),
     )
+    db.add(rec)
     db.commit()
     # Код отправляем сразу, а не в фоне: если почта не настроена или сломалась, человек узнает об этом здесь
     sent = emailer.send_code(email, code, purpose)
@@ -101,9 +100,12 @@ def _issue_code(db: Session, email: str, purpose: str, request: Request) -> dict
         # Код на экране — только когда открыли сайт на этом же компьютере (localhost).
         # Через туннель или из интернета так нельзя: иначе любой зарегистрируется на чужую почту или сбросит чужой пароль.
         result["dev_code"] = code
-    elif not settings.smtp_host:
-        raise HTTPException(503, "Почта на сервере не настроена, письмо с кодом не отправить. Войдите через Telegram")
-    elif not sent:
+    elif not settings.smtp_host or not sent:
+        # Письмо не ушло: этот код не считается отправленным, иначе повторная попытка показала бы «код уже отправлен»
+        db.delete(rec)
+        db.commit()
+        if not settings.smtp_host:
+            raise HTTPException(503, "Почта на сервере не настроена, письмо с кодом не отправить. Войдите через Telegram")
         raise HTTPException(502, "Не удалось отправить письмо с кодом. Попробуйте позже или войдите через Telegram")
     return result
 
