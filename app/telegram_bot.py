@@ -233,7 +233,11 @@ def resolve_chats(db, value: str) -> list:
         if raw.lstrip("-").isdigit():
             out.append(int(raw))
             continue
-        name = raw.lstrip("@").lower()
+        if "t.me/+" in raw or "joinchat" in raw:
+            log.warning("Telegram: %s — это ссылка-приглашение, по ней бот писать не может. Добавьте бота в группу: "
+                        "он сам пришлёт её числовой id (-100…), впишите его в .env", raw)
+            continue
+        name = raw.removeprefix("https://").removeprefix("t.me/").lstrip("@").lower()
         chat = db.scalar(select(TelegramContact.chat_id).where(TelegramContact.username == name)) or db.scalar(
             select(User.telegram_id).where(func.lower(User.telegram_username) == name, User.telegram_id.is_not(None)))
         if chat:
@@ -243,10 +247,27 @@ def resolve_chats(db, value: str) -> list:
     return out
 
 
+def _chat_id_reply(chat: dict) -> dict:
+    return {"chat_id": chat["id"], "text": f"ID этой группы: {chat['id']}\n\nВпишите его в .env, например:\n"
+            f"TELEGRAM_SUPPORT_CHAT_ID={chat['id']}\nи перезапустите сервер COFI. Ссылки-приглашения t.me/+… для этого не подходят."}
+
+
 def handle_update(upd: dict) -> list[tuple[str, dict]]:
     """Обрабатывает одно обновление бота и возвращает вызовы API, которые нужно сделать.
     Вынесено отдельно, чтобы проверять логику без сети."""
     calls: list[tuple[str, dict]] = []
+    if member := upd.get("my_chat_member"):  # бота добавили в группу: сразу подсказываем её id для .env
+        chat = member.get("chat") or {}
+        if chat.get("type") in ("group", "supergroup", "channel") and (member.get("new_chat_member") or {}).get("status") in ("member", "administrator"):
+            calls.append(("sendMessage", _chat_id_reply(chat)))
+        return calls
+    if (msg := upd.get("message")) and msg.get("chat", {}).get("type") in ("group", "supergroup"):
+        # в группах отвечаем только на /chatid и /start — переписку участников не трогаем
+        if (msg.get("text") or "").split("@")[0].strip() in ("/chatid", "/start", "/id"):
+            calls.append(("sendMessage", _chat_id_reply(msg["chat"])))
+        if new_id := msg.get("migrate_to_chat_id"):  # группа стала супергруппой — id сменился
+            calls.append(("sendMessage", _chat_id_reply({"id": new_id, "title": msg["chat"].get("title")})))
+        return calls
     if msg := upd.get("message"):
         chat_id = msg["chat"]["id"]
         if msg.get("chat", {}).get("type", "private") == "private":
@@ -321,7 +342,7 @@ def _loop() -> None:
     offset = 0
     while not _stop.is_set():
         try:
-            res = api("getUpdates", {"offset": offset, "timeout": 25, "allowed_updates": ["message", "callback_query"]}, timeout=35)
+            res = api("getUpdates", {"offset": offset, "timeout": 25, "allowed_updates": ["message", "callback_query", "my_chat_member"]}, timeout=35)
             for upd in res.get("result", []):
                 offset = upd["update_id"] + 1
                 for method, payload in handle_update(upd):

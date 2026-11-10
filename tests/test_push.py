@@ -208,3 +208,13 @@ def test_broadcast_and_unread_count_via_telegram(monkeypatch):
     a.post(f"/api/chats/{conv}/messages", json={"text": "раз"})
     a.post(f"/api/chats/{conv}/messages", json={"text": "два"})
     assert "(2 непрочитанных)" in bot.sent[-1][1]["text"]
+
+
+def test_bot_tells_group_id():
+    calls = telegram_bot.handle_update({"my_chat_member": {"chat": {"id": -1009876, "type": "supergroup", "title": "Поддержка"},
+                                                          "new_chat_member": {"status": "member"}}})
+    assert calls[0][1]["chat_id"] == -1009876 and "-1009876" in calls[0][1]["text"]
+    calls = telegram_bot.handle_update({"message": {"chat": {"id": -1009876, "type": "supergroup"}, "text": "/chatid@cofi_bot"}})
+    assert "-1009876" in calls[0][1]["text"]
+    # обычные сообщения в группе бот не трогает
+    assert telegram_bot.handle_update({"message": {"chat": {"id": -1009876, "type": "supergroup"}, "text": "привет"}}) == []
