@@ -9,7 +9,9 @@ const usersState = { q: "", interest: "", page: 1 };
 let catalog = [];
 let cfg = {}; // настройки приложения: пол, сексуальность, знаки, опрос — для форм редактирования
 
-const dt = (iso) => (iso ? new Date(iso).toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" }) : "—");
+// Время в админке — в часовом поясе статистики (STATS_TZ_HOURS, по умолчанию Вьетнам), а не компьютера, с которого открыли
+let adminTz;
+const dt = (iso) => (iso ? new Date(iso).toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short", timeZone: adminTz }) : "—");
 const tags = (items, cls = "") => items.map((f) => `<span class="tag ${cls}">${esc(f)}</span>`).join("");
 const mapLink = (lat, lon) => (lat == null ? "—" : `<a href="https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=12/${lat}/${lon}" target="_blank" rel="noopener">${lat.toFixed(4)}, ${lon.toFixed(4)}</a>`);
 
@@ -18,6 +20,8 @@ async function boot() {
     const me = await api.get("/api/auth/me");
     if (!me.is_admin) throw new Error();
     cfg = await api.get("/api/config");
+    const h = cfg.stats_tz_hours ?? 7;
+    adminTz = h === 0 ? "UTC" : `Etc/GMT${h > 0 ? "-" : "+"}${Math.abs(h)}`; // у Etc/GMT знак наоборот: GMT-7 = UTC+7
     catalog = cfg.survey.slice(1).flatMap((q) => q.options);
   } catch {
     view.innerHTML = `<h1>Нет доступа</h1><p class="muted">Войдите в приложение под аккаунтом администратора.</p><p style="margin-top:16px"><a class="btn" href="/">Войти</a></p>`;
@@ -43,7 +47,7 @@ async function overview() {
   const max = Math.max(1, ...s.top_interests.map((x) => x.count));
   const a = s.audience;
   view.innerHTML = `<h1>Обзор</h1>
-    <h3>Аудитория <span class="muted small">без ботов и гостей демо</span></h3>
+    <h3>Аудитория <span class="muted small">без ботов и гостей демо · время UTC${(cfg.stats_tz_hours ?? 7) >= 0 ? "+" : ""}${cfg.stats_tz_hours ?? 7}${(cfg.stats_tz_hours ?? 7) === 7 ? " (Вьетнам)" : ""}</span></h3>
     <div class="kpis">
       <div><b>${a.registered}</b><span>Зарегистрировано</span></div>
       <div><b>${a.online}</b><span>Сейчас онлайн</span></div>

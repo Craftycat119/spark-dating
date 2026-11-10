@@ -243,3 +243,13 @@ def test_separate_groups_and_pets_contact(monkeypatch):
     assert u.get(f"/api/animals/{pid}").json()["contact_url"] == "https://t.me/cofi_pets"
     boss.patch(f"/api/animals/{pid}", json={"contact": "@luna"})
     assert u.get(f"/api/animals/{pid}").json()["contact_url"] == "https://t.me/luna"
+
+
+def test_stats_day_in_vietnam_time(monkeypatch):
+    from datetime import datetime
+
+    from app.deps import local_day
+
+    assert config.settings.stats_tz_hours == 7  # по умолчанию Вьетнам
+    assert str(local_day(datetime(2026, 11, 10, 20, 30))) == "2026-11-11"  # 20:30 UTC — уже 11 ноября в Нячанге
+    assert new_client().get("/api/config").json()["stats_tz_hours"] == 7

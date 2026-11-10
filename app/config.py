@@ -99,8 +99,8 @@ class Settings:
     # Куда ведёт кнопка «Написать в Telegram» у питомцев, если у объявления не указан свой контакт: @username или t.me/…
     telegram_pets_contact: str = os.environ.get("TELEGRAM_PETS_CONTACT", "")
 
-    # Часовой пояс для статистики посещений (сутки считаются по нему). По умолчанию Москва, UTC+3
-    stats_tz_hours: int = int(os.environ.get("STATS_TZ_HOURS", "3"))
+    # Часовой пояс для статистики посещений (сутки «Сегодня» считаются по нему). По умолчанию Вьетнам, UTC+7
+    stats_tz_hours: int = int(os.environ.get("STATS_TZ_HOURS", "7"))
 
     # Аудио- и видеозвонки. Пока выключены: кнопок нет, сервер звонки не принимает. Включить: CALLS_ENABLED=1
     calls_enabled: bool = _bool("CALLS_ENABLED", False)
