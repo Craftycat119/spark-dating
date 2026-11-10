@@ -289,8 +289,8 @@ echo " Админ-панель:  https://$DOMAIN/admin  (войдите почт
 echo
 echo " Осталось:"
 echo "  1. Почта для кодов: впишите SMTP в $ENV_FILE и выполните sudo systemctl restart cofi"
-echo "  2. В @BotFather → ваш бот → Bot Settings → Menu Button укажите https://$DOMAIN"
-echo "  3. Проверка: откройте сайт, зарегистрируйтесь, позвоните с телефона в мобильном интернете"
+echo "  2. Telegram-группы и контакты (TELEGRAM_*_CHAT_ID, TELEGRAM_PETS_CONTACT) — там же, в $ENV_FILE"
+echo "  3. Проверка: откройте сайт, зарегистрируйтесь, откройте COFI из бота (кнопка меню обновится сама)"
 echo
 echo " Журнал: sudo journalctl -u cofi -f      Обновление: sudo bash deploy/update.sh"
 echo "============================================================"
