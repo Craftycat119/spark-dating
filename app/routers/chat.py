@@ -16,6 +16,7 @@ from ..config import settings
 from ..database import SessionLocal, get_db
 from ..deps import COOKIE_NAME, current_user, user_from_token
 from ..models import Conversation, Message, User, utcnow
+from ..ratelimit import hit
 from ..realtime import manager, notify
 from ..serializers import conversation_out, message_out, photo_url
 
@@ -114,6 +115,7 @@ def _maybe_bot_reply(conv: Conversation, user: User, background: BackgroundTasks
 @router.post("/{conv_id}/messages")
 def send_message(conv_id: int, data: MessageIn, background: BackgroundTasks, user: User = Depends(current_user), db: Session = Depends(get_db)):
     conv = get_conversation(db, conv_id, user)
+    hit(f"msg:{user.id}", 30, 60)  # не больше 30 сообщений в минуту
     if data.kind not in {"text", "sticker"}:
         raise HTTPException(422, "Неизвестный тип сообщения")
     text = data.text.strip()
@@ -140,6 +142,7 @@ def send_media(
     db: Session = Depends(get_db),
 ):
     conv = get_conversation(db, conv_id, user)
+    hit(f"media:{user.id}", 20, 600)  # не больше 20 файлов за 10 минут: диск сервера не заполнить
     if kind not in MEDIA_KINDS:
         raise HTTPException(422, "Неизвестный тип файла")
     folder = f"chat/{conv.id}"

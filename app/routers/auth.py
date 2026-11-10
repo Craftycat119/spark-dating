@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import captcha, demo, emailer, telegram_bot
+from .. import captcha, demo, emailer, security_log, telegram_bot
 from ..config import settings
 from ..database import get_db
 from ..deps import COOKIE_NAME, client_ip, current_user, start_session
@@ -194,6 +194,7 @@ def login(data: Credentials, request: Request, response: Response, db: Session =
     user = db.scalar(select(User).where(User.email == email))
     ok = verify_password(data.password, (user.password_hash if user else None) or DUMMY_HASH)  # одинаковое время для любой почты
     if not user or not ok:
+        security_log.event("неудачный вход", client_ip(request), email)
         raise HTTPException(401, "Неверная почта или пароль")
     if user.is_banned:
         raise HTTPException(403, "Аккаунт заблокирован")

@@ -24,6 +24,9 @@ def hit(key: str, limit: int, window: int) -> None:
                 del _hits[k]
             q = _hits[key]
         if len(q) >= limit:
+            from .security_log import event
+
+            event("сработал лимит запросов", key.split(":", 1)[-1], key.split(":", 1)[0])
             wait = int(window - (now - q[0])) + 1
             raise HTTPException(429, f"Слишком много попыток. Попробуйте через {max(1, wait // 60) if wait >= 60 else wait} {'мин' if wait >= 60 else 'с'}")
         q.append(now)

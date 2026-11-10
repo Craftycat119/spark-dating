@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..database import get_db
 from ..deps import COOKIE_NAME, user_from_token
 from .. import push
@@ -142,7 +143,8 @@ def create_thread(data: ThreadIn, request: Request, response: Response, db: Sess
         about = None  # жаловаться можно только на тех, кого человек мог видеть
     if not user and not guest_hash:
         token = secrets.token_urlsafe(24)
-        response.set_cookie(GUEST_COOKIE, token, max_age=180 * 86400, httponly=True, samesite="lax")
+        response.set_cookie(GUEST_COOKIE, token, max_age=180 * 86400, httponly=True, samesite="lax",
+                            secure=settings.cookie_secure or request.url.scheme == "https")
         guest_hash = hash_secret(token)
     t = SupportThread(topic=data.topic, category=category, user_id=user.id if user else None,
                       guest_token_hash=None if user else guest_hash, contact=data.contact.strip(),

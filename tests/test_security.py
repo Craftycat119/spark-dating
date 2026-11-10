@@ -1,9 +1,15 @@
+import base64
+import hashlib
+import hmac
+
 import pytest
 from fastapi.testclient import TestClient
 
+from app import config, ratelimit, security_log, telegram_bot
 from app.geo import public_distance_km
 from app.main import app
 from conftest import make_user, new_client, register
+from test_push import TOKEN, FakeBot
 
 
 def test_code_never_shown_through_tunnel():
@@ -74,3 +80,56 @@ def test_calls_disabled_hides_and_blocks(monkeypatch):
         assert wa.receive_json()["type"] == "pong"  # звонок молча не принят
         wb.send_json({"type": "ping"})
         assert wb.receive_json()["type"] == "pong"  # собеседнику ничего не пришло
+
+
+# ---------- исправления по аудиту безопасности ----------
+def test_turn_password_not_public(monkeypatch):
+    monkeypatch.setattr(config.settings, "ice_servers", [{"urls": ["turn:x"], "username": "cofi", "credential": "SECRET"}])
+    monkeypatch.setattr(config.settings, "turn_urls", ["turn:cofilove.com:3478"])
+    monkeypatch.setattr(config.settings, "turn_secret", "shared-secret")
+    anon = new_client()
+    assert "SECRET" not in anon.get("/api/config").text and "credential" not in anon.get("/api/config").text
+    assert anon.get("/api/calls/ice").status_code == 401  # без входа — ничего
+    u = make_user("ice@x.io")
+    ice = u.get("/api/calls/ice").json()
+    turn = next(s for s in ice if "credential" in s)
+    expected = base64.b64encode(hmac.new(b"shared-secret", turn["username"].encode(), hashlib.sha1).digest()).decode()
+    assert turn["credential"] == expected and turn["username"].endswith(f":{u.user_id}")  # временный, на этого человека
+    monkeypatch.setattr(config.settings, "calls_enabled", False)
+    assert u.get("/api/calls/ice").status_code == 403  # звонки выключены — TURN не выдаём
+
+
+def test_chat_rate_limits():
+    a = make_user("r1@x.io", gender="female", looking_for="any")
+    b = make_user("r2@x.io", gender="male", looking_for="any")
+    b.post("/api/feed/swipe", json={"user_id": a.user_id, "like": True})
+    conv = a.post("/api/feed/swipe", json={"user_id": b.user_id, "like": True}).json()["conversation_id"]
+    codes = [a.post(f"/api/chats/{conv}/messages", json={"text": f"спам {i}"}).status_code for i in range(32)]
+    assert codes[:30] == [200] * 30 and codes[30] == 429
+
+
+def test_guest_cookie_secure_over_https():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    c = TestClient(app, base_url="https://testserver")  # как на сервере за https
+    r = c.post("/api/support/threads", json={"topic": "ads"})
+    assert "secure" in r.headers["set-cookie"].lower()
+
+
+def test_suspicious_activity_alert(monkeypatch):
+    bot = FakeBot()
+    monkeypatch.setattr(config.settings, "telegram_bot_token", TOKEN)
+    monkeypatch.setattr(config.settings, "telegram_admin_chat_id", "-1009")
+    monkeypatch.setattr(telegram_bot, "api", bot)
+    monkeypatch.setattr(security_log, "THRESHOLD", 5)
+    monkeypatch.setattr(security_log, "_last_alert", 0.0)
+    security_log._events.clear()
+    monkeypatch.setattr(security_log.threading, "Thread", lambda target, args, daemon: type("T", (), {"start": lambda s: target(*args)})())
+    c = new_client()
+    for _ in range(5):
+        c.post("/api/auth/login", json={"email": "nobody@x.io", "password": "Wrong12345"})
+    alerts = [p for m, p in bot.sent if m == "sendMessage" and "подозрительная активность" in p["text"]]
+    assert alerts and alerts[0]["chat_id"] == "-1009" and "неудачный вход" in alerts[0]["text"]
+    ratelimit._hits.clear()

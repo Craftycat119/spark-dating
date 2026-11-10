@@ -36,6 +36,12 @@ def _list(name: str) -> list[str]:
     return [x.strip().lower() for x in os.environ.get(name, "").split(",") if x.strip()]
 
 
+def _stun_servers() -> list:
+    """Публичные STUN-серверы: паролей в них нет, их можно отдавать всем."""
+    return json.loads(os.environ.get("ICE_SERVERS") or
+                      '[{"urls": ["stun:stun.l.google.com:19302", "stun:stun.cloudflare.com:3478"]}]')
+
+
 def _ice_servers() -> list:
     """STUN/TURN для звонков. STUN помогает, когда оба в обычном Wi-Fi. Если кто-то в мобильном интернете,
     прямое соединение обычно закрыто оператором, и без TURN звонок висит на «Соединяем…».
@@ -114,7 +120,11 @@ class Settings:
     face_yaw_threshold: float = float(os.environ.get("FACE_YAW_THRESHOLD", "0.12"))
 
     # WebRTC: STUN/TURN-серверы для звонков (JSON-массив RTCIceServer)
-    ice_servers: list = field(default_factory=lambda: _ice_servers())
+    ice_servers: list = field(default_factory=lambda: _ice_servers())  # с паролем TURN — только вошедшим, см. /api/calls/ice
+    stun_servers: list = field(default_factory=lambda: _stun_servers())
+    turn_urls: list = field(default_factory=lambda: [u.strip() for u in os.environ.get("TURN_URLS", "").split(",") if u.strip()])
+    # Общий секрет coturn (use-auth-secret): из него для каждого звонка делается временный пароль на час
+    turn_secret: str = os.environ.get("TURN_SECRET", "")
 
     # Пауза перед ответом бота в демо, секунды
     demo_reply_delay: float = float(os.environ.get("DEMO_REPLY_DELAY", "2.5"))

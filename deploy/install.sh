@@ -46,7 +46,7 @@ step() { echo; echo "=== $* ==="; }
 step "1/9 Устанавливаю пакеты"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq python3 python3-venv python3-pip nginx certbot python3-certbot-nginx coturn ufw sqlite3 \
+apt-get install -y -qq python3 python3-venv python3-pip nginx certbot python3-certbot-nginx coturn ufw sqlite3 fail2ban \
   rsync curl ca-certificates libglib2.0-0 >/dev/null
 
 # Подкачка: при установке OpenCV и при проверке лица нужна память. На сервере с 1–2 ГБ без неё процесс может упасть
@@ -73,7 +73,7 @@ $APP_DIR/venv/bin/pip install -q -r $APP_DIR/requirements.txt
 
 # ---------- 4. Настройки (.env) ----------
 step "4/9 Настройки в $ENV_FILE"
-TURN_PASS=$(existing TURN_CREDENTIAL); [[ -n $TURN_PASS ]] || TURN_PASS=$(openssl rand -hex 16)
+TURN_PASS=$(existing TURN_SECRET); [[ -n $TURN_PASS ]] || TURN_PASS=$(existing TURN_CREDENTIAL); [[ -n $TURN_PASS ]] || TURN_PASS=$(openssl rand -hex 24)
 if [[ ! -f $ENV_FILE ]]; then
   cat > $ENV_FILE <<EOF
 # Настройки COFI. После изменений: sudo systemctl restart cofi
@@ -102,8 +102,8 @@ TELEGRAM_PETS_CONTACT=
 
 # Звонки: свой TURN на этом же сервере (coturn)
 TURN_URLS=turn:$DOMAIN:3478,turn:$DOMAIN:3478?transport=tcp,turns:$DOMAIN:5349?transport=tcp
-TURN_USERNAME=cofi
-TURN_CREDENTIAL=$TURN_PASS
+# Общий секрет coturn: приложение выдаёт из него временные пароли на час только вошедшим пользователям
+TURN_SECRET=$TURN_PASS
 
 # Почта для кодов. Без неё регистрация по почте не работает (вход через Telegram работает).
 # Яндекс: SMTP_HOST=smtp.yandex.ru, SMTP_PORT=465, SMTP_SSL=1 и пароль приложения
@@ -206,7 +206,8 @@ systemctl restart coturn
 EOF
 chmod +x /etc/letsencrypt/renewal-hooks/deploy/coturn.sh
 [[ -f /etc/letsencrypt/live/$DOMAIN/fullchain.pem ]] && /etc/letsencrypt/renewal-hooks/deploy/coturn.sh || true
-TURN_PASS=$(grep '^TURN_CREDENTIAL=' $ENV_FILE | cut -d= -f2-)
+TURN_PASS=$(grep -E '^TURN_(SECRET|CREDENTIAL)=' $ENV_FILE | head -1 | cut -d= -f2-)
+grep -q '^TURN_SECRET=' $ENV_FILE || echo "TURN_SECRET=$TURN_PASS" >> $ENV_FILE   # старые установки: переходим на временные пароли
 cat > /etc/turnserver.conf <<EOF
 # coturn для COFI: пересылает звук и видео, когда телефоны не могут соединиться напрямую
 listening-port=3478
@@ -215,8 +216,9 @@ external-ip=$PUBLIC_IP
 realm=$DOMAIN
 server-name=$DOMAIN
 fingerprint
-lt-cred-mech
-user=cofi:$TURN_PASS
+# временные пароли (TURN REST API): постоянного пароля, который можно украсть из приложения, нет
+use-auth-secret
+static-auth-secret=$TURN_PASS
 min-port=49160
 max-port=49200
 cert=/etc/coturn/cert.pem
@@ -246,6 +248,22 @@ ufw allow 3478 >/dev/null             # TURN (udp и tcp)
 ufw allow 5349/tcp >/dev/null         # TURN по TLS
 ufw allow 49160:49200/udp >/dev/null  # порты, через которые идёт звук и видео
 ufw --force enable >/dev/null
+
+# SSH: fail2ban блокирует адреса, которые подбирают пароль; вход по паролю выключаем, только если уже есть SSH-ключ
+cat > /etc/fail2ban/jail.d/cofi-sshd.local <<EOF
+[sshd]
+enabled = true
+maxretry = 5
+bantime = 1h
+EOF
+systemctl enable --now fail2ban >/dev/null 2>&1 && systemctl restart fail2ban
+if [[ -s /root/.ssh/authorized_keys ]]; then
+  printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin prohibit-password\n' > /etc/ssh/sshd_config.d/10-cofi.conf
+  systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
+  echo "  SSH: вход только по ключу, подбор пароля заблокирован"
+else
+  echo "  ⚠ SSH: вход по паролю оставлен (SSH-ключа нет). Добавьте ключ и запустите install.sh ещё раз — вход по паролю выключится"
+fi
 
 # ---------- 9. Резервные копии ----------
 step "9/9 Ежедневные резервные копии"

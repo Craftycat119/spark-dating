@@ -1,5 +1,5 @@
 // Аудио- и видеозвонки через WebRTC. Сигналинг идёт через WebSocket сервера.
-import { on, send } from "./api.js";
+import { api, on, send } from "./api.js";
 import { icons } from "./icons.js";
 import { esc, fmtDur, h, toast } from "./ui.js";
 
@@ -31,13 +31,21 @@ export function joinPendingCall(callId) {
   }
 }
 
-export function startCall(conversationId, peer, video) {
+/** Серверы для звонка с временным паролем TURN: берём перед каждым звонком (пароль живёт час). */
+async function refreshIce() {
+  try { iceServers = await api.get("/api/calls/ice"); } catch { /* остаются STUN из настроек */ }
+}
+
+export async function startCall(conversationId, peer, video) {
   if (current) return toast("Сначала завершите текущий звонок", { error: true });
+  await refreshIce();
+  if (current) return;
   current = new Call({ conversationId, peer, video, outgoing: true });
   current.dial();
 }
 
 async function onOffer(d) {
+  await refreshIce();
   if (current && current.id === d.call_id) {
     // тот же звонок пришёл ещё раз: открыли COFI кнопкой «Ответить» в Telegram, пока он звонил в приложении
     if (d.answer_now && !current.outgoing && !current.pc) current.accept();

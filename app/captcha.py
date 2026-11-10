@@ -112,4 +112,7 @@ def require(captcha_id: str | None, answer: str | None, ip: str) -> None:
         return
     ok = _check_turnstile(answer or "", ip) if m == "turnstile" else _check_image(captcha_id or "", answer or "")
     if not ok:
+        from .security_log import event
+
+        event("капча не пройдена", ip)
         raise HTTPException(400, {"code": "captcha", "message": "Проверка на робота не пройдена, попробуйте ещё раз"})
