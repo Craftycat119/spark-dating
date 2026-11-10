@@ -130,7 +130,8 @@ chmod 600 $ENV_FILE   # секреты читает только пользов�
 
 if [[ ! -f $DATA_DIR/models/face_recognition_sface_2021dec.onnx ]]; then
   step "Скачиваю нейросети для проверки лица"
-  sudo -u $APP_USER env DATA_DIR=$DATA_DIR FACE_MODELS_DIR=$DATA_DIR/models $APP_DIR/venv/bin/python -m app.cli download-models
+  # запускаем из папки приложения: иначе Python не найдёт модуль app (скрипт запускают из папки с архивом)
+  (cd $APP_DIR && sudo -u $APP_USER env DATA_DIR=$DATA_DIR FACE_MODELS_DIR=$DATA_DIR/models $APP_DIR/venv/bin/python -m app.cli download-models)
 fi
 
 # ---------- 5. Автозапуск (systemd) ----------
