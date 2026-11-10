@@ -26,7 +26,7 @@ def send_message(chat_id: str | int, text: str) -> bool:
         return False
     data = json.dumps({"chat_id": chat_id, "text": text, "disable_web_page_preview": True}).encode()
     req = urllib.request.Request(
-        f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage",
+        f"{settings.telegram_api_url}/bot{settings.telegram_bot_token}/sendMessage",
         data=data, headers={"Content-Type": "application/json"},
     )
     try:

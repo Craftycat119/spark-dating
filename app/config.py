@@ -84,6 +84,9 @@ class Settings:
     # Telegram-бот: вход на сайт и заявки «Помочь»
     telegram_bot_token: str = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     telegram_bot_username: str = os.environ.get("TELEGRAM_BOT_USERNAME", "")
+    # Адрес Bot API. Если с сервера api.telegram.org недоступен (бывает у российских хостингов),
+    # укажите свой посредник за рубежом, например https://tg.cofilove.com (см. deploy/DEPLOY.md, «Telegram недоступен»)
+    telegram_api_url: str = (os.environ.get("TELEGRAM_API_URL", "").strip() or "https://api.telegram.org").rstrip("/")
     # Куда бот присылает заявки «Помочь» по животным: id группы или человека (бот должен быть добавлен / запущен)
     # Кому ещё бот дублирует заявки «Помочь» по питомцам: id чатов и/или @username через запятую
     # (человек должен один раз открыть бота и нажать «Запустить»)

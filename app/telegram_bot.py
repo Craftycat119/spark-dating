@@ -38,7 +38,7 @@ _stop = threading.Event()
 
 def api(method: str, payload: dict | None = None, timeout: float = 15) -> dict:
     req = urllib.request.Request(
-        f"https://api.telegram.org/bot{settings.telegram_bot_token}/{method}",
+        f"{settings.telegram_api_url}/bot{settings.telegram_bot_token}/{method}",
         data=json.dumps(payload or {}).encode(), headers={"Content-Type": "application/json"},
     )
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -333,7 +333,33 @@ def handle_update(upd: dict) -> list[tuple[str, dict]]:
     return calls
 
 
+def _connect() -> bool:
+    """Узнаём имя бота и выключаем вебхук. Пока Telegram недоступен, пробуем снова каждую минуту, сайт при этом работает."""
+    global _bot_username
+    warned = False
+    while not _stop.is_set():
+        try:
+            _bot_username = api("getMe")["result"]["username"]
+            api("deleteWebhook")
+            log.info("Telegram-бот @%s подключён: вход через Telegram включён (https://t.me/%s)", _bot_username, _bot_username)
+            return True
+        except urllib.error.HTTPError as ex:
+            if ex.code in (401, 404):
+                log.error("Telegram: токен не подходит (ответ %s). Проверьте TELEGRAM_BOT_TOKEN в .env и перезапустите сервер", ex.code)
+                return False
+        except Exception:  # noqa: BLE001 — нет связи с Telegram
+            pass
+        if not warned:
+            log.error("Telegram: нет связи с %s. Если сервер в России и Telegram с него недоступен, задайте TELEGRAM_API_URL "
+                      "(посредник за рубежом, см. deploy/DEPLOY.md). Пробую снова каждую минуту", settings.telegram_api_url)
+            warned = True
+        _stop.wait(60)
+    return False
+
+
 def _loop() -> None:
+    if not _connect():
+        return
     # Оформление бота и кнопка мини-приложения — в фоне: проверка адреса ждёт, пока сервер начнёт принимать запросы
     try:
         setup_profile()
@@ -360,21 +386,13 @@ def _loop() -> None:
 
 def start() -> None:
     """Запускает бота в фоне, если задан TELEGRAM_BOT_TOKEN."""
-    global _thread, _bot_username
+    global _thread
     if not settings.telegram_bot_token or _thread:
         return
-    try:
-        me = api("getMe")["result"]
-        _bot_username = me["username"]
-        api("deleteWebhook")
-    except Exception:  # noqa: BLE001
-        log.error("Telegram: не удалось подключиться к боту. Проверьте TELEGRAM_BOT_TOKEN и интернет")
-        if not _bot_username:
-            return
     _stop.clear()
+    # Подключение — в фоне: сайт открывается сразу, даже если Telegram отвечает медленно или недоступен
     _thread = threading.Thread(target=_loop, name="telegram-bot", daemon=True)
     _thread.start()
-    log.info("Telegram-бот @%s запущен: вход через Telegram включён (https://t.me/%s)", _bot_username, _bot_username)
 
 
 def stop() -> None:
