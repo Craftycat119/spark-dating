@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from urllib.parse import urlparse
 import logging
 from datetime import timedelta
 from contextlib import asynccontextmanager
@@ -140,6 +141,19 @@ def media(rel: str, user: User = Depends(current_user), db: Session = Depends(ge
     else:
         raise HTTPException(404)
     return FileResponse(path, headers={"Cache-Control": "private, max-age=86400"})
+
+
+@app.middleware("http")
+async def same_origin_only(request: Request, call_next):
+    """Изменяющие запросы принимаем только со своего сайта: браузер всегда ставит заголовок Origin,
+    и форма или скрипт с чужого сайта не сможет действовать от имени вошедшего пользователя."""
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and (origin := request.headers.get("origin")):
+        allowed = {request.headers.get("host"), request.headers.get("x-forwarded-host"), urlparse(settings.base_url).netloc}
+        if urlparse(origin).netloc not in allowed:
+            from fastapi.responses import JSONResponse
+
+            return JSONResponse({"detail": "Запрос с чужого сайта отклонён"}, status_code=403)
+    return await call_next(request)
 
 
 @app.middleware("http")

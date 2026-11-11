@@ -309,7 +309,7 @@ def telegram_webapp(data: WebAppIn, request: Request, response: Response, db: Se
                     "Проверьте, что TELEGRAM_BOT_TOKEN в .env — от того же бота, в котором открыто приложение (после /revoke токен новый)")
         raise HTTPException(401, "Telegram не подтвердил вход")
     user = _telegram_user(db, tg, request)
-    start_session(db, user, request, response)
+    start_session(db, user, request, response, embedded=True)
     return own_profile(user)
 
 
@@ -361,6 +361,8 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
             db.delete(sess)
             db.commit()
     response.delete_cookie(COOKIE_NAME)
+    if request.url.scheme == "https":  # cookie из мини-приложения (Partitioned) удаляется только с теми же признаками
+        response.headers.append("set-cookie", f"{COOKIE_NAME}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=None; Partitioned")
     return {"status": "ok"}
 
 

@@ -20,7 +20,11 @@ def client_ip(request: Request) -> str:
     return request.client.host if request.client else ""
 
 
-def start_session(db: Session, user: User, request: Request, response: Response) -> None:
+def start_session(db: Session, user: User, request: Request, response: Response, embedded: bool = False) -> None:
+    """embedded=True — вход из мини-приложения. В веб-версии Telegram оно работает во встроенном окне чужого сайта
+    (web.telegram.org), и обычная cookie (SameSite=Lax) туда не передаётся: человек сразу «выходит».
+    Поэтому там cookie выдаётся как SameSite=None + Partitioned: она живёт только внутри этого окна Telegram
+    и не уходит на запросы с других сайтов (от подделки запросов дополнительно защищает проверка Origin в main.py)."""
     token = new_session_token()
     db.add(
         AuthSession(
@@ -35,15 +39,14 @@ def start_session(db: Session, user: User, request: Request, response: Response)
         _count_visit(db, user.id, local_day(now))  # вход в аккаунт — тоже посещение
     user.last_seen_at = now
     db.commit()
-    response.set_cookie(
-        COOKIE_NAME,
-        token,
-        max_age=settings.session_days * 86400,
-        httponly=True,
-        samesite="lax",
-        # по https cookie входа уходит только по шифрованному каналу (в том числе через туннель cloudflared)
-        secure=settings.cookie_secure or request.url.scheme == "https",
-    )
+    secure = settings.cookie_secure or request.url.scheme == "https"
+    max_age = settings.session_days * 86400
+    if embedded and secure:
+        # Partitioned Starlette ставит только на Python 3.14+, поэтому заголовок собираем сами
+        response.headers.append("set-cookie", f"{COOKIE_NAME}={token}; Max-Age={max_age}; Path=/; HttpOnly; Secure; SameSite=None; Partitioned")
+        return
+    # по https cookie входа уходит только по шифрованному каналу (в том числе через туннель cloudflared)
+    response.set_cookie(COOKIE_NAME, token, max_age=max_age, httponly=True, secure=secure, samesite="lax")
 
 
 def user_from_token(db: Session, token: str | None) -> User | None:

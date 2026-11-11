@@ -147,3 +147,33 @@ def test_failed_email_does_not_block_retry(monkeypatch):
     assert r.status_code == 502
     r = c.post("/api/auth/register", json={"email": "fail@x.io", "password": "Secret123"})
     assert r.status_code == 502  # снова честная ошибка, а не «код уже отправлен»
+
+
+def test_mini_app_cookie_works_inside_telegram_web(monkeypatch):
+    import hashlib
+    import hmac
+    import json
+    import time
+    from urllib.parse import urlencode
+
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    monkeypatch.setattr(config.settings, "telegram_bot_token", "123:TEST")
+    fields = {"auth_date": str(int(time.time())), "user": json.dumps({"id": 777, "first_name": "Андрей"})}
+    check = "\n".join(f"{k}={v}" for k, v in sorted(fields.items()))
+    secret = hmac.new(b"WebAppData", b"123:TEST", hashlib.sha256).digest()
+    init_data = urlencode({**fields, "hash": hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()})
+    c = TestClient(app, base_url="https://testserver")
+    r = c.post("/api/auth/telegram/webapp", json={"init_data": init_data})
+    cookie = r.headers["set-cookie"].lower()
+    assert r.status_code == 200 and "samesite=none" in cookie and "partitioned" in cookie and "secure" in cookie
+    assert c.get("/api/auth/me").status_code == 200  # с этой cookie вход держится
+
+
+def test_cross_site_requests_rejected():
+    u = make_user("csrf@x.io")
+    assert u.put("/api/profile", json={"bio": "x"}, headers={"Origin": "https://evil.example"}).status_code == 403
+    assert u.put("/api/profile", json={"bio": "свой"}, headers={"Origin": "http://testserver"}).status_code == 200
+    assert u.put("/api/profile", json={"bio": "без Origin"}).status_code == 200  # не браузер — сессия всё равно нужна
