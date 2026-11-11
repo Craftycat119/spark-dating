@@ -23,7 +23,7 @@ export async function takePhoto() {
   }
   return new Promise((resolve) => {
     const el = h(`<div class="overlay camera-shot" role="dialog" aria-label="Сделать фото">
-      <div class="cam-frame"><video autoplay playsinline muted></video><canvas hidden></canvas><i class="cam-oval"></i></div>
+      <div class="cam-frame"><video autoplay playsinline muted></video><canvas class="live"></canvas><canvas class="shot" hidden></canvas><i class="cam-oval"></i></div>
       <p class="cam-hint">Лицо в овале, хороший свет, без очков и масок</p>
       <div class="cam-actions">
         <button class="btn ghost" data-cancel>Отмена</button>
@@ -32,16 +32,29 @@ export async function takePhoto() {
       </div>
       <button class="btn block" data-use hidden>${icons.check} Использовать фото</button>
     </div>`);
-    const video = $("video", el), canvas = $("canvas", el);
+    const video = $("video", el), canvas = $("canvas.shot", el), live = $("canvas.live", el);
     // iPhone (и Telegram на нём) не запускает видео, пока элемент не на странице: сначала вставляем, потом поток
     document.body.append(el);
     video.muted = true;
+    video.playsInline = true;
     video.setAttribute("playsinline", "");
+    video.setAttribute("webkit-playsinline", "");
     video.srcObject = stream;
     video.play().catch(() => {});
-    const done = (file) => { stream.getTracks().forEach((t) => t.stop()); el.remove(); resolve(file); };
+    // Превью рисуем на canvas: в Telegram на iPhone сам <video> в Mini App часто чёрный, хотя кадры идут
+    let drawing = true;
+    const draw = () => {
+      if (!drawing) return;
+      if (video.videoWidth && !live.hidden) {
+        if (live.width !== video.videoWidth) { live.width = video.videoWidth; live.height = video.videoHeight; }
+        live.getContext("2d").drawImage(video, 0, 0, live.width, live.height);
+      }
+      requestAnimationFrame(draw);
+    };
+    draw();
+    const done = (file) => { drawing = false; stream.getTracks().forEach((t) => t.stop()); el.remove(); resolve(file); };
     const toggle = (shot) => {
-      video.hidden = shot; canvas.hidden = !shot;
+      live.hidden = shot; canvas.hidden = !shot;
       $("[data-shoot]", el).hidden = shot; $("[data-retake]", el).hidden = !shot; $("[data-use]", el).hidden = !shot;
     };
     $("[data-cancel]", el).onclick = () => done(null);

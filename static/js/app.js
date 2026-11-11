@@ -969,7 +969,7 @@ function stepScan() {
       <p class="muted">Камера покажет овал. Держите лицо в нём и следуйте подсказкам: смотрите прямо, затем поверните голову влево и вправо. Это защищает от чужих фото.</p>
       <div class="profile-hero"><img src="${esc(state.me.photo_url)}" alt="Ваше фото"><p class="small muted">Сверяем с этим фото</p></div>
       <div id="scan-area"></div>
-      ${state.me.consent_bio ? "" : `<label class="check consent" data-bio><input type="checkbox" name="consent_bio"><span>Даю <a href="#/legal/biometric" data-doc="biometric">согласие на обработку биометрических персональных данных</a> (изображение лица) для проверки фото и ручной проверки при жалобах</span></label>`}
+      ${state.me.consent_bio ? `<p class="small muted">${icons.check} Вы уже дали <a href="#/legal/biometric" data-doc="biometric">согласие на обработку биометрических данных</a> при первой попытке, повторно отмечать не нужно. Отозвать: письмо на craftycat119@mail.ru</p>` : `<label class="check consent" data-bio><input type="checkbox" name="consent_bio"><span>Даю <a href="#/legal/biometric" data-doc="biometric">согласие на обработку биометрических персональных данных</a> (изображение лица) для проверки фото и ручной проверки при жалобах</span></label>`}
       <p class="error-text" id="scan-error" hidden></p>
       <button class="btn block" id="start">${icons.shield} Начать проверку</button>
       <button class="btn ghost block" id="change">Выбрать другое фото</button>
