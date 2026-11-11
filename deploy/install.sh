@@ -263,12 +263,15 @@ maxretry = 5
 bantime = 1h
 EOF
 systemctl enable --now fail2ban >/dev/null 2>&1 && systemctl restart fail2ban
-if [[ -s /root/.ssh/authorized_keys ]]; then
+# Вход по паролю выключаем ТОЛЬКО по явной просьбе (SSH_KEY_ONLY=1) и если вы сейчас вошли по ключу:
+# в authorized_keys может лежать служебный ключ хостинга, и тогда вы потеряли бы доступ к серверу
+if [[ ${SSH_KEY_ONLY:-0} == 1 && -s /root/.ssh/authorized_keys ]]; then
   printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin prohibit-password\n' > /etc/ssh/sshd_config.d/10-cofi.conf
   systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
   echo "  SSH: вход только по ключу, подбор пароля заблокирован"
 else
-  echo "  ⚠ SSH: вход по паролю оставлен (SSH-ключа нет). Добавьте ключ и запустите install.sh ещё раз — вход по паролю выключится"
+  echo "  SSH: вход по паролю оставлен, подбор пароля блокирует fail2ban."
+  echo "       Когда настроите вход по своему ключу: SSH_KEY_ONLY=1 bash deploy/install.sh"
 fi
 
 # ---------- 9. Резервные копии ----------
