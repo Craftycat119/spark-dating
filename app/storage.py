@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import io
+import logging
+import shutil
+import subprocess
 import uuid
 from pathlib import Path
 
@@ -65,6 +68,40 @@ def save_media(data: bytes, content_type: str, folder: str, kind: str) -> str:
     path, rel = _target(folder, ext)
     path.write_bytes(data)
     return rel
+
+
+log = logging.getLogger("cofi.media")
+
+
+def to_playable(rel: str, kind: str) -> str:
+    """Перекодирует видео в MP4 (H.264 + AAC), голос — в M4A (AAC).
+
+    iPhone (и Telegram на нём) не играет webm, а Chrome и Android пишут кружки и голосовые именно в webm:
+    без перекодирования у получателя на iPhone чёрный кружок. Нет ffmpeg или ошибка — оставляем исходный файл.
+    """
+    ffmpeg = shutil.which("ffmpeg")
+    src = settings.media_dir / rel
+    target_ext = ".m4a" if kind == "voice" else ".mp4"
+    # mp4/mov с телефонов iPhone и так играет; перекодируем только webm/ogg
+    if not ffmpeg or not src.exists() or src.suffix not in (".webm", ".ogg"):
+        return rel
+    new_rel = f"{rel.rsplit('.', 1)[0]}{target_ext}"
+    dst = settings.media_dir / f"{new_rel}.tmp{target_ext}"
+    if kind == "voice":
+        codec = ["-vn", "-c:a", "aac", "-b:a", "96k"]
+    else:
+        codec = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-pix_fmt", "yuv420p", "-profile:v", "main",
+                 "-vf", "scale=w='trunc(min(1280,iw)/2)*2':h=-2", "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart"]
+    try:
+        subprocess.run([ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(src), *codec, str(dst)],
+                       check=True, timeout=180, capture_output=True)
+    except (subprocess.SubprocessError, OSError) as exc:
+        log.warning("Не удалось перекодировать %s: %s", rel, (getattr(exc, "stderr", None) or b"")[-300:] or exc)
+        dst.unlink(missing_ok=True)
+        return rel
+    dst.replace(settings.media_dir / new_rel)
+    src.unlink(missing_ok=True)
+    return new_rel
 
 
 def delete_file(rel: str | None) -> None:

@@ -99,8 +99,11 @@ export function recordCircle() {
     document.body.append(el);
     const $q = (sel) => el.querySelector(sel);
     const live = $q("video.live"), preview = $q("video.preview"), ring = $q("circle"), timer = $q(".timer span");
+    // Этот же канвас и пишется в кружок, и показывается вместо <video>: в Telegram на iPhone видео с камеры бывает чёрным
     const canvas = document.createElement("canvas");
+    canvas.className = "live-canvas";
     canvas.width = canvas.height = SIDE;
+    live.after(canvas);
     const ctx = canvas.getContext("2d");
 
     let facing = "user", camStream = null, micStream = null, rec = null, chunks = [], frame = 0, tick = 0;
@@ -220,7 +223,10 @@ export function recordCircle() {
       el.classList.remove("paused");
       el.classList.add("previewing");
       live.hidden = true;
+      canvas.hidden = true;
       preview.hidden = false;
+      preview.muted = true;
+      preview.playsInline = true;
       $q("[data-flipcam]").hidden = true;
       $q(".rec-mode").hidden = true;
       $q(".preview-mode").hidden = false;

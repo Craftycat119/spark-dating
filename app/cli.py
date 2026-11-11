@@ -162,6 +162,7 @@ def main() -> None:
     sub.add_parser("download-models")
     sub.add_parser("seed-pets", help="добавить готовые объявления о питомцах из app/seed/pets")
     sub.add_parser("outlook-login", help="подключить личную почту Outlook.com для отправки кодов")
+    sub.add_parser("convert-media", help="перекодировать старые кружки, видео и голосовые в mp4/m4a для iPhone")
     t = sub.add_parser("test-email", help="отправить пробное письмо")
     t.add_argument("to")
     args = parser.parse_args()
@@ -182,6 +183,20 @@ def main() -> None:
     elif args.cmd == "download-models":
         download_models()
         print("Готово")
+    elif args.cmd == "convert-media":
+        from .models import Message
+
+        with SessionLocal() as db:
+            done = 0
+            for m in db.scalars(select(Message).where(Message.kind.in_(["circle", "video", "voice"]), Message.media_path.is_not(None))):
+                if m.media_path.endswith(".m4a" if m.kind == "voice" else ".mp4"):
+                    continue
+                new = storage.to_playable(m.media_path, m.kind)
+                if new != m.media_path:
+                    m.media_path = new
+                    db.commit()
+                    done += 1
+            print(f"Перекодировано файлов: {done}")
     elif args.cmd == "outlook-login":
         from .outlook_oauth import login_interactive
 

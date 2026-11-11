@@ -49,7 +49,7 @@ step() { echo; echo "=== $* ==="; }
 step "1/9 Устанавливаю пакеты"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq python3 python3-venv python3-pip nginx certbot python3-certbot-nginx coturn ufw sqlite3 fail2ban \
+apt-get install -y -qq python3 python3-venv python3-pip nginx certbot python3-certbot-nginx coturn ufw sqlite3 ffmpeg fail2ban \
   rsync curl ca-certificates libglib2.0-0 >/dev/null
 
 # Подкачка: при установке OpenCV и при проверке лица нужна память. На сервере с 1–2 ГБ без неё процесс может упасть

@@ -1699,6 +1699,10 @@ function circleEl(m, mine, time) {
       <span class="dur">${fmtDur(m.duration)}</span>
     </div>${time}</div>`);
   const v = $("video", el), ring = $("circle", el);
+  // iPhone: muted нужно выставить свойством, атрибут из разметки WebKit не учитывает — без этого кружок не стартует
+  v.muted = true;
+  v.playsInline = true;
+  v.play().catch(() => {});
   const toggle = () => {
     if (v.muted) {
       v.muted = false; v.loop = false; v.currentTime = 0; v.play();

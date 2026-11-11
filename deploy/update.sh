@@ -11,6 +11,7 @@ APP_DIR=/opt/cofi
 
 # Новая версия скрипта резервных копий (старая хранила 14 полных архивов файлов и забивала диск)
 command -v rsync >/dev/null || apt-get install -y -qq rsync
+command -v ffmpeg >/dev/null || { echo "Ставлю ffmpeg (кружки и голосовые для iPhone)"; apt-get install -y -qq ffmpeg >/dev/null; }
 install -m 700 "$SRC/deploy/cofi-backup.sh" /usr/local/bin/cofi-backup
 grep -q '^DATA_DIR=' /etc/cron.d/cofi-backup 2>/dev/null || printf 'DATA_DIR=/var/lib/cofi\nBACKUP_DIR=/var/backups/cofi\n15 4 * * * root /usr/local/bin/cofi-backup >> /var/log/cofi-backup.log 2>&1\n' > /etc/cron.d/cofi-backup
 
@@ -25,6 +26,8 @@ $APP_DIR/venv/bin/pip install -q -r $APP_DIR/requirements.txt
 chown -R cofi:cofi $APP_DIR
 
 echo "Перезапуск"
+# старые кружки и голосовые в webm → mp4/m4a, чтобы играли на iPhone (уже перекодированные пропускаются)
+(cd $APP_DIR && sudo -u cofi venv/bin/python -m app.cli convert-media) || true
 systemctl restart cofi
 for _ in $(seq 1 20); do
   if curl -fsS http://127.0.0.1:8000/api/config >/dev/null 2>&1; then
