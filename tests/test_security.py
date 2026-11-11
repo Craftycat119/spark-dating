@@ -177,3 +177,8 @@ def test_cross_site_requests_rejected():
     assert u.put("/api/profile", json={"bio": "x"}, headers={"Origin": "https://evil.example"}).status_code == 403
     assert u.put("/api/profile", json={"bio": "свой"}, headers={"Origin": "http://testserver"}).status_code == 200
     assert u.put("/api/profile", json={"bio": "без Origin"}).status_code == 200  # не браузер — сессия всё равно нужна
+
+
+def test_csp_allows_camera_preview():
+    csp = new_client().get("/").headers["content-security-policy"]
+    assert "mediastream:" in csp.split("media-src", 1)[1].split(";", 1)[0]  # иначе камера на iPhone чёрная

@@ -45,6 +45,7 @@ export async function runScanner(root, { consent = false } = {}) {
     return { ok: false, reason: "Нет доступа к камере. Разрешите его в настройках браузера и попробуйте снова." };
   }
   video.srcObject = stream;
+  video.play().catch(() => {}); // iPhone не всегда запускает картинку сам, даже с autoplay
   await new Promise((r) => (video.readyState >= 2 ? r() : (video.onloadeddata = r)));
   await wait(600);
 
