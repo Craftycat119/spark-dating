@@ -124,6 +124,9 @@ export function recordCircle() {
     async function openCamera() {
       camStream?.getTracks().forEach((t) => t.stop());
       camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 720 }, height: { ideal: 720 } }, audio: false });
+      live.muted = true;
+      live.playsInline = true;
+      live.setAttribute("playsinline", "");
       live.srcObject = camStream;
       live.play().catch(() => {}); // iPhone: картинка камеры может не стартовать сама
       live.style.transform = facing === "user" ? "scaleX(-1)" : "none";
