@@ -175,7 +175,6 @@ def main() -> None:
     elif args.cmd == "seed":
         seed(args.lat, args.lon, args.count)
     elif args.cmd == "seed-pets":
-        from .database import SessionLocal
         from .seed_pets import seed_pets
 
         with SessionLocal() as db:
