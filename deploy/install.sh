@@ -198,6 +198,7 @@ nginx -t && systemctl reload nginx
 # certbot сам допишет https в конфиг nginx, включит переадресацию с http и будет продлевать сертификат
 certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$LE_EMAIL" --redirect --keep-until-expiring || \
   echo "⚠ Сертификат не выпущен. Проверьте, что домен указывает на $PUBLIC_IP, и запустите: sudo certbot --nginx -d $DOMAIN"
+bash "$SRC/deploy/nginx-speed.sh" || true   # сжатие и HTTP/2: быстрее открывается издалека
 
 # ---------- 7. TURN для звонков (coturn) ----------
 step "7/9 TURN-сервер для звонков через мобильный интернет"

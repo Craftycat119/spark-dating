@@ -25,6 +25,9 @@ echo "Зависимости"
 $APP_DIR/venv/bin/pip install -q -r $APP_DIR/requirements.txt
 chown -R cofi:cofi $APP_DIR
 
+echo "nginx: сжатие и HTTP/2"
+bash "$SRC/deploy/nginx-speed.sh" || true
+
 echo "Перезапуск"
 # старые кружки и голосовые в webm → mp4/m4a, чтобы играли на iPhone (уже перекодированные пропускаются)
 (cd $APP_DIR && sudo -u cofi venv/bin/python -m app.cli convert-media) || true

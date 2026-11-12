@@ -1,6 +1,6 @@
 // Объёмная вязаная «надутая» трубка, как на референсах: WebGL через three.js.
 // mountPuff(container, { shape: "knot" | "loops" | "heart" }) → { destroy() }
-import * as THREE from "/static/vendor/three/three.module.min.js";
+import * as THREE from "../vendor/three/three.module.min.js";
 
 const ORANGE = 0xff5b1f;
 

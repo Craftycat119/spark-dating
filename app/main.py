@@ -7,12 +7,12 @@ from datetime import timedelta
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from . import captcha, face_verify, telegram_bot
+from . import assets, captcha, face_verify, telegram_bot
 from .config import BASE_DIR, settings
 from .ages import MIN_AGE, TEEN_GOALS
 from .legal import TERMS_VERSION
@@ -195,16 +195,31 @@ class FreshStatic(StaticFiles):
         return resp
 
 
+class VersionedStatic(StaticFiles):
+    """/static/v/<версия>/... — тот же файл, но браузер хранит его год без перепроверки (адрес меняется с версией)."""
+
+    async def get_response(self, path: str, scope):
+        ver, _, rest = path.partition("/")
+        resp = await super().get_response(rest, scope)
+        if resp.status_code == 200:
+            # чужая (старая) версия: файл уже новый, кэшировать его под старым адресом нельзя
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable" if ver == assets.version() else "no-cache"
+        return resp
+
+
+app.mount("/static/v", VersionedStatic(directory=STATIC_DIR), name="static-v")
 app.mount("/static", FreshStatic(directory=STATIC_DIR), name="static")
+
+PAGE_HEADERS = {"Cache-Control": "no-cache"}
 
 
 @app.get("/admin")
 def admin_page():
-    return FileResponse(STATIC_DIR / "admin.html", headers={"Cache-Control": "no-cache"})
+    return HTMLResponse(assets.page("admin.html", "js/admin.js"), headers=PAGE_HEADERS)
 
 
 @app.get("/{path:path}")
 def spa(path: str, request: Request):
     if path.startswith(("api/", "media/", "ws")):
         raise HTTPException(404)
-    return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-cache"})
+    return HTMLResponse(assets.page("index.html", "js/app.js"), headers=PAGE_HEADERS)

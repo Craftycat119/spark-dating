@@ -182,3 +182,23 @@ def test_cross_site_requests_rejected():
 def test_csp_allows_camera_preview():
     csp = new_client().get("/").headers["content-security-policy"]
     assert "mediastream:" in csp.split("media-src", 1)[1].split(";", 1)[0]  # иначе камера на iPhone чёрная
+
+
+def test_static_is_versioned_and_cached():
+    from fastapi.testclient import TestClient
+
+    from app import assets
+    from app.main import app
+
+    c = TestClient(app)
+    html = c.get("/").text
+    v = assets.version()
+    assert f'src="/static/v/{v}/js/app.js"' in html
+    assert f'rel="modulepreload" href="/static/v/{v}/js/ui.js"' in html
+    assert 'href="/static/manifest.webmanifest"' in html  # manifest и иконки — на постоянных адресах
+    r = c.get(f"/static/v/{v}/js/app.js")
+    assert r.status_code == 200 and "immutable" in r.headers["cache-control"]
+    assert c.get("/static/v/old/js/app.js").headers["cache-control"] == "no-cache"  # старая версия не залипает
+    assert c.get(f"/static/v/{v}/../../app/config.py").status_code == 404
+    assert c.get("/static/js/app.js").headers["cache-control"] == "no-cache"
+    assert "/static/v/" in c.get("/admin").text
