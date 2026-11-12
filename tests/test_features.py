@@ -151,7 +151,8 @@ def test_seed_pets_once():
     assert boss.get("/api/admin/stats").status_code == 200  # открыли панель — объявления добавились
     items = boss.get("/api/animals?category=adoption").json()["items"]
     names = [p["name"] for p in items]
-    assert names[:4] == ["Ушастая малышка", "Рыжая малышка", "Лиса-Алиса", "Девочка со стройки"]  # в порядке анкет
+    assert names[:8] == ["Мраморный пинчер", "Малыши ищут дом", "Маленький мальчишка", "Красавица",
+                         "Ушастая малышка", "Рыжая малышка", "Лиса-Алиса", "Девочка со стройки"]  # в порядке анкет
     lisa = next(p for p in items if p["name"] == "Лиса-Алиса")
     assert len(lisa["photos"]) == 3 and lisa["city"] == "Нячанг"
     boss.delete(f"/api/animals/{lisa['id']}")
