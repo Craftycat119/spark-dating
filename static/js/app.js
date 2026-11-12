@@ -7,7 +7,7 @@ import { PACKS } from "./stickers.js";
 import { mountThread } from "./threads.js";
 import { renderGuide } from "./guide.js";
 import { feedTabs, renderAnimals } from "./animals.js";
-import { takePhoto } from "./camera.js";
+import { shrinkImage, takePhoto } from "./camera.js";
 import { mountCaptcha } from "./captcha.js";
 import { LEGAL_DOCS, renderTerms } from "./terms.js";
 import { renderAds, renderSupportHub, renderThread, reportUser } from "./support.js";
@@ -931,7 +931,7 @@ function photoPicker(root, onUploaded) {
     drop.innerHTML = `<div class="skeleton"></div>`;
     err.hidden = true;
     const fd = new FormData();
-    fd.append("file", file);
+    fd.append("file", await shrinkImage(file));
     try {
       await api.post("/api/profile/photo", fd);
       drop.innerHTML = "";
@@ -1435,9 +1435,10 @@ async function openChat(convId) {
     </header>
     <div class="messages" tabindex="0" translate="no"></div>
     <div class="typing" aria-live="polite"></div>
+    <div class="upload-status" aria-live="polite" hidden><span></span><i><b></b></i></div>
     <div class="sticker-panel" hidden></div>
     <div class="composer"></div>
-    <input type="file" accept="image/*,video/*" hidden>
+    <input type="file" accept="image/*,video/*" multiple hidden>
   </section>`);
   document.body.append(el);
   const list = $(".messages", el);
@@ -1529,25 +1530,49 @@ async function openChat(convId) {
   }
   drawStickers();
 
-  // --- Отправка файлов ---
-  async function upload(kind, blob, duration, filename) {
-    const fd = new FormData();
-    fd.append("kind", kind);
-    if (duration) fd.append("duration", String(Math.round(duration * 10) / 10));
-    fd.append("file", blob, filename);
-    typing.textContent = "Отправка…";
-    try {
-      await api.post(`/api/chats/${convId}/media`, fd);
-    } catch (ex) {
-      toast(ex.message, { error: true });
-    } finally {
-      if (typing.textContent === "Отправка…") typing.textContent = "";
+  // --- Отправка файлов: очередь по одному (порядок в чате как при выборе), над полем ввода «Загрузка 2 из 5 · 40%» ---
+  const status = $(".upload-status", el);
+  const queue = [];
+  let sent = 0, total = 0, busy = false;
+  const showStatus = (part) => {
+    status.hidden = false;
+    const n = Math.min(sent + 1, total);
+    $("span", status).textContent = total > 1 ? `Загрузка ${n} из ${total} · ${Math.round(part * 100)}%` : `Загрузка ${Math.round(part * 100)}%`;
+    $("b", status).style.width = `${((sent + part) / total) * 100}%`;
+  };
+  async function runQueue() {
+    if (busy) return;
+    busy = true;
+    while (queue.length) {
+      const { kind, blob, duration, filename } = queue.shift();
+      showStatus(0);
+      try {
+        const file = kind === "image" ? await shrinkImage(blob) : blob;
+        const fd = new FormData();
+        fd.append("kind", kind);
+        if (duration) fd.append("duration", String(Math.round(duration * 10) / 10));
+        fd.append("file", file, kind === "image" && file !== blob ? "photo.jpg" : filename);
+        await api.upload(`/api/chats/${convId}/media`, fd, (p) => showStatus(Math.min(p, 0.99)));
+      } catch (ex) {
+        toast(ex.message, { error: true });
+      }
+      sent++;
     }
+    sent = total = 0;
+    status.hidden = true;
+    busy = false;
   }
+  function upload(kind, blob, duration, filename) {
+    queue.push({ kind, blob, duration, filename });
+    total++;
+    queueMicrotask(runQueue); // сначала в очередь попадут все выбранные файлы — счётчик сразу «1 из 5»
+  }
+  const MAX_PICK = 10;
   fileInput.onchange = () => {
-    const f = fileInput.files[0];
-    if (f) upload(f.type.startsWith("video") ? "video" : "image", f, null, f.name);
+    const files = [...fileInput.files];
     fileInput.value = "";
+    if (files.length > MAX_PICK) toast(`За раз можно отправить до ${MAX_PICK} файлов, отправляем первые ${MAX_PICK}`);
+    for (const f of files.slice(0, MAX_PICK)) upload(f.type.startsWith("video") ? "video" : "image", f, null, f.name || "file");
   };
 
   // --- Поле ввода ---

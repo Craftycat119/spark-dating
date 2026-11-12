@@ -82,6 +82,9 @@ def to_playable(rel: str, kind: str) -> str:
     ffmpeg = shutil.which("ffmpeg")
     src = settings.media_dir / rel
     target_ext = ".m4a" if kind == "voice" else ".mp4"
+    if ffmpeg and src.exists() and kind == "video" and src.suffix in (".mp4", ".mov"):
+        _faststart(ffmpeg, src)
+        return rel
     # mp4/mov с телефонов iPhone и так играет; перекодируем только webm/ogg
     if not ffmpeg or not src.exists() or src.suffix not in (".webm", ".ogg"):
         return rel
@@ -102,6 +105,19 @@ def to_playable(rel: str, kind: str) -> str:
     dst.replace(settings.media_dir / new_rel)
     src.unlink(missing_ok=True)
     return new_rel
+
+
+def _faststart(ffmpeg: str, src: Path) -> None:
+    """Видео с телефона без перекодирования (качество то же): служебный индекс переносим в начало файла,
+    и у получателя ролик начинает играть сразу, не дожидаясь загрузки до конца."""
+    tmp = src.with_name(f"{src.stem}.fast{src.suffix}")
+    try:
+        subprocess.run([ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(src), "-map", "0", "-c", "copy",
+                        "-movflags", "+faststart", str(tmp)], check=True, timeout=120, capture_output=True)
+        tmp.replace(src)
+    except (subprocess.SubprocessError, OSError) as exc:
+        log.warning("faststart не удался для %s: %s", src.name, exc)
+        tmp.unlink(missing_ok=True)
 
 
 def delete_file(rel: str | None) -> None:

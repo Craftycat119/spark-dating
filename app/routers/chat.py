@@ -142,7 +142,7 @@ def send_media(
     db: Session = Depends(get_db),
 ):
     conv = get_conversation(db, conv_id, user)
-    hit(f"media:{user.id}", 20, 600)  # не больше 20 файлов за 10 минут: диск сервера не заполнить
+    hit(f"media:{user.id}", 40, 600)  # не больше 40 файлов за 10 минут: диск сервера не заполнить
     if kind not in MEDIA_KINDS:
         raise HTTPException(422, "Неизвестный тип файла")
     folder = f"chat/{conv.id}"

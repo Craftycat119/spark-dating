@@ -74,3 +74,34 @@ export async function takePhoto() {
     $("[data-use]", el).onclick = () => canvas.toBlob((b) => done(b && new File([b], "camera.jpg", { type: "image/jpeg" })), "image/jpeg", 0.9);
   });
 }
+
+/**
+ * Уменьшает фото на телефоне перед отправкой до того размера, который сервер всё равно сохраняет (1600 px, JPEG).
+ * Качество итоговой картинки то же, а отправлять вместо 4–8 МБ приходится 0,3–0,6 МБ — в разы быстрее.
+ * Поворот по EXIF браузер применяет сам. Если что-то не так — отправляем исходный файл.
+ */
+export async function shrinkImage(file, maxSide = 1600) {
+  if (!file?.type?.startsWith("image/") || file.type === "image/gif") return file;
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const w = img.naturalWidth, hgt = img.naturalHeight;
+    if (!w || !hgt) return file;
+    if (Math.max(w, hgt) <= maxSide && file.size < 1_500_000) return file; // и так небольшое
+    const k = Math.min(1, maxSide / Math.max(w, hgt));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(w * k);
+    canvas.height = Math.round(hgt * k);
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.92));
+    return blob && blob.size < file.size ? new File([blob], "photo.jpg", { type: "image/jpeg" }) : file;
+  } catch {
+    return file;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}

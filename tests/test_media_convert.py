@@ -42,3 +42,13 @@ def test_broken_file_kept_as_is():
 
 def test_mp4_untouched():
     assert storage.to_playable("chat/999/x.mp4", "video") == "chat/999/x.mp4"
+
+
+def test_video_mp4_faststart_keeps_quality():
+    path = settings.media_dir / "chat/999/m.mp4"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=160x160:rate=10:duration=1",
+                    "-c:v", "libx264", str(path)], check=True)
+    assert storage.to_playable("chat/999/m.mp4", "video") == "chat/999/m.mp4"
+    data = path.read_bytes()
+    assert data.find(b"moov") < data.find(b"mdat")  # индекс в начале файла

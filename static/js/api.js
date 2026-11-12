@@ -31,7 +31,28 @@ async function request(method, url, body) {
   return data;
 }
 
+/** POST формы с файлом и прогрессом отправки: onProgress(0..1). fetch прогресс отдачи не умеет, поэтому XHR. */
+function upload(url, form, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.withCredentials = true;
+    xhr.responseType = "json";
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
+    xhr.onerror = () => reject(new ApiError(0, "Нет соединения с сервером. Проверьте интернет"));
+    xhr.onload = () => {
+      const data = xhr.response;
+      if (xhr.status >= 200 && xhr.status < 300) return resolve(data);
+      let detail = data?.detail ?? "Ошибка сервера";
+      if (Array.isArray(detail)) detail = detail.map((d) => d.msg).join("; ");
+      reject(new ApiError(xhr.status, detail));
+    };
+    xhr.send(form);
+  });
+}
+
 export const api = {
+  upload,
   get: (u) => request("GET", u),
   post: (u, b) => request("POST", u, b ?? {}),
   put: (u, b) => request("PUT", u, b),
