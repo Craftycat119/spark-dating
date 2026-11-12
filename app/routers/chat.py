@@ -152,6 +152,8 @@ def send_media(
         data = storage.read_limited(file, settings.max_video_mb)
         rel = storage.save_media(data, file.content_type or "", folder, kind)
         rel = storage.to_playable(rel, kind)  # webm → mp4/m4a, иначе на iPhone не играет
+        if kind == "video":
+            storage.make_poster(rel)
     msg = _store(
         db,
         conv,

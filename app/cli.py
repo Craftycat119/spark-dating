@@ -196,6 +196,12 @@ def main() -> None:
                     db.commit()
                     done += 1
             print(f"Перекодировано файлов: {done}")
+            posters = 0
+            for m in db.scalars(select(Message).where(Message.kind == "video", Message.media_path.is_not(None))):
+                if not (settings.media_dir / storage.poster_rel(m.media_path)).exists():
+                    storage.make_poster(m.media_path)
+                    posters += 1
+            print(f"Превью для видео: {posters}")
     elif args.cmd == "outlook-login":
         from .outlook_oauth import login_interactive
 

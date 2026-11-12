@@ -120,9 +120,30 @@ def _faststart(ffmpeg: str, src: Path) -> None:
         tmp.unlink(missing_ok=True)
 
 
+def poster_rel(rel: str) -> str:
+    return f"{rel.rsplit('.', 1)[0]}.poster.jpg"
+
+
+def make_poster(rel: str) -> None:
+    """Первый кадр видео картинкой: в чате ролик сразу виден, а не серым квадратом (iPhone сам кадр не рисует)."""
+    ffmpeg = shutil.which("ffmpeg")
+    src = settings.media_dir / rel
+    if not ffmpeg or not src.exists():
+        return
+    dst = settings.media_dir / poster_rel(rel)
+    try:
+        subprocess.run([ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-ss", "0.1", "-i", str(src), "-frames:v", "1",
+                        "-vf", "scale=w='min(720,iw)':h=-2", "-q:v", "4", str(dst)], check=True, timeout=60, capture_output=True)
+    except (subprocess.SubprocessError, OSError) as exc:
+        log.warning("Не удалось сделать превью %s: %s", rel, exc)
+        dst.unlink(missing_ok=True)
+
+
 def delete_file(rel: str | None) -> None:
     if not rel:
         return
+    if not rel.endswith(".poster.jpg"):
+        delete_file(poster_rel(rel))  # превью видео уходит вместе с ним
     path = (settings.media_dir / rel).resolve()
     if settings.media_dir.resolve() in path.parents and path.exists():
         path.unlink()

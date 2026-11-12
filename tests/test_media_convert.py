@@ -52,3 +52,15 @@ def test_video_mp4_faststart_keeps_quality():
     assert storage.to_playable("chat/999/m.mp4", "video") == "chat/999/m.mp4"
     data = path.read_bytes()
     assert data.find(b"moov") < data.find(b"mdat")  # индекс в начале файла
+
+
+def test_video_gets_poster_and_poster_deleted_with_video():
+    path = settings.media_dir / "chat/999/p.mp4"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=160x160:rate=10:duration=1",
+                    "-c:v", "libx264", str(path)], check=True)
+    storage.make_poster("chat/999/p.mp4")
+    poster = settings.media_dir / "chat/999/p.poster.jpg"
+    assert poster.read_bytes()[:2] == b"\xff\xd8"
+    storage.delete_file("chat/999/p.mp4")
+    assert not poster.exists() and not path.exists()

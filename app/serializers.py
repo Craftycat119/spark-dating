@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+from . import storage
+from .config import settings
 from .interests import GENDERS, ORIENTATIONS, ZODIAC
 from .legal import TERMS_VERSION
 from .models import Conversation, Message, User
+
+
+def _poster(m) -> str | None:
+    if m.kind != "video" or not m.media_path:
+        return None
+    rel = storage.poster_rel(m.media_path)
+    return f"/media/{rel}" if (settings.media_dir / rel).exists() else None
 
 
 def media_url(path: str | None) -> str | None:
@@ -96,6 +105,7 @@ def message_out(m: Message) -> dict:
         "kind": m.kind,
         "text": m.text,
         "media_url": f"/media/{m.media_path}" if m.media_path else None,
+        "poster_url": _poster(m),
         "duration": m.duration,
         "created_at": m.created_at.isoformat() + "Z",
         "read_at": m.read_at.isoformat() + "Z" if m.read_at else None,

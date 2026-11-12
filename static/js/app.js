@@ -1672,7 +1672,7 @@ function messageEl(m, mine) {
     case "sticker":
       return wrap("sticker", `<div class="st" role="img" aria-label="Стикер">${esc(m.text)}</div>${time}`);
     case "image": {
-      const el = wrap("media", `<div class="bubble"><img src="${esc(m.media_url)}" alt="Фото" loading="lazy">${m.text ? `<div class="caption">${esc(m.text)}</div>` : ""}</div>`);
+      const el = wrap("media", `<div class="bubble"><img src="${esc(m.media_url)}" alt="Фото" decoding="async">${m.text ? `<div class="caption">${esc(m.text)}</div>` : ""}</div>`);
       $("img", el).onclick = () => {
         const lb = h(`<div class="lightbox" role="dialog"><img src="${esc(m.media_url)}" alt="Фото"></div>`);
         lb.onclick = () => lb.remove();
@@ -1681,7 +1681,8 @@ function messageEl(m, mine) {
       return el;
     }
     case "video":
-      return wrap("media", `<div class="bubble"><video src="${esc(m.media_url)}" controls playsinline preload="metadata"></video></div>`);
+      // poster — первый кадр с сервера; #t=0.1 — запасной способ, чтобы iPhone показал кадр, а не серый квадрат
+      return wrap("media", `<div class="bubble"><video src="${esc(m.media_url)}#t=0.1" ${m.poster_url ? `poster="${esc(m.poster_url)}"` : ""} controls playsinline preload="metadata"></video></div>`);
     case "voice":
       return voiceEl(m, mine, time);
     case "circle":
