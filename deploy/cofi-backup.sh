@@ -24,7 +24,7 @@ if [ -f "$DATA_DIR/spark.db" ]; then
 fi
 
 # 2. Файлы: зеркало. Удалённые пользователями файлы (удалённая анкета, чат) из зеркала тоже уходят
-rsync -a --delete --exclude 'models/' --exclude 'spark.db*' "$DATA_DIR/" "$BACKUP_DIR/media/"
+rsync -a --delete --exclude 'models/' --exclude '.uploads/' --exclude 'spark.db*' "$DATA_DIR/" "$BACKUP_DIR/media/"
 
 # 3. Старые копии базы — прочь; полные архивы файлов от прежней версии скрипта — тоже
 find "$BACKUP_DIR" -maxdepth 1 -name 'db-*.sqlite*' -mtime +$KEEP_DAYS -delete

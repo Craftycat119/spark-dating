@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
+import shutil
 import time
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -152,6 +154,13 @@ def send_media(
         rel = storage.save_image(storage.read_limited(file, settings.max_image_mb), folder)
     else:
         rel = storage.save_media_stream(file, folder, kind, settings.max_video_mb)
+    return _media_message(db, conv, user, kind, rel, duration, caption, background)
+
+
+def _media_message(db: Session, conv: Conversation, user: User, kind: str, rel: str, duration: float | None,
+                   caption: str, background: BackgroundTasks) -> dict:
+    """Файл уже на диске: доводим до вида, который играет везде, и создаём сообщение."""
+    if kind != "image":
         rel = storage.to_playable(rel, kind)  # webm → mp4/m4a, иначе на iPhone не играет
         if kind == "video":
             storage.make_poster(rel)
@@ -164,6 +173,136 @@ def send_media(
     push.notify_message(conv.other(user.id), user.name, conv.id, MEDIA_PREVIEW[kind] + (f": {caption.strip()}" if caption.strip() else ""))
     _maybe_bot_reply(conv, user, background)
     return message_out(msg)
+
+
+# ---------- Загрузка по частям: можно поставить на паузу и продолжить с того же места (даже после закрытия приложения) ----------
+
+CHUNK_MAX = 4 * 1024 * 1024
+UPLOAD_TTL = 3 * 24 * 3600  # недокачанное хранится 3 дня
+
+
+def _uploads_dir():
+    d = settings.media_dir / ".uploads"  # не отдаётся через /media: туда пускают только photos/, chat/ и т. п.
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _cleanup_uploads() -> None:
+    cutoff = time.time() - UPLOAD_TTL
+    for f in _uploads_dir().iterdir():
+        try:
+            if f.stat().st_mtime < cutoff:
+                f.unlink()
+        except OSError:
+            pass
+
+
+def _upload(uid: str, user: User, conv: Conversation) -> tuple[dict, "object"]:
+    if not uid.isalnum() or len(uid) != 32:
+        raise HTTPException(404, "Загрузка не найдена")
+    meta_path = _uploads_dir() / f"{uid}.json"
+    try:
+        meta = json.loads(meta_path.read_text())
+    except (OSError, ValueError):
+        raise HTTPException(404, "Загрузка не найдена или устарела, отправьте файл заново") from None
+    if meta["user_id"] != user.id or meta["conv_id"] != conv.id:
+        raise HTTPException(404, "Загрузка не найдена")
+    return meta, _uploads_dir() / f"{uid}.part"
+
+
+def _received(part) -> int:
+    return part.stat().st_size if part.exists() else 0
+
+
+class UploadStartIn(BaseModel):
+    kind: str
+    size: int = Field(gt=0)
+    filename: str = Field("", max_length=200)
+    content_type: str = Field("", max_length=100)
+    duration: float | None = None
+    caption: str = Field("", max_length=1000)
+
+
+@router.post("/{conv_id}/uploads")
+def upload_start(conv_id: int, data: UploadStartIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    conv = get_conversation(db, conv_id, user)
+    hit(f"media:{user.id}", 40, 600)
+    kind = data.kind
+    if kind not in MEDIA_KINDS:
+        raise HTTPException(422, "Неизвестный тип файла")
+    if kind == "image" and storage.media_type(data.content_type, data.filename).startswith("video/"):
+        kind = "video"
+    limit = settings.max_image_mb if kind == "image" else settings.max_video_mb
+    if data.size > limit * 1024 * 1024:
+        raise HTTPException(413, f"Файл больше {limit} МБ")
+    if kind != "image" and not (storage.AUDIO_EXT if kind == "voice" else storage.VIDEO_EXT).get(storage.media_type(data.content_type, data.filename)):
+        raise HTTPException(415, "Этот формат не поддерживается")
+    _cleanup_uploads()
+    uid = secrets.token_hex(16)
+    meta = {"user_id": user.id, "conv_id": conv.id, "kind": kind, "size": data.size, "filename": data.filename,
+            "content_type": data.content_type, "duration": data.duration, "caption": data.caption.strip()}
+    (_uploads_dir() / f"{uid}.json").write_text(json.dumps(meta))
+    (_uploads_dir() / f"{uid}.part").touch()
+    return {"id": uid, "received": 0, "size": data.size}
+
+
+@router.get("/{conv_id}/uploads/{uid}")
+def upload_status(conv_id: int, uid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    meta, part = _upload(uid, user, get_conversation(db, conv_id, user))
+    return {"id": uid, "received": _received(part), "size": meta["size"]}
+
+
+@router.put("/{conv_id}/uploads/{uid}")
+async def upload_chunk(conv_id: int, uid: str, offset: int, request: Request, user: User = Depends(current_user),
+                       db: Session = Depends(get_db)):
+    meta, part = _upload(uid, user, get_conversation(db, conv_id, user))
+    hit(f"chunk:{user.id}", 3000, 600)
+    received = _received(part)
+    if offset != received:  # кусок уже был (повтор после обрыва) или пропущен — клиент продолжит с received
+        raise HTTPException(409, {"message": "Смещение не совпадает", "received": received})
+    body = bytearray()
+    async for piece in request.stream():
+        body += piece
+        if len(body) > CHUNK_MAX:
+            raise HTTPException(413, "Слишком большой кусок")
+    if received + len(body) > meta["size"]:
+        raise HTTPException(413, "Файл больше заявленного")
+    with part.open("ab") as f:
+        f.write(body)
+    part.touch()
+    return {"received": received + len(body)}
+
+
+@router.post("/{conv_id}/uploads/{uid}/finish")
+def upload_finish(conv_id: int, uid: str, background: BackgroundTasks, user: User = Depends(current_user),
+                  db: Session = Depends(get_db)):
+    conv = get_conversation(db, conv_id, user)
+    meta, part = _upload(uid, user, conv)
+    if _received(part) != meta["size"]:
+        raise HTTPException(409, {"message": "Файл загружен не полностью", "received": _received(part)})
+    folder, kind = f"chat/{conv.id}", meta["kind"]
+    try:
+        if kind == "image":
+            rel = storage.save_image(part.read_bytes(), folder)
+        else:
+            ext = (storage.AUDIO_EXT if kind == "voice" else storage.VIDEO_EXT)[storage.media_type(meta["content_type"], meta["filename"])]
+            target, rel = storage._target(folder, ext)
+            shutil.move(str(part), target)
+    finally:
+        part.unlink(missing_ok=True)
+        (_uploads_dir() / f"{uid}.json").unlink(missing_ok=True)
+    return _media_message(db, conv, user, kind, rel, meta["duration"], meta["caption"], background)
+
+
+@router.delete("/{conv_id}/uploads/{uid}")
+def upload_cancel(conv_id: int, uid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    try:
+        meta, part = _upload(uid, user, get_conversation(db, conv_id, user))
+    except HTTPException:
+        return {"status": "ok"}
+    part.unlink(missing_ok=True)
+    (_uploads_dir() / f"{uid}.json").unlink(missing_ok=True)
+    return {"status": "ok"}
 
 
 @router.post("/{conv_id}/read")

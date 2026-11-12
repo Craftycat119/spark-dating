@@ -9,6 +9,7 @@ import { renderGuide } from "./guide.js";
 import { feedTabs, renderAnimals } from "./animals.js";
 import { shrinkImage, takePhoto } from "./camera.js";
 import { openAttachSheet } from "./attach.js";
+import { createUploader } from "./uploads.js";
 import { mountCaptcha } from "./captcha.js";
 import { LEGAL_DOCS, renderTerms } from "./terms.js";
 import { renderAds, renderSupportHub, renderThread, reportUser } from "./support.js";
@@ -1436,7 +1437,8 @@ async function openChat(convId) {
     </header>
     <div class="messages" tabindex="0" translate="no"></div>
     <div class="typing" aria-live="polite"></div>
-    <div class="upload-status" aria-live="polite" hidden><span></span><i><b></b></i></div>
+    <div class="upload-status" aria-live="polite" hidden><span></span><i><b></b></i>
+      <button class="icon-btn" data-cancel-all aria-label="Отменить загрузку">${icons.x}</button></div>
     <div class="sticker-panel" hidden></div>
     <div class="composer"></div>
     <input type="file" accept="image/*,video/*" multiple hidden>
@@ -1450,6 +1452,7 @@ async function openChat(convId) {
   const fileInput = $("input[type=file]", el);
   const seen = new Set();
   let lastDay = null;
+  const pendingBox = h(`<div class="pending-box"></div>`);
 
   const atBottom = () => list.scrollHeight - list.scrollTop - list.clientHeight < 120;
   const scrollDown = () => (list.scrollTop = list.scrollHeight);
@@ -1458,12 +1461,14 @@ async function openChat(convId) {
     if (seen.has(m.id)) return;
     seen.add(m.id);
     const day = fmtDay(m.created_at);
+    // новые сообщения встают перед плитками ещё не отправленных файлов
+    const put = (node) => (pendingBox.isConnected ? pendingBox.before(node) : list.append(node));
     if (day !== lastDay) {
-      list.append(h(`<div class="day-sep">${day}</div>`));
+      put(h(`<div class="day-sep">${day}</div>`));
       lastDay = day;
     }
     const stick = atBottom();
-    list.append(messageEl(m, m.sender_id === state.me.id));
+    put(messageEl(m, m.sender_id === state.me.id));
     if (stick || m.sender_id === state.me.id) scrollDown();
   }
 
@@ -1471,6 +1476,12 @@ async function openChat(convId) {
     list.append(h(`<div class="empty" style="text-align:center"><h3>Вы понравились друг другу</h3><p class="muted small">Начните с общего интереса или запишите кружочек.</p></div>`));
   }
   data.messages.forEach(append);
+  list.append(pendingBox);
+  const uploader = createUploader({
+    box: pendingBox, status: $(".upload-status", el), convId,
+    onSent: (m) => { $(".empty", list)?.remove(); append(m); scrollDown(); },
+  });
+  uploader.restore().then(() => requestAnimationFrame(scrollDown));
   requestAnimationFrame(scrollDown);
   const markRead = () => api.post(`/api/chats/${convId}/read`).then(refreshUnread).catch(() => {});
   markRead();
@@ -1496,7 +1507,7 @@ async function openChat(convId) {
       go("#/chats");
     }),
   ];
-  chatCleanup = () => { offs.forEach((f) => f()); voice?.cancel(); el.remove(); };
+  chatCleanup = () => { offs.forEach((f) => f()); voice?.cancel(); uploader.stop(); el.remove(); };
 
   $$("[data-call]", el).forEach((b) => (b.onclick = () => startCall(convId, other, b.dataset.call === "video")));
   $("[data-profile]", el).onclick = () => openProfile(other.id);
@@ -1532,42 +1543,11 @@ async function openChat(convId) {
   }
   drawStickers();
 
-  // --- Отправка файлов: очередь по одному (порядок в чате как при выборе), над полем ввода «Загрузка 2 из 5 · 40%» ---
-  const status = $(".upload-status", el);
-  const queue = [];
-  let sent = 0, total = 0, busy = false;
-  const showStatus = (part) => {
-    status.hidden = false;
-    const n = Math.min(sent + 1, total);
-    $("span", status).textContent = total > 1 ? `Загрузка ${n} из ${total} · ${Math.round(part * 100)}%` : `Загрузка ${Math.round(part * 100)}%`;
-    $("b", status).style.width = `${((sent + part) / total) * 100}%`;
-  };
-  async function runQueue() {
-    if (busy) return;
-    busy = true;
-    while (queue.length) {
-      const { kind, blob, duration, filename } = queue.shift();
-      showStatus(0);
-      try {
-        const file = kind === "image" ? await shrinkImage(blob) : blob;
-        const fd = new FormData();
-        fd.append("kind", kind);
-        if (duration) fd.append("duration", String(Math.round(duration * 10) / 10));
-        fd.append("file", file, kind === "image" && file !== blob ? "photo.jpg" : filename);
-        await api.upload(`/api/chats/${convId}/media`, fd, (p) => showStatus(Math.min(p, 0.99)));
-      } catch (ex) {
-        toast(total > 1 ? `Файл ${sent + 1} из ${total} не отправлен: ${ex.message}` : ex.message, { error: true });
-      }
-      sent++;
-    }
-    sent = total = 0;
-    status.hidden = true;
-    busy = false;
-  }
-  function upload(kind, blob, duration, filename) {
-    queue.push({ kind, blob, duration, filename });
-    total++;
-    queueMicrotask(runQueue); // сначала в очередь попадут все выбранные файлы — счётчик сразу «1 из 5»
+  // --- Отправка файлов: очередь с паузой и продолжением (uploads.js) ---
+  async function upload(kind, blob, duration, filename) {
+    $(".empty", list)?.remove();
+    const file = kind === "image" ? await shrinkImage(blob) : blob;
+    uploader.add(kind, file, { name: kind === "image" && file !== blob ? "photo.jpg" : filename, duration });
   }
   const MAX_PICK = 10;
   // iPhone при выборе из галереи иногда не указывает тип файла: тогда узнаём видео по расширению
@@ -1575,9 +1555,9 @@ async function openChat(convId) {
   const videoCapture = $("[data-video-capture]", el);
   videoCapture.onchange = () => { sendFiles([...videoCapture.files]); videoCapture.value = ""; };
   fileInput.onchange = () => { sendFiles([...fileInput.files]); fileInput.value = ""; };
-  function sendFiles(files) {
+  async function sendFiles(files) {
     if (files.length > MAX_PICK) toast(`За раз можно отправить до ${MAX_PICK} файлов, отправляем первые ${MAX_PICK}`);
-    for (const f of files.slice(0, MAX_PICK)) upload(isVideo(f) ? "video" : "image", f, null, f.name || "file");
+    for (const f of files.slice(0, MAX_PICK)) await upload(isVideo(f) ? "video" : "image", f, null, f.name || "file"); // по порядку выбора
   }
 
   // --- Поле ввода ---
