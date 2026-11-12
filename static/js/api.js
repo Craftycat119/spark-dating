@@ -43,7 +43,7 @@ function upload(url, form, onProgress) {
     xhr.onload = () => {
       const data = xhr.response;
       if (xhr.status >= 200 && xhr.status < 300) return resolve(data);
-      let detail = data?.detail ?? "Ошибка сервера";
+      let detail = data?.detail ?? (xhr.status === 413 ? "Файл слишком большой (до 200 МБ)" : "Ошибка сервера");
       if (Array.isArray(detail)) detail = detail.map((d) => d.msg).join("; ");
       reject(new ApiError(xhr.status, detail));
     };

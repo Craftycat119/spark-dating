@@ -146,11 +146,12 @@ def send_media(
     if kind not in MEDIA_KINDS:
         raise HTTPException(422, "Неизвестный тип файла")
     folder = f"chat/{conv.id}"
+    if kind == "image" and storage.media_type(file.content_type, file.filename).startswith("video/"):
+        kind = "video"  # телефон прислал ролик как «фото» — отправим как видео
     if kind == "image":
         rel = storage.save_image(storage.read_limited(file, settings.max_image_mb), folder)
     else:
-        data = storage.read_limited(file, settings.max_video_mb)
-        rel = storage.save_media(data, file.content_type or "", folder, kind)
+        rel = storage.save_media_stream(file, folder, kind, settings.max_video_mb)
         rel = storage.to_playable(rel, kind)  # webm → mp4/m4a, иначе на iPhone не играет
         if kind == "video":
             storage.make_poster(rel)

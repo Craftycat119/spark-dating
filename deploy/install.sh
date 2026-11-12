@@ -174,7 +174,7 @@ limit_req_zone \$binary_remote_addr zone=cofi_api:10m rate=20r/s;
 server {
     listen 80;
     server_name $DOMAIN;
-    client_max_body_size 64m;   # видео и кружочки до 60 МБ
+    client_max_body_size 210m;   # видео с телефона до 200 МБ
 
     location / {
         limit_req zone=cofi_api burst=60 nodelay;

@@ -8,6 +8,7 @@ import { mountThread } from "./threads.js";
 import { renderGuide } from "./guide.js";
 import { feedTabs, renderAnimals } from "./animals.js";
 import { shrinkImage, takePhoto } from "./camera.js";
+import { openAttachSheet } from "./attach.js";
 import { mountCaptcha } from "./captcha.js";
 import { LEGAL_DOCS, renderTerms } from "./terms.js";
 import { renderAds, renderSupportHub, renderThread, reportUser } from "./support.js";
@@ -1439,6 +1440,7 @@ async function openChat(convId) {
     <div class="sticker-panel" hidden></div>
     <div class="composer"></div>
     <input type="file" accept="image/*,video/*" multiple hidden>
+    <input type="file" accept="video/*" capture="environment" hidden data-video-capture>
   </section>`);
   document.body.append(el);
   const list = $(".messages", el);
@@ -1554,7 +1556,7 @@ async function openChat(convId) {
         fd.append("file", file, kind === "image" && file !== blob ? "photo.jpg" : filename);
         await api.upload(`/api/chats/${convId}/media`, fd, (p) => showStatus(Math.min(p, 0.99)));
       } catch (ex) {
-        toast(ex.message, { error: true });
+        toast(total > 1 ? `Файл ${sent + 1} из ${total} не отправлен: ${ex.message}` : ex.message, { error: true });
       }
       sent++;
     }
@@ -1568,12 +1570,15 @@ async function openChat(convId) {
     queueMicrotask(runQueue); // сначала в очередь попадут все выбранные файлы — счётчик сразу «1 из 5»
   }
   const MAX_PICK = 10;
-  fileInput.onchange = () => {
-    const files = [...fileInput.files];
-    fileInput.value = "";
+  // iPhone при выборе из галереи иногда не указывает тип файла: тогда узнаём видео по расширению
+  const isVideo = (f) => f.type.startsWith("video/") || /\.(mov|mp4|m4v|webm|3gp)$/i.test(f.name || "");
+  const videoCapture = $("[data-video-capture]", el);
+  videoCapture.onchange = () => { sendFiles([...videoCapture.files]); videoCapture.value = ""; };
+  fileInput.onchange = () => { sendFiles([...fileInput.files]); fileInput.value = ""; };
+  function sendFiles(files) {
     if (files.length > MAX_PICK) toast(`За раз можно отправить до ${MAX_PICK} файлов, отправляем первые ${MAX_PICK}`);
-    for (const f of files.slice(0, MAX_PICK)) upload(f.type.startsWith("video") ? "video" : "image", f, null, f.name || "file");
-  };
+    for (const f of files.slice(0, MAX_PICK)) upload(isVideo(f) ? "video" : "image", f, null, f.name || "file");
+  }
 
   // --- Поле ввода ---
   let voice = null;
@@ -1634,7 +1639,11 @@ async function openChat(convId) {
       if (e.key === "Enter" && !e.shiftKey && !matchMedia("(pointer: coarse)").matches) { e.preventDefault(); sendText(); }
     });
     $("[data-send]", composer).onclick = sendText;
-    $("[data-attach]", composer).onclick = () => fileInput.click();
+    $("[data-attach]", composer).onclick = () => openAttachSheet({
+      onPick: sendFiles,
+      pickGallery: () => fileInput.click(),
+      pickVideo: () => videoCapture.click(),
+    });
     $("[data-stickers]", composer).onclick = () => (stickerPanel.hidden = !stickerPanel.hidden);
     $("[data-voice]", composer).onclick = startVoice;
     $("[data-circle]", composer).onclick = async () => {

@@ -17,7 +17,19 @@ VIDEO_EXT = {
     "video/webm": ".webm",
     "video/mp4": ".mp4",
     "video/quicktime": ".mov",
+    "video/x-m4v": ".mp4",
+    "video/3gpp": ".mp4",
 }
+# Телефон иногда не указывает тип файла (пусто или application/octet-stream) — тогда смотрим на расширение
+EXT_TYPE = {".mov": "video/quicktime", ".mp4": "video/mp4", ".m4v": "video/x-m4v", ".webm": "video/webm", ".3gp": "video/3gpp",
+            ".m4a": "audio/mp4", ".ogg": "audio/ogg", ".mp3": "audio/mpeg", ".wav": "audio/wav"}
+
+
+def media_type(content_type: str | None, filename: str | None) -> str:
+    base = (content_type or "").split(";")[0].strip().lower()
+    if base and base != "application/octet-stream":
+        return base
+    return EXT_TYPE.get(Path(filename or "").suffix.lower(), base)
 AUDIO_EXT = {
     "audio/webm": ".webm",
     "audio/ogg": ".ogg",
@@ -56,6 +68,29 @@ def save_image(data: bytes, folder: str, max_side: int = 1600) -> str:
     img.thumbnail((max_side, max_side))
     path, rel = _target(folder, ".jpg")
     img.save(path, "JPEG", quality=88)
+    return rel
+
+
+def save_media_stream(upload: UploadFile, folder: str, kind: str, max_mb: int) -> str:
+    """Видео/голос пишем на диск кусками, не держа весь файл в памяти (ролики с телефона бывают по 100+ МБ)."""
+    base_type = media_type(upload.content_type, upload.filename)
+    ext = (AUDIO_EXT if kind == "voice" else VIDEO_EXT).get(base_type)
+    if not ext:
+        raise HTTPException(415, f"Формат {base_type or 'неизвестен'} не поддерживается")
+    path, rel = _target(folder, ext)
+    limit, size = max_mb * 1024 * 1024, 0
+    try:
+        with path.open("wb") as out:
+            while chunk := upload.file.read(1024 * 1024):
+                size += len(chunk)
+                if size > limit:
+                    raise HTTPException(413, f"Файл больше {max_mb} МБ")
+                out.write(chunk)
+        if not size:
+            raise HTTPException(400, "Пустой файл")
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
     return rel
 
 

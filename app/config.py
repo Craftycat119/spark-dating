@@ -133,7 +133,7 @@ class Settings:
     demo_reply_delay: float = float(os.environ.get("DEMO_REPLY_DELAY", "2.5"))
 
     max_image_mb: int = 10
-    max_video_mb: int = 60
+    max_video_mb: int = 200
 
     @property
     def media_dir(self) -> Path:

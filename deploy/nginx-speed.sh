@@ -29,4 +29,10 @@ if [[ -f $SITE ]] && grep -q 'listen .*443 ssl' $SITE && ! grep -q 'http2' $SITE
   fi
 fi
 
+# 3. Видео с телефона до 200 МБ (раньше nginx пропускал только 64 МБ)
+if [[ -f $SITE ]] && grep -q 'client_max_body_size 64m' $SITE; then
+  sed -i 's/client_max_body_size 64m;.*/client_max_body_size 210m;   # видео с телефона до 200 МБ/' $SITE
+  nginx -t >/dev/null 2>&1 || sed -i 's/client_max_body_size 210m;.*/client_max_body_size 64m;/' $SITE
+fi
+
 nginx -t >/dev/null 2>&1 && systemctl reload nginx && echo "✓ nginx: сжатие и HTTP/2 включены"
