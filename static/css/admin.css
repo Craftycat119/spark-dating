@@ -116,3 +116,10 @@ dl.kv dd { margin: 0; word-break: break-word; }
 .int-group { border-top: 1px solid var(--line); padding: 8px 0; }
 .int-group summary { cursor: pointer; color: var(--text); font-size: 14px; margin-bottom: 6px; }
 @media (max-width: 560px) { .edit-form .grid2 { grid-template-columns: 1fr; } }
+
+/* Вкладки «Люди / Боты демо / Демо-гости» */
+.user-kinds { display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--surface-2); margin: 4px 0 8px; flex-wrap: wrap; }
+.user-kinds button { border: 0; background: none; color: var(--muted); padding: 7px 14px; border-radius: 999px; font: inherit; cursor: pointer; }
+.user-kinds button span { opacity: .7; font-variant-numeric: tabular-nums; }
+.user-kinds button.on { background: var(--orange); color: var(--on-orange); }
+.kind-hint:empty { display: none; }

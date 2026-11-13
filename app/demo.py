@@ -11,6 +11,7 @@ import logging
 import time
 from datetime import timedelta
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -287,6 +288,7 @@ def _teen_portrait(name: str) -> str:
 
 
 def ensure_bots(db: Session) -> list[User]:
+    """Боты общие для всех демо-гостей: создаются один раз (при запуске сервера), повторно — только недостающие."""
     bots = {u.email: u for u in db.scalars(select(User).where(User.is_bot.is_(True)))}
     created = []
     for b in BOTS + TEEN_BOTS:
@@ -308,7 +310,10 @@ def ensure_bots(db: Session) -> list[User]:
         db.add(u)
         created.append(u)
     if created:
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:  # два гостя пришли одновременно и второй уже создал ботов — берём готовых
+            db.rollback()
     return list(db.scalars(select(User).where(User.is_bot.is_(True))))
 
 

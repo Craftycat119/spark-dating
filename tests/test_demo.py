@@ -61,3 +61,18 @@ def test_teen_demo_sees_only_teen_bots():
     masha = next(c for c in teen.get("/api/feed?limit=30").json()["cards"] if c["name"] == "Маша")
     r = teen.post("/api/feed/swipe", json={"user_id": masha["id"], "like": True}).json()
     assert r["match"] is True
+
+
+def test_bots_shared_by_all_guests_and_separate_in_admin():
+    boss = make_user("boss@example.com", name="Андрей")
+    make_user("real@x.io", name="Настоящий")
+    for _ in range(3):
+        demo_client()
+    new_client().post("/api/auth/demo", json={"teen": True})
+    res = boss.get("/api/admin/users").json()
+    bots = boss.get("/api/admin/users?kind=bots").json()
+    guests = boss.get("/api/admin/users?kind=guests").json()
+    assert res["counts"]["bots"] == bots["total"] == 16          # один набор на всех: 10 взрослых и 6 подростковых
+    assert guests["total"] == 4 and all(u["is_demo"] for u in guests["items"])
+    assert sorted(u["name"] for u in res["items"]) == ["Андрей", "Настоящий"]  # во вкладке «Люди» только люди
+    assert all(u["is_bot"] for u in bots["items"])

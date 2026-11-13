@@ -34,9 +34,10 @@ STATIC_DIR = BASE_DIR / "static"
 async def lifespan(_app: FastAPI):
     init_db()
     from .database import SessionLocal
-    from .demo import cleanup
+    from .demo import cleanup, ensure_bots
 
     with SessionLocal() as db:
+        ensure_bots(db)  # боты демо-версии — один общий набор на всех гостей
         removed = cleanup(db)
         if removed:
             log.info("Удалено устаревших демо-аккаунтов: %s", removed)

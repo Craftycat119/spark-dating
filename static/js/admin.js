@@ -5,7 +5,7 @@ import { $, $$, confirmDialog, esc, toast } from "./ui.js";
 
 const view = $("#view");
 const drawer = $("#drawer");
-const usersState = { q: "", interest: "", page: 1 };
+const usersState = { q: "", interest: "", kind: "people", page: 1 };
 let catalog = [];
 let cfg = {}; // настройки приложения: пол, сексуальность, знаки, опрос — для форм редактирования
 
@@ -74,6 +74,12 @@ async function overview() {
 // ---------- Анкеты ----------
 async function users() {
   view.innerHTML = `<h1>Анкеты</h1>
+    <div class="user-kinds" role="tablist">
+      <button data-kind="people">Люди <span></span></button>
+      <button data-kind="bots">Боты демо <span></span></button>
+      <button data-kind="guests">Демо-гости <span></span></button>
+    </div>
+    <p class="muted small kind-hint"></p>
     <div class="toolbar">
       <input class="input" type="search" placeholder="Имя, почта, @telegram или ID" value="${esc(usersState.q)}">
       <select class="input"><option value="">Любые интересы</option>${catalog.map((k) => `<option ${usersState.interest === k ? "selected" : ""}>${esc(k)}</option>`).join("")}</select>
@@ -106,6 +112,7 @@ async function users() {
   const search = $("input[type=search]", view);
   let t;
   search.oninput = () => { clearTimeout(t); t = setTimeout(() => { usersState.q = search.value; usersState.page = 1; loadUsers(); }, 300); };
+  $$("[data-kind]", view).forEach((b) => (b.onclick = () => { usersState.kind = b.dataset.kind; usersState.page = 1; loadUsers(); }));
   $(".toolbar select", view).onchange = (e) => { usersState.interest = e.target.value; usersState.page = 1; loadUsers(); };
   loadUsers();
 }
@@ -121,10 +128,16 @@ document.addEventListener("visibilitychange", () => !document.hidden && $("#tabl
 
 async function loadUsers() {
   watchUsers();
-  const p = new URLSearchParams({ q: usersState.q, interest: usersState.interest, page: usersState.page, per_page: 30 });
+  const p = new URLSearchParams({ q: usersState.q, interest: usersState.interest, kind: usersState.kind, page: usersState.page, per_page: 30 });
   const res = await api.get(`/api/admin/users?${p}`);
   const box = $("#table");
   if (!box) return;
+  $$("[data-kind]").forEach((b) => {
+    b.classList.toggle("on", b.dataset.kind === usersState.kind);
+    $("span", b).textContent = res.counts?.[b.dataset.kind] ?? "";
+  });
+  const hint = $(".kind-hint");
+  if (hint) hint.textContent = { people: "", bots: "Один общий набор ботов на всех гостей демо-версии. Создаётся при запуске сервера, настоящие люди их не видят.", guests: "Временные аккаунты демо-версии: удаляются сами через сутки. Видят только ботов." }[usersState.kind];
   if (!res.items.length) {
     box.innerHTML = `<p class="muted">Никого не нашли. Попробуйте другой запрос.</p>`;
     return;
@@ -136,7 +149,7 @@ async function loadUsers() {
       <td>${pic(u.photo_url, "", true)}</td>
       <td><b>${esc(u.name || "Без имени")}</b>${u.is_admin ? ' <span class="tag hot">Админ</span>' : ""}<br><span class="muted small">#${u.id}</span></td>
       <td>${u.birth_date ? `${new Date(u.birth_date).toLocaleDateString("ru-RU")}<br><span class="muted small">${u.age} ${plural(u.age, "год", "года", "лет")}</span>` : '<span class="muted">—</span>'}</td>
-      <td>${u.email ? esc(u.email) : u.telegram_username ? `@${esc(u.telegram_username)}` : `Telegram ${u.telegram_id}`}</td>
+      <td>${u.is_bot ? '<span class="tag">Бот</span>' : u.is_demo ? '<span class="tag">Демо</span>' : u.email ? esc(u.email) : u.telegram_username ? `@${esc(u.telegram_username)}` : `Telegram ${u.telegram_id}`}</td>
       <td>${dt(u.created_at)}</td>
       <td>${esc(u.registration_ip || "—")}</td>
       <td>${tags(u.goals)}</td>

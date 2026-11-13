@@ -121,8 +121,16 @@ def _audience(db: Session) -> dict:
 
 
 @router.get("/users")
-def users(q: str = "", interest: str = "", page: int = 1, per_page: int = 30, _: User = Depends(admin_user), db: Session = Depends(get_db)):
-    query = select(User)
+def users(q: str = "", interest: str = "", kind: str = "people", page: int = 1, per_page: int = 30,
+          _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """kind: people — настоящие люди, bots — боты демо-версии (общие для всех гостей), guests — демо-гости."""
+    kinds = {
+        "people": (User.is_bot.is_(False), User.is_demo.is_(False)),
+        "bots": (User.is_bot.is_(True),),
+        "guests": (User.is_demo.is_(True),),
+    }
+    counts = {k: db.scalar(select(func.count(User.id)).where(*conds)) or 0 for k, conds in kinds.items()}
+    query = select(User).where(*kinds.get(kind, kinds["people"]))
     if q:
         like = f"%{q.strip().lower()}%"
         conds = [func.lower(User.name).like(like), func.lower(User.email).like(like), func.lower(User.telegram_username).like(like)]
@@ -134,7 +142,7 @@ def users(q: str = "", interest: str = "", page: int = 1, per_page: int = 30, _:
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     per_page = max(1, min(per_page, 100))
     rows = db.scalars(query.order_by(User.id.desc()).offset((max(page, 1) - 1) * per_page).limit(per_page)).unique().all()
-    return {"total": total, "page": page, "per_page": per_page, "items": [user_row(u) for u in rows]}
+    return {"total": total, "page": page, "per_page": per_page, "counts": counts, "items": [user_row(u) for u in rows]}
 
 
 def _get_user(db: Session, user_id: int) -> User:
