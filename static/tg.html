@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>COFI</title>
+  <!-- Ярлык на экране «Домой», который открывает COFI в Telegram, а не в браузере -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="COFI">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#20140e">
+  <link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
+  <link rel="icon" href="/static/img/logo-192.png" type="image/png">
+  <link rel="manifest" href="/static/tg.webmanifest">
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #120c09; color: #f3e9df;
+      font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 24px; box-sizing: border-box; text-align: center; }
+    main { max-width: 360px; }
+    img { width: 84px; height: 84px; border-radius: 20px; }
+    h1 { font-size: 24px; margin: 16px 0 8px; }
+    p { color: #b39b8c; margin: 0 0 16px; }
+    ol { text-align: left; padding-left: 22px; margin: 0 0 20px; color: #d8c8bc; }
+    li { margin: 6px 0; }
+    a.btn { display: block; padding: 14px; border-radius: 16px; background: #f2621f; color: #1a0f0b; font-weight: 600; text-decoration: none; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body data-bot="{{BOT}}">
+  <main>
+    <img src="/static/img/apple-touch-icon.png" alt="">
+    <section id="launch" hidden>
+      <h1>Открываем COFI в Telegram…</h1>
+      <p>Если Telegram не открылся сам, нажмите кнопку</p>
+    </section>
+    <section id="setup" hidden>
+      <h1>Ярлык COFI для Telegram</h1>
+      <p>С ярлыка COFI будет сразу открываться в Telegram</p>
+      <ol>
+        <li>Нажмите «Поделиться» внизу Safari (квадрат со стрелкой вверх)</li>
+        <li>Выберите «На экран „Домой“» и нажмите «Добавить»</li>
+        <li>Открывайте COFI с нового значка на экране</li>
+      </ol>
+    </section>
+    <a class="btn" id="open" href="#">Открыть в Telegram</a>
+  </main>
+  <script src="/static/js/tg-launch.js"></script>
+</body>
+</html>

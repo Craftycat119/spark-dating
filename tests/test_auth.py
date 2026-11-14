@@ -1,10 +1,5 @@
-import hashlib
-import hmac
-import time
-
-from app import config
+from app import config, telegram_bot
 from app.security import password_errors
-from app.telegram_auth import verify_telegram_auth
 from conftest import new_client, register
 
 
@@ -67,34 +62,82 @@ def test_password_reset():
     assert c2.post("/api/auth/login", json={"email": "r@x.io", "password": "NewPass99"}).status_code == 200
 
 
-def _tg_payload(token, **fields):
-    data = {"id": 777, "first_name": "Котик", "username": "kotik", "auth_date": int(time.time()), **fields}
-    check = "\n".join(f"{k}={data[k]}" for k in sorted(data))
-    data["hash"] = hmac.new(hashlib.sha256(token.encode()).digest(), check.encode(), hashlib.sha256).hexdigest()
-    return data
+def _bot_confirms(token, action="ok", user_id=777):
+    """Имитирует нажатие кнопки в боте: /start login_<токен>, затем «Войти» или «Отмена»."""
+    calls = telegram_bot.handle_update({"message": {"chat": {"id": user_id}, "text": f"/start login_{token}"}})
+    assert calls[0][1]["reply_markup"]["inline_keyboard"][0][0]["callback_data"] == f"ok:{token}"
+    return telegram_bot.handle_update({"callback_query": {"id": "q1", "data": f"{action}:{token}",
+                                       "from": {"id": user_id, "first_name": "Котик", "username": "kotik"},
+                                       "message": {"chat": {"id": user_id}, "message_id": 5}}})
 
 
-def test_telegram_signature():
-    data = _tg_payload("123:ABC")
-    assert verify_telegram_auth(data, "123:ABC")
-    assert not verify_telegram_auth({**data, "id": 778}, "123:ABC")
-    assert not verify_telegram_auth(data, "other")
-    old = _tg_payload("123:ABC", auth_date=int(time.time()) - 3 * 86400)
-    assert not verify_telegram_auth(old, "123:ABC")
+def test_telegram_not_configured():
+    assert new_client().post("/api/auth/telegram/start").status_code == 503
 
 
-def test_telegram_login_creates_user_without_email(monkeypatch):
+def test_telegram_bot_login_creates_user_without_email(monkeypatch):
     monkeypatch.setattr(config.settings, "telegram_bot_token", "123:ABC")
+    monkeypatch.setattr(telegram_bot, "_bot_username", "cofi_bot")
     c = new_client()
-    r = c.post("/api/auth/telegram", json=_tg_payload("123:ABC"))
+    start = c.post("/api/auth/telegram/start").json()
+    assert start["url"].startswith("https://t.me/cofi_bot?start=login_")
+    token = start["token"]
+    assert c.post("/api/auth/telegram/poll", json={"token": token}).json()["status"] == "pending"
+    _bot_confirms(token)
+    r = c.post("/api/auth/telegram/poll", json={"token": token})
     assert r.status_code == 200, r.text
-    me = r.json()
+    me = r.json()["user"]
     assert me["auth_provider"] == "telegram" and me["email"] is None
     assert me["name"] == "Котик"
     assert not me["photo_verified"]  # фото всё равно нужно подтвердить
-    assert c.get("/api/feed/dating").status_code == 409
+    assert c.get("/api/feed").status_code == 409
+    # токен одноразовый
+    assert c.post("/api/auth/telegram/poll", json={"token": token}).status_code == 410
+    # повторный вход тем же Telegram попадает в тот же аккаунт
+    t2 = c.post("/api/auth/telegram/start").json()["token"]
+    _bot_confirms(t2)
+    assert c.post("/api/auth/telegram/poll", json={"token": t2}).json()["user"]["id"] == me["id"]
+
+
+def test_telegram_bot_decline_and_unknown_token(monkeypatch):
+    monkeypatch.setattr(config.settings, "telegram_bot_token", "123:ABC")
+    monkeypatch.setattr(telegram_bot, "_bot_username", "cofi_bot")
+    c = new_client()
+    token = c.post("/api/auth/telegram/start").json()["token"]
+    _bot_confirms(token, action="no")
+    assert c.post("/api/auth/telegram/poll", json={"token": token}).status_code == 403
+    calls = telegram_bot.handle_update({"message": {"chat": {"id": 1}, "text": "/start login_fake"}})
+    assert "устарела" in calls[0][1]["text"]
 
 
 def test_admin_email_auto_promoted():
     c = new_client()
     assert register(c, "boss@example.com")["is_admin"]
+
+
+def test_telegram_bot_help_and_site_button(monkeypatch):
+    calls = telegram_bot.handle_update({"message": {"chat": {"id": 5}, "text": "/start"}})
+    assert "Войти через Telegram" in calls[0][1]["text"] and "reply_markup" not in calls[0][1]  # localhost: без кнопки
+    monkeypatch.setattr(config.settings, "base_url", "https://cofi.example")
+    calls = telegram_bot.handle_update({"message": {"chat": {"id": 5}, "text": "привет"}})
+    assert calls[0][1]["reply_markup"]["inline_keyboard"][0][0]["url"] == "https://cofi.example"
+
+
+def test_bot_menu_button_follows_base_url(monkeypatch):
+    sent = []
+    monkeypatch.setattr(telegram_bot, "api", lambda m, p=None, timeout=15: sent.append((m, p)) or {"ok": True})
+    monkeypatch.setattr(config.settings, "base_url", "https://new-tunnel.trycloudflare.com")
+    monkeypatch.setattr(telegram_bot, "_reachable", lambda url: True)
+    telegram_bot.setup_profile()
+    menu = [p for m, p in sent if m == "setChatMenuButton"]
+    assert menu and menu[0]["menu_button"]["web_app"]["url"] == "https://new-tunnel.trycloudflare.com/"
+
+
+
+def test_stale_tunnel_address_is_not_put_into_bot(monkeypatch):
+    sent = []
+    monkeypatch.setattr(telegram_bot, "api", lambda m, p=None, timeout=15: sent.append(m) or {"ok": True})
+    monkeypatch.setattr(config.settings, "base_url", "https://old-tunnel.trycloudflare.com")
+    monkeypatch.setattr(telegram_bot, "_reachable", lambda url: False)
+    telegram_bot.setup_profile()
+    assert "setChatMenuButton" not in sent

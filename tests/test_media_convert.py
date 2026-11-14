@@ -1,0 +1,90 @@
+import shutil
+import subprocess
+
+import pytest
+
+from app import storage
+from app.config import settings
+
+pytestmark = pytest.mark.skipif(not shutil.which("ffmpeg"), reason="нет ffmpeg")
+
+
+def _webm(rel: str, audio_only: bool = False) -> None:
+    path = settings.media_dir / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    src = ["-f", "lavfi", "-i", "sine=frequency=440:duration=1"]
+    if not audio_only:
+        src = ["-f", "lavfi", "-i", "testsrc=size=160x160:rate=10:duration=1", *src]
+    codec = ["-c:a", "libopus"] if audio_only else ["-c:v", "libvpx", "-c:a", "libopus"]
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", *src, *codec, str(path)], check=True)
+
+
+def test_circle_webm_becomes_mp4():
+    _webm("chat/999/c.webm")
+    rel = storage.to_playable("chat/999/c.webm", "circle")
+    assert rel == "chat/999/c.mp4"
+    assert (settings.media_dir / rel).read_bytes()[4:8] == b"ftyp"
+    assert not (settings.media_dir / "chat/999/c.webm").exists()
+
+
+def test_voice_webm_becomes_m4a():
+    _webm("chat/999/v.webm", audio_only=True)
+    assert storage.to_playable("chat/999/v.webm", "voice") == "chat/999/v.m4a"
+
+
+def test_broken_file_kept_as_is():
+    path = settings.media_dir / "chat/999/bad.webm"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"not a video")
+    assert storage.to_playable("chat/999/bad.webm", "circle") == "chat/999/bad.webm"
+    assert path.exists()
+
+
+def test_mp4_untouched():
+    assert storage.to_playable("chat/999/x.mp4", "video") == "chat/999/x.mp4"
+
+
+def test_video_mp4_faststart_keeps_quality():
+    path = settings.media_dir / "chat/999/m.mp4"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=160x160:rate=10:duration=1",
+                    "-c:v", "libx264", str(path)], check=True)
+    assert storage.to_playable("chat/999/m.mp4", "video") == "chat/999/m.mp4"
+    data = path.read_bytes()
+    assert data.find(b"moov") < data.find(b"mdat")  # индекс в начале файла
+
+
+def test_video_gets_poster_and_poster_deleted_with_video():
+    path = settings.media_dir / "chat/999/p.mp4"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=160x160:rate=10:duration=1",
+                    "-c:v", "libx264", str(path)], check=True)
+    storage.make_poster("chat/999/p.mp4")
+    poster = settings.media_dir / "chat/999/p.poster.jpg"
+    assert poster.read_bytes()[:2] == b"\xff\xd8"
+    storage.delete_file("chat/999/p.mp4")
+    assert not poster.exists() and not path.exists()
+
+
+
+def test_circle_mp4_from_iphone_is_normalized_with_poster():
+    path = settings.media_dir / "chat/999/c2.mp4"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # как пишет iPhone: другое разрешение и «плавающая» частота кадров
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=640x480:rate=24:duration=1",
+                    "-f", "lavfi", "-i", "sine=duration=1", "-c:v", "libx264", "-pix_fmt", "yuvj420p", "-c:a", "aac", str(path)], check=True)
+    assert storage.to_playable("chat/999/c2.mp4", "circle") == "chat/999/c2.mp4"
+    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,pix_fmt,r_frame_rate",
+                          "-of", "csv=p=0", str(path)], capture_output=True, text=True).stdout.strip()
+    assert out == "480,480,yuv420p,30/1"
+    assert (settings.media_dir / "chat/999/c2.poster.jpg").exists()
+
+
+def test_circle_ok_detects_full_range():
+    path = settings.media_dir / "chat/999/c3.mp4"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=480x480:rate=30:duration=1",
+                    "-c:v", "libx264", "-pix_fmt", "yuvj420p", str(path)], check=True)
+    assert not storage.circle_ok("chat/999/c3.mp4")  # «полный» диапазон — перекодировать
+    storage.to_playable("chat/999/c3.mp4", "circle")
+    assert storage.circle_ok("chat/999/c3.mp4")

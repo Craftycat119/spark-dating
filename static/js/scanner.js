@@ -1,4 +1,5 @@
 // Сканер лица: три кадра (прямо, поворот в одну сторону, в другую) → сервер сверяет с фото
+import { getCamera, release } from "./media.js";
 import { api } from "./api.js";
 import { h } from "./ui.js";
 
@@ -21,10 +22,10 @@ function grab(video) {
 }
 
 /** Показывает сканер внутри root. Возвращает {ok, reason, profile}. */
-export async function runScanner(root) {
+export async function runScanner(root, { consent = false } = {}) {
   const el = h(`<div class="stack">
     <div class="scanner">
-      <video playsinline muted autoplay></video>
+      <video playsinline muted autoplay></video><canvas class="live"></canvas>
       <div class="mask"></div><div class="oval"></div>
       <div class="arrow"></div><div class="countdown"></div>
       <div class="instruction">Разрешите доступ к камере</div>
@@ -40,12 +41,32 @@ export async function runScanner(root) {
 
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 960 }, height: { ideal: 1280 } }, audio: false });
+    stream = await getCamera("user");
   } catch {
     return { ok: false, reason: "Нет доступа к камере. Разрешите его в настройках браузера и попробуйте снова." };
   }
+  // iPhone (и Telegram на нём): muted и playsinline нужно выставить свойствами, атрибутов из разметки WebKit не слушается —
+  // иначе видео не играет и овал остаётся чёрным (тот же приём, что для фото с камеры в camera.js)
+  video.muted = true;
+  video.playsInline = true;
+  video.setAttribute("playsinline", "");
+  video.setAttribute("webkit-playsinline", "");
   video.srcObject = stream;
+  try { await video.play(); } catch { /* старт ниже, по первому кадру */ }
   await new Promise((r) => (video.readyState >= 2 ? r() : (video.onloadeddata = r)));
+  // Картинку рисуем на canvas: в Telegram на iPhone сам <video> внутри Mini App часто остаётся чёрным,
+  // хотя кадры с камеры идут (их же мы и отправляем на сверку). Canvas показывается всегда.
+  const live = el.querySelector("canvas.live");
+  let drawing = true;
+  const draw = () => {
+    if (!drawing) return;
+    if (video.videoWidth) {
+      if (live.width !== video.videoWidth) { live.width = video.videoWidth; live.height = video.videoHeight; }
+      live.getContext("2d").drawImage(video, 0, 0, live.width, live.height);
+    }
+    requestAnimationFrame(draw);
+  };
+  draw();
   await wait(600);
 
   const frames = {};
@@ -65,14 +86,15 @@ export async function runScanner(root) {
       await wait(250);
     }
   } finally {
-    stream.getTracks().forEach((t) => t.stop());
+    drawing = false;
+    release("video");
   }
 
   arrow.textContent = "";
   instruction.textContent = "Сверяем лицо с фото…";
   oval.className = "oval active";
   try {
-    const res = await api.post("/api/profile/verify-face", { frames });
+    const res = await api.post("/api/profile/verify-face", { frames, consent });
     oval.className = res.ok ? "oval ok" : "oval";
     instruction.textContent = res.ok ? "Готово, это вы" : "Не получилось";
     return res;

@@ -1,4 +1,7 @@
 // Мелкие помощники интерфейса
+import { getLang } from "./i18n.js";
+
+const locale = () => (getLang() === "en" ? "en-GB" : "ru-RU");
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
@@ -14,14 +17,38 @@ export function h(html) {
 
 export function toast(text, { error = false, image = null, onClick = null, timeout = 4000 } = {}) {
   const el = h(`<div class="toast ${error ? "error" : ""}" role="status">${image ? `<img src="${esc(image)}" alt="">` : ""}<div>${esc(text)}</div></div>`);
-  el.onclick = () => { onClick?.(); el.remove(); };
+  // смахнуть уведомление вверх, чтобы убрать
+  let y0 = null, dy = 0;
+  el.addEventListener("pointerdown", (e) => { y0 = e.clientY; dy = 0; el.setPointerCapture(e.pointerId); el.style.transition = "none"; });
+  el.addEventListener("pointermove", (e) => {
+    if (y0 === null) return;
+    dy = Math.min(0, e.clientY - y0);
+    el.style.transform = `translateY(${dy}px)`;
+    el.style.opacity = String(1 + dy / 120);
+  });
+  const release = () => {
+    if (y0 === null) return;
+    y0 = null;
+    el.style.transition = "transform .25s, opacity .25s";
+    if (dy < -30) {
+      el.style.transform = "translateY(-120%)";
+      el.style.opacity = "0";
+      setTimeout(() => el.remove(), 250);
+    } else {
+      el.style.transform = "";
+      el.style.opacity = "";
+    }
+  };
+  el.addEventListener("pointerup", release);
+  el.addEventListener("pointercancel", release);
+  el.onclick = () => { if (dy < -5) return; onClick?.(); el.remove(); };
   document.getElementById("toasts").append(el);
   setTimeout(() => el.remove(), timeout);
 }
 
 export function fmtTime(iso) {
   const d = new Date(iso);
-  return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
 }
 
 export function fmtDay(iso) {
@@ -30,14 +57,14 @@ export function fmtDay(iso) {
   const y = new Date(); y.setDate(today.getDate() - 1);
   if (d.toDateString() === today.toDateString()) return "Сегодня";
   if (d.toDateString() === y.toDateString()) return "Вчера";
-  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+  return d.toLocaleDateString(locale(), { day: "numeric", month: "long" });
 }
 
 export function fmtShort(iso) {
   const d = new Date(iso);
   return d.toDateString() === new Date().toDateString()
     ? fmtTime(iso)
-    : d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+    : d.toLocaleDateString(locale(), { day: "numeric", month: "short" });
 }
 
 export function fmtDur(sec) {
@@ -60,4 +87,10 @@ export function confirmDialog(text, okLabel = "Да") {
 export function pickMime(candidates) {
   if (!window.MediaRecorder) return null;
   return candidates.find((m) => MediaRecorder.isTypeSupported(m)) || "";
+}
+
+/** Объёмный оранжевый логотип/надпись (фильтр #puff в index.html). */
+export function wordmark(text = "COFI", width = 360, tone = "orange", spacing = 6) {
+  return `<svg class="wordmark" viewBox="0 0 ${width} 170" role="img" aria-label="${esc(text)}">
+    <text x="${width / 2}" y="122" text-anchor="middle" letter-spacing="${spacing}" fill="#ff5b1f" filter="url(#${tone === "cream" ? "puff-cream" : "puff"})">${esc(text)}</text></svg>`;
 }

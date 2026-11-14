@@ -36,9 +36,28 @@ def _list(name: str) -> list[str]:
     return [x.strip().lower() for x in os.environ.get(name, "").split(",") if x.strip()]
 
 
+def _stun_servers() -> list:
+    """Публичные STUN-серверы: паролей в них нет, их можно отдавать всем."""
+    return json.loads(os.environ.get("ICE_SERVERS") or
+                      '[{"urls": ["stun:stun.l.google.com:19302", "stun:stun.cloudflare.com:3478"]}]')
+
+
+def _ice_servers() -> list:
+    """STUN/TURN для звонков. STUN помогает, когда оба в обычном Wi-Fi. Если кто-то в мобильном интернете,
+    прямое соединение обычно закрыто оператором, и без TURN звонок висит на «Соединяем…».
+    TURN проще задать тремя строками: TURN_URLS (через запятую), TURN_USERNAME, TURN_CREDENTIAL."""
+    servers = json.loads(os.environ.get("ICE_SERVERS") or
+                         '[{"urls": ["stun:stun.l.google.com:19302", "stun:stun.cloudflare.com:3478"]}]')
+    urls = [u.strip() for u in os.environ.get("TURN_URLS", "").split(",") if u.strip()]
+    if urls:
+        servers.append({"urls": urls, "username": os.environ.get("TURN_USERNAME", ""),
+                        "credential": os.environ.get("TURN_CREDENTIAL", "")})
+    return servers
+
+
 @dataclass
 class Settings:
-    app_name: str = os.environ.get("APP_NAME", "Spark")
+    app_name: str = os.environ.get("APP_NAME", "COFI")
     base_url: str = os.environ.get("BASE_URL", "http://localhost:8000")
     secret_key: str = os.environ.get("SECRET_KEY", "dev-secret-change-me")
     dev_mode: bool = _bool("DEV_MODE", True)
@@ -56,11 +75,43 @@ class Settings:
     smtp_password: str = os.environ.get("SMTP_PASSWORD", "")
     smtp_from: str = os.environ.get("SMTP_FROM", "")
     smtp_ssl: bool = _bool("SMTP_SSL", False)  # True для порта 465
+    # password — логин и пароль (Яндекс, Mail.ru, Gmail с паролем приложения);
+    # outlook — личный Outlook.com/Hotmail через вход Microsoft (OAuth2), см. app/outlook_oauth.py
+    smtp_auth: str = os.environ.get("SMTP_AUTH", "password").strip().lower()
+    outlook_client_id: str = os.environ.get("OUTLOOK_CLIENT_ID", "").strip()
     code_ttl_minutes: int = int(os.environ.get("CODE_TTL_MINUTES", "15"))
 
-    # Telegram Login Widget
+    # Telegram-бот: вход на сайт и заявки «Помочь»
     telegram_bot_token: str = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     telegram_bot_username: str = os.environ.get("TELEGRAM_BOT_USERNAME", "")
+    # Адрес Bot API. Если с сервера api.telegram.org недоступен (бывает у российских хостингов),
+    # укажите свой посредник за рубежом, например https://tg.cofilove.com (см. deploy/DEPLOY.md, «Telegram недоступен»)
+    telegram_api_url: str = (os.environ.get("TELEGRAM_API_URL", "").strip() or "https://api.telegram.org").rstrip("/")
+    # Куда бот присылает заявки «Помочь» по животным: id группы или человека (бот должен быть добавлен / запущен)
+    # Кому ещё бот дублирует заявки «Помочь» по питомцам: id чатов и/или @username через запятую
+    # (человек должен один раз открыть бота и нажать «Запустить»)
+    telegram_requests_chat_id: str = os.environ.get("TELEGRAM_REQUESTS_CHAT_ID", "")
+    # Куда бот присылает обращения в поддержку, жалобы, предложения и заявки на рекламу. Пусто — всем админам с Telegram
+    telegram_admin_chat_id: str = os.environ.get("TELEGRAM_ADMIN_CHAT_ID", "")
+    # Отдельная группа для обращений в поддержку (помощь, жалобы, предложения). Пусто — туда же, куда TELEGRAM_ADMIN_CHAT_ID
+    telegram_support_chat_id: str = os.environ.get("TELEGRAM_SUPPORT_CHAT_ID", "")
+    # Жалобы и предложения — отдельно (пусто — туда же, куда TELEGRAM_SUPPORT_CHAT_ID)
+    telegram_complaints_chat_id: str = os.environ.get("TELEGRAM_COMPLAINTS_CHAT_ID", "")
+    # Сообщения рекламодателей — отдельно (пусто — в TELEGRAM_ADMIN_CHAT_ID)
+    telegram_ads_chat_id: str = os.environ.get("TELEGRAM_ADS_CHAT_ID", "")
+    # Куда ведёт кнопка «Написать в Telegram» у питомцев, если у объявления не указан свой контакт: @username или t.me/…
+    telegram_pets_contact: str = os.environ.get("TELEGRAM_PETS_CONTACT", "")
+
+    # Часовой пояс для статистики посещений (сутки «Сегодня» считаются по нему). По умолчанию Вьетнам, UTC+7
+    stats_tz_hours: int = int(os.environ.get("STATS_TZ_HOURS", "7"))
+
+    # Аудио- и видеозвонки. Пока выключены: кнопок нет, сервер звонки не принимает. Включить: CALLS_ENABLED=1
+    calls_enabled: bool = _bool("CALLS_ENABLED", False)
+
+    # Проверка на робота: image (своя картинка), turnstile (Cloudflare, нужны ключи) или off
+    captcha_mode: str = os.environ.get("CAPTCHA", "image").strip().lower()
+    turnstile_site_key: str = os.environ.get("TURNSTILE_SITE_KEY", "").strip()
+    turnstile_secret: str = os.environ.get("TURNSTILE_SECRET", "").strip()
 
     # Админы: эти почты получают права администратора автоматически
     admin_emails: list[str] = field(default_factory=lambda: _list("ADMIN_EMAILS"))
@@ -72,14 +123,20 @@ class Settings:
     face_yaw_threshold: float = float(os.environ.get("FACE_YAW_THRESHOLD", "0.12"))
 
     # WebRTC: STUN/TURN-серверы для звонков (JSON-массив RTCIceServer)
-    ice_servers: list = field(
-        default_factory=lambda: json.loads(
-            os.environ.get("ICE_SERVERS", '[{"urls": "stun:stun.l.google.com:19302"}]')
-        )
-    )
+    ice_servers: list = field(default_factory=lambda: _ice_servers())  # с паролем TURN — только вошедшим, см. /api/calls/ice
+    stun_servers: list = field(default_factory=lambda: _stun_servers())
+    turn_urls: list = field(default_factory=lambda: [u.strip() for u in os.environ.get("TURN_URLS", "").split(",") if u.strip()])
+    # Общий секрет coturn (use-auth-secret): из него для каждого звонка делается временный пароль на час
+    turn_secret: str = os.environ.get("TURN_SECRET", "")
 
+    # Демо-версия без регистрации (боты). Выключена: кнопок нет, вход в демо закрыт. Включить: DEMO_ENABLED=1
+    demo_enabled: bool = _bool("DEMO_ENABLED", False)
+    # Пауза перед ответом бота в демо, секунды
+    demo_reply_delay: float = float(os.environ.get("DEMO_REPLY_DELAY", "2.5"))
+
+    max_distance_km: int = 7000  # дальше анкеты в ленте не показываются
     max_image_mb: int = 10
-    max_video_mb: int = 60
+    max_video_mb: int = 200
 
     @property
     def media_dir(self) -> Path:
@@ -93,9 +150,3 @@ class Settings:
 settings = Settings()
 settings.data_dir.mkdir(parents=True, exist_ok=True)
 settings.media_dir.mkdir(parents=True, exist_ok=True)
-
-FEEDS: dict[str, str] = {
-    "dating": "Знакомства",
-    "sex": "18+",
-    "friends": "Дружба и компания",
-}
