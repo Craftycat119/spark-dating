@@ -35,7 +35,7 @@ export const EN = {
   "Чёрный список": "Blocked", "Заблокировать": "Block", "Разблокировать": "Unblock", "Разблокировано": "Unblocked",
   "Пусто. Заблокировать человека можно в его анкете или в меню чата": "Empty. You can block someone from their profile or the chat menu",
   "Ярлык на экране телефона": "Home screen shortcut", "COFI откроется одним нажатием, как обычное приложение": "Open COFI with one tap, like a regular app",
-  "Открыть в браузере": "Open in browser", "Добавить ярлык на экран": "Add to home screen", "Профиль и настройки": "Profile and settings",
+  "Открыть в браузере": "Open in browser", "Добавить ярлык на экран": "Add to home screen", "Ярлык на экран": "Add to home screen", "Профиль и настройки": "Profile and settings",
   "Добавить ярлык из Telegram": "Add shortcut from Telegram", "Открыть COFI в браузере": "Open COFI in browser",
   "iPhone и iPad (Safari)": "iPhone and iPad (Safari)", "Android (Chrome)": "Android (Chrome)",
   // вход и регистрация
