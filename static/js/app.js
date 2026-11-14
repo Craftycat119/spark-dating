@@ -58,6 +58,7 @@ async function boot() {
   if (tgApp()?.initData) {
     try { tgApp().ready(); tgApp().expand(); } catch { /* старый Telegram */ }
     setupTelegramMenu();
+    setupTgTab();
   }
   try {
     state.config = await api.get("/api/config", 15000);
@@ -179,30 +180,42 @@ function setupTelegramMenu() {
   tgMenuReady = true;
   try {
     wa.SettingsButton.show();
-    wa.SettingsButton.onClick(() => {
-      if ($(".tg-menu")) return;
-      // меню выпадает из правого верхнего угла — прямо под кнопкой ⋯ Telegram, откуда его вызвали
-      const el = h(`<div class="tg-menu" role="dialog" aria-label="Меню COFI">
-        <div class="tg-drop" role="menu">
-          <button class="tg-item main" role="menuitem" data-a="browser">${icons.globe}<span>Открыть в браузере</span></button>
-          ${canShortcut() ? `<button class="tg-item" role="menuitem" data-a="home">${icons.phoneApp}<span>Ярлык на экран</span></button>` : ""}
-          ${state.me ? `<a class="tg-item" role="menuitem" href="#/settings" data-a="settings">${icons.user}<span>Профиль и настройки</span></a>` : ""}
-          ${state.me ? `<a class="tg-item" role="menuitem" href="#/support" data-a="support">${icons.headset}<span>Поддержка</span></a>` : ""}
-        </div></div>`);
-      document.body.append(el);
-      requestAnimationFrame(() => el.classList.add("show"));
-      const close = () => { el.classList.remove("show"); setTimeout(() => el.remove(), 180); };
-      el.onclick = (e) => {
-        const a = e.target.closest("[data-a]")?.dataset.a;
-        if (!a && e.target !== el) return;
-        close();
-        if (a === "browser") openInBrowser();
-        else if (a === "home") addShortcut();
-      };
-      const onKey = (e) => { if (e.key === "Escape") { close(); removeEventListener("keydown", onKey); } };
-      addEventListener("keydown", onKey);
-    });
+    wa.SettingsButton.onClick(openTgMenu);
   } catch { /* старый Telegram без кнопки настроек */ }
+}
+
+/** Свой язычок в правом верхнем углу (в Telegram): «Открыть в браузере» видно сразу, без ⋯ → «Настройки». */
+function setupTgTab() {
+  if ($(".tg-tab")) return;
+  document.documentElement.classList.add("in-tg");
+  const tab = h(`<button class="tg-tab" aria-label="Открыть в браузере и другое">${icons.globe}</button>`);
+  tab.onclick = openTgMenu;
+  document.body.append(tab);
+}
+
+function openTgMenu() {
+  const wa = tgApp();
+  if ($(".tg-menu")) return;
+  // меню выпадает из правого верхнего угла — прямо под кнопкой ⋯ Telegram, откуда его вызвали
+  const el = h(`<div class="tg-menu" role="dialog" aria-label="Меню COFI">
+    <div class="tg-drop" role="menu">
+      <button class="tg-item main" role="menuitem" data-a="browser">${icons.globe}<span>Открыть в браузере</span></button>
+      ${canShortcut() ? `<button class="tg-item" role="menuitem" data-a="home">${icons.phoneApp}<span>Ярлык на экран</span></button>` : ""}
+      ${state.me ? `<a class="tg-item" role="menuitem" href="#/settings" data-a="settings">${icons.user}<span>Профиль и настройки</span></a>` : ""}
+      ${state.me ? `<a class="tg-item" role="menuitem" href="#/support" data-a="support">${icons.headset}<span>Поддержка</span></a>` : ""}
+    </div></div>`);
+  document.body.append(el);
+  requestAnimationFrame(() => el.classList.add("show"));
+  const close = () => { el.classList.remove("show"); setTimeout(() => el.remove(), 180); };
+  el.onclick = (e) => {
+    const a = e.target.closest("[data-a]")?.dataset.a;
+    if (!a && e.target !== el) return;
+    close();
+    if (a === "browser") openInBrowser();
+    else if (a === "home") addShortcut();
+  };
+  const onKey = (e) => { if (e.key === "Escape") { close(); removeEventListener("keydown", onKey); } };
+  addEventListener("keydown", onKey);
 }
 
 const tgApp = () => window.Telegram?.WebApp;
