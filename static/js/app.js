@@ -88,6 +88,7 @@ async function enterFromTelegram() {
   if (!tgInitData) return;
   try { tgApp()?.ready(); tgApp()?.expand(); } catch { /* старый Telegram */ }
   setupTelegramMenu();
+  watchHomeScreen();
   const fromNotification = /[?&](chat|call)=/.test(location.search);
   if (state.me && !state.me.birth_date && !state.me.is_admin && !fromNotification) {
     // анкета даже не начата (вход случился сам, как в прошлой версии): показываем стартовый экран
@@ -110,8 +111,30 @@ function openInBrowser() {
   try { tgApp().openLink(url, { try_instant_view: false }); } catch { window.open(url, "_blank"); }
 }
 
+// Ярлык Telegram на экране телефона. Он открывает «главное мини-приложение» бота (BotFather → Bot Settings →
+// Configure Mini App): без него ярлык создаётся, но по нажатию ничего не запускается.
+let homeStatus = "unknown"; // unsupported | unknown | added | missed
+function watchHomeScreen() {
+  const wa = tgApp();
+  if (!wa?.checkHomeScreenStatus) return;
+  try {
+    wa.checkHomeScreenStatus((s) => (homeStatus = s || "unknown"));
+    wa.onEvent?.("homeScreenAdded", () => {
+      homeStatus = "added";
+      toast("Ярлык добавлен. Если он не открывает COFI, откройте COFI в Safari или Chrome и добавьте ярлык оттуда", { timeout: 8000 });
+    });
+    wa.onEvent?.("homeScreenFailed", () => shortcutHelp());
+  } catch { /* старый Telegram */ }
+}
+const canShortcut = () => !!tgApp()?.addToHomeScreen && homeStatus !== "unsupported";
+
+function shortcutHelp() {
+  toast("Telegram не смог добавить ярлык. Откройте COFI в браузере (меню ⋯ → «Настройки» → «Открыть в браузере») и добавьте на экран оттуда", { error: true, timeout: 9000 });
+}
+
 function addShortcut() {
-  try { tgApp().addToHomeScreen(); } catch { toast("Обновите Telegram или добавьте ярлык через браузер", { error: true }); }
+  if (homeStatus === "added") return toast("Ярлык COFI уже есть на экране телефона");
+  try { tgApp().addToHomeScreen(); } catch { shortcutHelp(); }
 }
 
 /**
@@ -129,7 +152,7 @@ function setupTelegramMenu() {
       const el = h(`<div class="tg-menu" role="dialog" aria-label="Меню COFI">
         <div class="tg-drop" role="menu">
           <button class="tg-item main" role="menuitem" data-a="browser">${icons.globe}<span>Открыть в браузере</span></button>
-          ${wa.addToHomeScreen ? `<button class="tg-item" role="menuitem" data-a="home">${icons.phoneApp}<span>Ярлык на экран</span></button>` : ""}
+          ${canShortcut() ? `<button class="tg-item" role="menuitem" data-a="home">${icons.phoneApp}<span>Ярлык на экран</span></button>` : ""}
           ${state.me ? `<a class="tg-item" role="menuitem" href="#/settings" data-a="settings">${icons.user}<span>Профиль и настройки</span></a>` : ""}
           ${state.me ? `<a class="tg-item" role="menuitem" href="#/support" data-a="support">${icons.headset}<span>Поддержка</span></a>` : ""}
         </div></div>`);
@@ -1822,7 +1845,7 @@ function renderSettings() {
     <div class="section stack">
       <h3>Ярлык на экране телефона</h3>
       <p class="hint" style="margin-top:-4px">COFI откроется одним нажатием, как обычное приложение</p>
-      ${inTelegram && tgApp()?.addToHomeScreen ? `<button type="button" class="btn ghost" id="tg-home">${icons.phoneApp} Добавить ярлык из Telegram</button>` : ""}
+      ${inTelegram && canShortcut() ? `<button type="button" class="btn ghost" id="tg-home">${icons.phoneApp} Добавить ярлык из Telegram</button>` : ""}
       ${inTelegram ? `<button type="button" class="btn ghost" id="open-browser">${icons.globe} Открыть COFI в браузере</button>` : ""}
       <details class="soft-details">
         <summary><span>iPhone и iPad (Safari)</span></summary>
