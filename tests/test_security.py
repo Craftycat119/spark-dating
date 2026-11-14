@@ -202,3 +202,14 @@ def test_static_is_versioned_and_cached():
     assert c.get(f"/static/v/{v}/../../app/config.py").status_code == 404
     assert c.get("/static/js/app.js").headers["cache-control"] == "no-cache"
     assert "/static/v/" in c.get("/admin").text
+
+
+
+def test_tg_shortcut_page():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    r = TestClient(app).get("/tg")
+    assert r.status_code == 200 and "tg-launch.js" in r.text and "{{BOT}}" not in r.text
+    assert 'href="/static/tg.webmanifest"' in r.text

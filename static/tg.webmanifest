@@ -1,0 +1,14 @@
+{
+  "name": "COFI в Telegram",
+  "short_name": "COFI",
+  "start_url": "/tg",
+  "scope": "/tg",
+  "display": "standalone",
+  "background_color": "#120c09",
+  "theme_color": "#20140e",
+  "lang": "ru",
+  "icons": [
+    { "src": "/static/img/logo-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/static/img/logo-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

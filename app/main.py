@@ -216,6 +216,16 @@ app.mount("/static", FreshStatic(directory=STATIC_DIR), name="static")
 PAGE_HEADERS = {"Cache-Control": "no-cache"}
 
 
+@app.get("/tg")
+def tg_shortcut():
+    """Страница для ярлыка на экране «Домой»: с ярлыка COFI открывается в Telegram, а не в браузере."""
+    import html as _html
+
+    bot = telegram_bot.bot_username() if settings.telegram_bot_token else settings.telegram_bot_username
+    page = (STATIC_DIR / "tg.html").read_text(encoding="utf-8").replace("{{BOT}}", _html.escape(bot or ""))
+    return HTMLResponse(page, headers=PAGE_HEADERS)
+
+
 @app.get("/admin")
 def admin_page():
     return HTMLResponse(assets.page("admin.html", "js/admin.js"), headers=PAGE_HEADERS)

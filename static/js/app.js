@@ -151,11 +151,11 @@ function iphoneShortcut() {
   const el = h(`<div class="overlay sheet-overlay" role="dialog" aria-label="Ярлык на iPhone">
     <div class="bottom-sheet stack">
       <h2>Ярлык COFI на iPhone</h2>
+      <p class="muted">Ярлык будет открывать COFI сразу в Telegram</p>
       <ol class="howto">
         <li>Нажмите «Открыть в Safari» ниже</li>
         <li>В Safari нажмите «Поделиться» (квадрат со стрелкой вверх)</li>
         <li>Выберите «На экран „Домой“» → «Добавить»</li>
-        <li>Откройте COFI с ярлыка и войдите один раз через Telegram или почту</li>
       </ol>
       <button class="btn block" data-a="safari">${icons.globe} Открыть в Safari</button>
       <button class="btn quiet block" data-a="close">Закрыть</button>
@@ -165,7 +165,10 @@ function iphoneShortcut() {
     const a = e.target.closest("[data-a]")?.dataset.a;
     if (!a && e.target !== el) return;
     el.remove();
-    if (a === "safari") openInBrowser();
+    if (a === "safari") {
+      const url = location.origin + "/tg";
+      try { tgApp().openLink(url, { try_instant_view: false }); } catch { window.open(url, "_blank"); }
+    }
   };
 }
 
