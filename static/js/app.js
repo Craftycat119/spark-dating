@@ -1205,7 +1205,7 @@ async function renderFeed() {
         restarting = true;
         api.post("/api/feed/restart").then(() => {
           skipped = 0;
-          toast("Новые анкеты закончились — показываем пропущенные по второму кругу", { timeout: 5000 });
+          toast("Новые анкеты закончились — показываем всех по второму кругу", { timeout: 5000 });
           return load();
         }).catch((ex) => toast(ex.message, { error: true })).finally(() => (restarting = false));
         deck.replaceChildren(h(`<div class="empty"><p class="lead">Начинаем второй круг…</p></div>`));
@@ -1223,6 +1223,7 @@ async function renderFeed() {
         </button>
         <div class="pname" translate="no">${esc(c.name)}<span>, ${c.age}</span></div>
         <div class="meta">${[kmText(c.distance_km), c.verified ? "фото подтверждено" : ""].filter(Boolean).join(" · ")}</div>
+        ${c.liked_before ? `<span class="liked-before">${icons.heart} Вы уже лайкали — ждём ответа</span>` : ""}
         ${c.bio ? `<p class="pbio" translate="no">${esc(c.bio)}</p>` : ""}
       </article>
       <div class="shared-lbl">${c.common.length

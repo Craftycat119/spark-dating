@@ -161,7 +161,7 @@ def test_seed_pets_once():
 
 
 
-def test_feed_restart_shows_skipped_again_but_not_likes():
+def test_feed_second_round_skips_and_likes():
     me = make_user("me@x.io", name="Я", gender="female", looking_for="any")
     make_user("a@x.io", name="Аня", gender="female", looking_for="any")
     make_user("b@x.io", name="Боря", gender="male", looking_for="any")
@@ -169,9 +169,11 @@ def test_feed_restart_shows_skipped_again_but_not_likes():
     me.post("/api/feed/swipe", json={"user_id": cards["Аня"], "like": False})
     me.post("/api/feed/swipe", json={"user_id": cards["Боря"], "like": True})
     res = me.get("/api/feed?limit=30").json()
-    assert res["cards"] == [] and res["skipped"] == 1
-    assert me.post("/api/feed/restart").json()["restored"] == 1
-    assert [c["name"] for c in me.get("/api/feed?limit=30").json()["cards"]] == ["Аня"]  # лайкнутый не возвращается
+    assert res["cards"] == [] and res["skipped"] == 2
+    assert me.post("/api/feed/restart").json()["restored"] == 2
+    cards = {c["name"]: c for c in me.get("/api/feed?limit=30").json()["cards"]}
+    assert set(cards) == {"Аня", "Боря"}  # второй круг: и пропущенные, и лайкнутые
+    assert cards["Боря"]["liked_before"] and not cards["Аня"]["liked_before"]
 
 
 
@@ -181,3 +183,17 @@ def test_radius_capped_at_7000_km():
     assert me.get("/api/profile").json()["max_distance_km"] == 7000
     me.put("/api/profile", json={"max_distance_km": 5})
     assert me.get("/api/profile").json()["max_distance_km"] == 5
+
+
+
+def test_like_survives_second_round_and_makes_match():
+    me = make_user("m1@x.io", name="Я", gender="female", looking_for="any")
+    bob = make_user("m2@x.io", name="Боря", gender="male", looking_for="any")
+    me.post("/api/feed/swipe", json={"user_id": bob.user_id, "like": True})
+    me.get("/api/feed?limit=30")
+    me.post("/api/feed/restart")
+    assert [c["name"] for c in me.get("/api/feed?limit=30").json()["cards"]] == ["Боря"]
+    # Боря отвечает взаимностью — лайк со второго круга не пропал, будет пара
+    assert bob.post("/api/feed/swipe", json={"user_id": me.user_id, "like": True}).json()["match"] is True
+    me.post("/api/feed/restart")
+    assert me.get("/api/feed?limit=30").json()["cards"] == []  # с парой анкета во второй круг не идёт

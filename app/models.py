@@ -174,6 +174,8 @@ class Swipe(Base):
     to_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     liked: Mapped[bool] = mapped_column(Boolean)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    # Второй круг ленты: лайк остаётся в силе, но анкета снова показывается (пока её не свайпнут ещё раз)
+    recycled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class Conversation(Base):

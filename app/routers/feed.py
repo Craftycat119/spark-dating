@@ -15,7 +15,7 @@ from ..deps import current_user
 from ..geo import GRID, haversine_km, public_distance_km, snap
 from ..interests import compatible, match_score
 from ..legal import TERMS_VERSION
-from ..models import Conversation, Message, Notification, Swipe, User
+from ..models import Conversation, Message, Notification, Swipe, User, utcnow
 from ..realtime import notify
 from ..serializers import photo_url, public_card
 
@@ -61,7 +61,9 @@ def get_feed(limit: int = 10, user: User = Depends(current_user), db: Session = 
     _require_access(user)
     limit = max(1, min(limit, 30))
 
-    swiped = set(db.scalars(select(Swipe.to_user_id).where(Swipe.from_user_id == user.id))) | blocks.hidden_ids(db, user.id)
+    # анкеты второго круга (recycled_at) снова в ленте; остальные свайпнутые — нет
+    swiped = set(db.scalars(select(Swipe.to_user_id).where(Swipe.from_user_id == user.id, Swipe.recycled_at.is_(None)))) | blocks.hidden_ids(db, user.id)
+    liked_before = set(db.scalars(select(Swipe.to_user_id).where(Swipe.from_user_id == user.id, Swipe.recycled_at.is_not(None))))
     radius = min(user.max_distance_km or 50, settings.max_distance_km)  # не дальше 7000 км, даже если сохранено больше
     my_set, my_n, my_goals = set(user.interests), len(user.interests), set(user.goals)
     # всё о себе считаем один раз, а не для каждой из тысяч анкет
@@ -93,17 +95,40 @@ def get_feed(limit: int = 10, user: User = Depends(current_user), db: Session = 
     top = scored[:limit]
     people = {u.id: u for u in db.scalars(select(User).where(User.id.in_([t[3] for t in top])))}
     skipped = 0
-    if not top:  # лента кончилась — сколько пропущенных можно пролистать заново
-        skipped = db.scalar(select(func.count()).select_from(Swipe).where(Swipe.from_user_id == user.id, Swipe.liked.is_(False))) or 0
-    return {"total": len(scored), "skipped": skipped,
-            "cards": [public_card(people[oid], sc, c, d) for sc, d, c, oid, _ in top if oid in people]}
+    if not top:  # лента кончилась — сколько анкет можно пролистать по второму кругу (пропущенные и лайкнутые без пары)
+        skipped = len(_second_round(db, user))
+    cards = []
+    for sc, d, c, oid, _ in top:
+        if oid in people:
+            card = public_card(people[oid], sc, c, d)
+            card["liked_before"] = oid in liked_before
+            cards.append(card)
+    return {"total": len(scored), "skipped": skipped, "cards": cards}
+
+
+def _second_round(db: Session, user: User) -> list[Swipe]:
+    """Свайпы, анкеты которых можно показать снова: пропущенные и лайкнутые, если пары ещё нет."""
+    paired = set()
+    for c in db.scalars(select(Conversation).where(Conversation.active.is_(True),
+                                                   (Conversation.user_a_id == user.id) | (Conversation.user_b_id == user.id))):
+        paired.add(c.other(user.id).id)
+    rows = db.scalars(select(Swipe).where(Swipe.from_user_id == user.id, Swipe.recycled_at.is_(None))).all()
+    return [s for s in rows if s.to_user_id not in paired]
 
 
 @router.post("/restart")
 def restart(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    """Анкеты закончились — показать пропущенные заново. Лайки остаются (ждут ответа), чёрный список — тоже."""
+    """Анкеты закончились — второй круг: пропущенные и лайкнутые (без пары) снова в ленте.
+    Лайк при этом не пропадает: ответит взаимностью — будет пара. Чёрный список и пары — не возвращаются."""
     _require_access(user)
-    n = db.execute(delete(Swipe).where(Swipe.from_user_id == user.id, Swipe.liked.is_(False))).rowcount
+    now = utcnow()
+    n = 0
+    for s in _second_round(db, user):
+        if s.liked:
+            s.recycled_at = now
+        else:
+            db.delete(s)
+        n += 1
     db.commit()
     return {"restored": n}
 
@@ -136,6 +161,7 @@ def swipe(data: SwipeIn, background: BackgroundTasks, user: User = Depends(curre
     existing = db.scalar(select(Swipe).where(Swipe.from_user_id == user.id, Swipe.to_user_id == target.id))
     if existing:
         existing.liked = data.like
+        existing.recycled_at = None  # свайпнули на втором круге — анкета снова уходит из ленты
     else:
         db.add(Swipe(from_user_id=user.id, to_user_id=target.id, liked=data.like))
     db.commit()
@@ -148,6 +174,8 @@ def swipe(data: SwipeIn, background: BackgroundTasks, user: User = Depends(curre
     )
     if not reverse:
         return {"match": False}
+    if reverse.recycled_at is not None:  # их лайк был на втором круге — теперь пара, из ленты анкета уходит
+        reverse.recycled_at = None
 
     a, b = sorted((user.id, target.id))
     conv = db.scalar(select(Conversation).where(Conversation.user_a_id == a, Conversation.user_b_id == b))

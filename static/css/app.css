@@ -903,3 +903,6 @@ html.in-tg .screen { padding-top: 34px; }
 html.in-tg .theme-toggle { top: calc(36px + env(safe-area-inset-top)); }
 html.in-tg .chat-header { padding-top: 30px; }
 html.in-tg .tg-drop { top: 32px; }
+
+.person .liked-before { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 4px 12px; border-radius: 999px;
+  background: color-mix(in srgb, var(--orange) 18%, transparent); color: var(--orange); font-size: 13px; font-weight: 600; }
