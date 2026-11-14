@@ -1211,7 +1211,9 @@ async function renderFeed() {
         deck.replaceChildren(h(`<div class="empty"><p class="lead">Начинаем второй круг…</p></div>`));
         return;
       }
-      return empty("Рядом пока никого", `В радиусе ${state.me.max_distance_km} км новых анкет нет. Увеличьте радиус или добавьте интересов.`, "Открыть профиль", () => go("#/settings"));
+      return state.me.max_distance_km >= 7000
+        ? empty("Пока никого", "Новых анкет пока нет. Загляните позже: люди регистрируются каждый день.", "Открыть профиль", () => go("#/settings"))
+        : empty("Рядом пока никого", `В радиусе ${fmtKm(state.me.max_distance_km)} км новых анкет нет. Увеличьте радиус в профиле или добавьте интересов.`, "Открыть профиль", () => go("#/settings"));
     }
     btns.hidden = hint.hidden = false;
     counter.textContent = `${seen + 1} из ${Math.max(total, seen + 1)} рядом`;

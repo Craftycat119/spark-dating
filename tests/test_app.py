@@ -30,6 +30,7 @@ def test_feed_ranks_by_common_interests_then_distance():
     make_user("same@x.io", name="Тоже", lat=55.80, interests=("Бег", "Техно", "Кофейни"))    # ~6 км, 100%
     make_user("spb@x.io", name="Питер", lat=59.93, lon=30.33)                                 # ~630 км
 
+    me.put("/api/profile", json={"max_distance_km": 50})  # по умолчанию теперь 7000 км
     cards = me.get("/api/feed").json()["cards"]
     assert [c["name"] for c in cards] == ["Тоже", "Далеко", "Рядом"]
     assert cards[0]["match"] == 100 and set(cards[0]["common"]) == {"Бег", "Техно", "Кофейни"}

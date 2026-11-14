@@ -214,3 +214,9 @@ def test_city_from_location_and_hide_switch():
     me.post("/api/feed/restart")
     card = next(c for c in me.get("/api/feed?limit=30").json()["cards"] if c["name"] == "Боря")
     assert card["city"] is None  # скрыл город — не видно
+
+
+
+def test_new_user_gets_max_radius():
+    me = make_user("radius@x.io", name="Новичок")
+    assert me.get("/api/profile").json()["max_distance_km"] == 7000

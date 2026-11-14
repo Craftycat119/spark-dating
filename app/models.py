@@ -85,7 +85,7 @@ class User(Base):
     lat: Mapped[float | None] = mapped_column(Float)
     lon: Mapped[float | None] = mapped_column(Float)
     location_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
-    max_distance_km: Mapped[int] = mapped_column(Integer, default=50)
+    max_distance_km: Mapped[int] = mapped_column(Integer, default=7000)  # по умолчанию максимум; меняется только в профиле
 
     # Данные о регистрации (для админки)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

@@ -48,6 +48,15 @@ async def lifespan(_app: FastAPI):
         db.execute(delete(AuthSession).where(AuthSession.expires_at < utcnow()))
         db.execute(delete(EmailCode).where(EmailCode.expires_at < utcnow() - timedelta(days=1)))
         db.commit()
+        try:  # радиус по умолчанию теперь максимальный: старое умолчание (50 км) меняем один раз
+            from .models import AppFlag, User as _U2
+
+            if not db.get(AppFlag, "radius_default_7000"):
+                db.execute(_U2.__table__.update().where(_U2.max_distance_km == 50).values(max_distance_km=settings.max_distance_km))
+                db.add(AppFlag(key="radius_default_7000"))
+                db.commit()
+        except Exception:  # noqa: BLE001
+            log.exception("Не удалось обновить радиус поиска по умолчанию")
         try:  # город по геопозиции для анкет, сохранённых до появления этой функции
             from .cities import city_name
             from .models import User as _U
