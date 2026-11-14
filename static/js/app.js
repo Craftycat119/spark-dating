@@ -1151,12 +1151,14 @@ async function renderFeed() {
     }
   };
 
+  let skipped = 0, restarting = false;
   async function load() {
     if (loading) return;
     loading = true;
     try {
       const res = await api.get("/api/feed?limit=10");
       total = seen + res.total;
+      skipped = res.skipped || 0;
       const known = new Set(cards.map((c) => c.id));
       cards.push(...res.cards.filter((c) => !known.has(c.id)));
       if (!thread) draw();
@@ -1173,6 +1175,17 @@ async function renderFeed() {
     const c = cards[0];
     if (!c) {
       thread = null;
+      if (skipped && !restarting) {
+        // анкеты закончились — сами идём на второй круг: пропущенные показываются снова (лайкнутые — нет, они ждут ответа)
+        restarting = true;
+        api.post("/api/feed/restart").then(() => {
+          skipped = 0;
+          toast("Новые анкеты закончились — показываем пропущенные по второму кругу", { timeout: 5000 });
+          return load();
+        }).catch((ex) => toast(ex.message, { error: true })).finally(() => (restarting = false));
+        deck.replaceChildren(h(`<div class="empty"><p class="lead">Начинаем второй круг…</p></div>`));
+        return;
+      }
       return empty("Рядом пока никого", `В радиусе ${state.me.max_distance_km} км новых анкет нет. Увеличьте радиус или добавьте интересов.`, "Открыть профиль", () => go("#/settings"));
     }
     btns.hidden = hint.hidden = false;

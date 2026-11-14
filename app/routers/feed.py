@@ -4,7 +4,7 @@ import json
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -91,7 +91,20 @@ def get_feed(limit: int = 10, user: User = Depends(current_user), db: Session = 
     scored.sort(key=lambda x: (not x[4], -(x[0] // 10), x[1]))
     top = scored[:limit]
     people = {u.id: u for u in db.scalars(select(User).where(User.id.in_([t[3] for t in top])))}
-    return {"total": len(scored), "cards": [public_card(people[oid], sc, c, d) for sc, d, c, oid, _ in top if oid in people]}
+    skipped = 0
+    if not top:  # лента кончилась — сколько пропущенных можно пролистать заново
+        skipped = db.scalar(select(func.count()).select_from(Swipe).where(Swipe.from_user_id == user.id, Swipe.liked.is_(False))) or 0
+    return {"total": len(scored), "skipped": skipped,
+            "cards": [public_card(people[oid], sc, c, d) for sc, d, c, oid, _ in top if oid in people]}
+
+
+@router.post("/restart")
+def restart(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Анкеты закончились — показать пропущенные заново. Лайки остаются (ждут ответа), чёрный список — тоже."""
+    _require_access(user)
+    n = db.execute(delete(Swipe).where(Swipe.from_user_id == user.id, Swipe.liked.is_(False))).rowcount
+    db.commit()
+    return {"restored": n}
 
 
 def _notify_match(db: Session, conv: Conversation, background: BackgroundTasks) -> None:
