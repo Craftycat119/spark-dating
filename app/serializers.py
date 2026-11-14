@@ -63,6 +63,8 @@ def own_profile(user: User) -> dict:
         "photo_verified": user.photo_verified,
         "has_location": user.lat is not None,
         "max_distance_km": user.max_distance_km,
+        "city_name": user.city,
+        "show_city": user.show_city is not False,
         "is_admin": user.is_admin,
         "is_complete": user.is_complete,
     }
@@ -76,6 +78,7 @@ def identity(user: User) -> dict:
         "height_cm": user.height_cm,
         "weight_kg": user.weight_kg,
         "zodiac_label": ZODIAC.get(user.zodiac),
+        "city": user.city if user.show_city is not False else None,
     }
 
 

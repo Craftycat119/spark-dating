@@ -64,7 +64,7 @@ step "2/9 Пользователь $APP_USER и папки"
 id -u $APP_USER >/dev/null 2>&1 || useradd --system --home $APP_DIR --shell /usr/sbin/nologin $APP_USER
 mkdir -p $APP_DIR $DATA_DIR $BACKUP_DIR
 # Код копируем без мусора: окружение, база и кэши остаются на своих местах
-rsync -a --delete --exclude venv --exclude data --exclude .env --exclude .git --exclude __pycache__ \
+rsync -a --delete --exclude /venv --exclude /data --exclude /.env --exclude .git --exclude __pycache__ \
   --exclude tests --exclude tools --exclude '*.pyc' "$SRC"/ $APP_DIR/
 [[ -d "$SRC/models" ]] && rsync -a "$SRC/models/" $DATA_DIR/models/
 

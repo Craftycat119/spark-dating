@@ -63,6 +63,8 @@ class User(Base):
     orientation: Mapped[str | None] = mapped_column(String(16))  # сексуальность: hetero | bi | gay | lesbian | queer | ace | pan (с 18 лет)
     show_identity: Mapped[bool] = mapped_column(Boolean, default=True)  # показывать пол в анкете
     show_orientation: Mapped[bool] = mapped_column(Boolean, default=True)  # показывать сексуальность в анкете
+    city: Mapped[str | None] = mapped_column(String(100), nullable=True)  # по геопозиции (app/cities.py)
+    show_city: Mapped[bool] = mapped_column(Boolean, default=True)  # показывать город в анкете
     # Необязательные поля анкеты
     height_cm: Mapped[int | None] = mapped_column(Integer)
     weight_kg: Mapped[int | None] = mapped_column(Integer)

@@ -19,7 +19,7 @@ echo "Резервная копия перед обновлением"
 /usr/local/bin/cofi-backup || true
 
 echo "Копирую новый код"
-rsync -a --delete --exclude venv --exclude data --exclude .env --exclude .git --exclude __pycache__ \
+rsync -a --delete --exclude /venv --exclude /data --exclude /.env --exclude .git --exclude __pycache__ \
   --exclude tests --exclude tools --exclude '*.pyc' "$SRC"/ $APP_DIR/
 echo "Зависимости"
 $APP_DIR/venv/bin/pip install -q -r $APP_DIR/requirements.txt

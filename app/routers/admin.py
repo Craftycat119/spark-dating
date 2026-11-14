@@ -34,6 +34,7 @@ def user_row(u: User) -> dict:
         "age": u.years,
         "birth_date": u.birth_date.isoformat() if u.birth_date else None,
         "age_group": u.age_group,
+        "city": u.city,
         "age_verified": u.age_verified,
         "email": u.email,
         "email_verified": u.email_verified,

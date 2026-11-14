@@ -11,6 +11,7 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from .. import face_verify, feed_index, storage, telegram_bot
+from ..cities import city_name
 from ..config import settings
 from ..database import get_db
 from ..deps import client_ip, current_user
@@ -36,6 +37,7 @@ class ProfileIn(BaseModel):
     orientation: str | None = None
     show_identity: bool | None = None
     show_orientation: bool | None = None
+    show_city: bool | None = None
     height_cm: int | None = Field(None, ge=0, le=260)  # 0 — убрать
     weight_kg: int | None = Field(None, ge=0, le=300)
     zodiac: str | None = None
@@ -132,6 +134,8 @@ def apply_profile(db: Session, user: User, data: ProfileIn, ip: str | None = Non
         user.show_identity = data.show_identity
     if data.show_orientation is not None:
         user.show_orientation = data.show_orientation
+    if data.show_city is not None:
+        user.show_city = data.show_city
     if data.height_cm is not None:
         if data.height_cm and not 100 <= data.height_cm <= 250:
             raise HTTPException(422, "Рост — от 100 до 250 см")
@@ -278,12 +282,13 @@ def update_location(data: LocationIn, user: User = Depends(current_user), db: Se
     if user.is_demo:
         return {"status": "ok"}  # демо всегда «в Москве», рядом с ботами
     user.lat, user.lon = data.lat, data.lon
+    user.city = city_name(data.lat, data.lon)
     user.location_updated_at = utcnow()
     if user.registration_lat is None:
         user.registration_lat, user.registration_lon = data.lat, data.lon
     db.commit()
     feed_index.invalidate()  # лента увидит изменения сразу
-    return {"status": "ok"}
+    return {"status": "ok", "city": user.city}
 
 
 def delete_user_completely(db: Session, user: User) -> None:

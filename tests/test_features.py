@@ -197,3 +197,20 @@ def test_like_survives_second_round_and_makes_match():
     assert bob.post("/api/feed/swipe", json={"user_id": me.user_id, "like": True}).json()["match"] is True
     me.post("/api/feed/restart")
     assert me.get("/api/feed?limit=30").json()["cards"] == []  # с парой анкета во второй круг не идёт
+
+
+
+def test_city_from_location_and_hide_switch():
+    me = make_user("city1@x.io", name="Я", gender="female", looking_for="any", lat=12.2388, lon=109.1967)
+    other = make_user("city2@x.io", name="Боря", gender="male", looking_for="any", lat=12.25, lon=109.19)
+    assert me.post("/api/profile/location", json={"lat": 12.2388, "lon": 109.1967}).json()["city"] == "Нячанг"
+    other.post("/api/profile/location", json={"lat": 10.811, "lon": 106.706})  # район Хошимина
+    assert other.get("/api/profile").json()["city_name"] == "Хошимин"
+    other.post("/api/profile/location", json={"lat": 12.25, "lon": 109.19})
+    me.put("/api/profile", json={"max_distance_km": 100})
+    card = next(c for c in me.get("/api/feed?limit=30").json()["cards"] if c["name"] == "Боря")
+    assert card["city"] == "Нячанг"
+    other.put("/api/profile", json={"show_city": False})
+    me.post("/api/feed/restart")
+    card = next(c for c in me.get("/api/feed?limit=30").json()["cards"] if c["name"] == "Боря")
+    assert card["city"] is None  # скрыл город — не видно

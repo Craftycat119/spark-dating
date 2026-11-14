@@ -1222,7 +1222,7 @@ async function renderFeed() {
           ${c.photos_count ? `<span class="more">+${c.photos_count} фото</span>` : ""}
         </button>
         <div class="pname" translate="no">${esc(c.name)}<span>, ${c.age}</span></div>
-        <div class="meta">${[kmText(c.distance_km), c.verified ? "фото подтверждено" : ""].filter(Boolean).join(" · ")}</div>
+        <div class="meta">${[c.city ? esc(c.city) : "", kmText(c.distance_km), c.verified ? "фото подтверждено" : ""].filter(Boolean).join(" · ")}</div>
         ${c.liked_before ? `<span class="liked-before">${icons.heart} Вы уже лайкали — ждём ответа</span>` : ""}
         ${c.bio ? `<p class="pbio" translate="no">${esc(c.bio)}</p>` : ""}
       </article>
@@ -1365,7 +1365,7 @@ async function openProfile(userId, { onDecide = null, preview = false } = {}) {
     ${preview ? `<div class="preview-pill">${icons.user} Так вашу анкету видят другие</div>` : ""}
     <div class="profile-body">
       <div class="pname" translate="no">${esc(p.name)}<span>, ${p.age}</span></div>
-      <div class="meta muted small" style="margin-top:6px">${[kmText(p.distance_km), p.verified ? "фото подтверждено" : "", p.online ? "в сети" : ""].filter(Boolean).join(" · ")}</div>
+      <div class="meta muted small" style="margin-top:6px">${[p.city ? `${icons.pin} ${esc(p.city)}` : "", kmText(p.distance_km), p.verified ? "фото подтверждено" : "", p.online ? "в сети" : ""].filter(Boolean).join(" · ")}</div>
       ${aboutLine(p) ? `<p class="about-line">${aboutLine(p)}</p>` : ""}
       <div class="match-strip">
         <div><b>${preview ? "?" : `${p.match}%`}</b><span>${preview ? "совпадение у каждого своё" : "совпадение"}</span></div>
@@ -1889,6 +1889,9 @@ function renderSettings() {
       </div>
       <label class="field"><span>Искать в радиусе <b id="dist-val">${fmtKm(me.max_distance_km)}</b> км</span>
         <input type="range" name="dist" min="0" max="${RADIUS_STEPS.length - 1}" step="1" value="${radiusIndex(me.max_distance_km)}"></label>
+      <p class="hint" id="my-city">${me.city_name ? `${icons.pin} Ваш город: <b>${esc(me.city_name)}</b> — определён по геопозиции` : "Город определится по геопозиции"}</p>
+      <label class="switch"><input type="checkbox" name="showcity" ${me.show_city ? "checked" : ""}>
+        <span class="label">Показывать город в анкете<small>Другие увидят только название города, точное место — никогда</small></span></label>
       <button type="button" class="btn ghost" id="relocate">${icons.pin} Обновить геопозицию</button>
       ${me.telegram_linked ? `<label class="switch"><input type="checkbox" name="tgnotify" ${me.tg_notifications ? "checked" : ""}>
         <span class="label">Уведомления в Telegram<small>${state.config.calls_enabled ? "Непрочитанные сообщения, пропущенные звонки и пары, когда вы не в приложении" : "Непрочитанные сообщения и пары, когда вы не в приложении"}</small></span></label>`
@@ -1985,6 +1988,7 @@ function renderSettings() {
       name: form.name.value,
       bio: form.bio.value,
       max_distance_km: RADIUS_STEPS[Number(form.dist.value)],
+      show_city: form.showcity.checked,
       ...pick,
     };
     if (form.tgnotify) data.tg_notifications = form.tgnotify.checked;
@@ -2017,8 +2021,10 @@ function renderSettings() {
 
   $("#relocate", root).onclick = async () => {
     try {
-      await api.post("/api/profile/location", await getPosition());
-      toast("Геопозиция обновлена");
+      const r = await api.post("/api/profile/location", await getPosition());
+      state.me.city_name = r.city || null;
+      $("#my-city", root).innerHTML = r.city ? `${icons.pin} Ваш город: <b>${esc(r.city)}</b> — определён по геопозиции` : "Город по этой геопозиции не определился";
+      toast(r.city ? `Геопозиция обновлена: ${r.city}` : "Геопозиция обновлена");
     } catch (ex) { toast(ex.message, { error: true }); }
   };
 

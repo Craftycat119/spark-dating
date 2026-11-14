@@ -48,6 +48,17 @@ async def lifespan(_app: FastAPI):
         db.execute(delete(AuthSession).where(AuthSession.expires_at < utcnow()))
         db.execute(delete(EmailCode).where(EmailCode.expires_at < utcnow() - timedelta(days=1)))
         db.commit()
+        try:  # город по геопозиции для анкет, сохранённых до появления этой функции
+            from .cities import city_name
+            from .models import User as _U
+
+            todo = db.scalars(select(_U).where(_U.lat.is_not(None), _U.city.is_(None))).all()
+            for u in todo:
+                u.city = city_name(u.lat, u.lon)
+            if todo:
+                db.commit()
+        except Exception:  # noqa: BLE001
+            log.exception("Не удалось определить города анкет")
         try:  # готовые объявления «Питомцы» из app/seed/pets
             seed_pets(db)
         except Exception:  # noqa: BLE001 — объявления не должны мешать запуску
