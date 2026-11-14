@@ -169,7 +169,7 @@ systemctl restart cofi
 step "6/9 nginx и сертификат https"
 cat > /etc/nginx/sites-available/cofi <<EOF
 # Ограничение частоты на уровне nginx: второй рубеж после защиты в самом приложении
-limit_req_zone \$binary_remote_addr zone=cofi_api:10m rate=20r/s;
+limit_req_zone \$binary_remote_addr zone=cofi_api:10m rate=60r/s;
 
 server {
     listen 80;
@@ -177,7 +177,7 @@ server {
     client_max_body_size 210m;   # видео с телефона до 200 МБ
 
     location / {
-        limit_req zone=cofi_api burst=60 nodelay;
+        limit_req zone=cofi_api burst=400 nodelay;  # за одним IP оператора — сотни абонентов
         proxy_pass http://127.0.0.1:8000;
         proxy_http_version 1.1;
         # WebSocket: сообщения в реальном времени и звонки

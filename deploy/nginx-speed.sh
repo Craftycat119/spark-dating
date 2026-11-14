@@ -29,7 +29,15 @@ if [[ -f $SITE ]] && grep -q 'listen .*443 ssl' $SITE && ! grep -q 'http2' $SITE
   fi
 fi
 
-# 3. Видео с телефона до 200 МБ (раньше nginx пропускал только 64 МБ)
+# 3. Лимит запросов: у мобильных операторов сотни абонентов за одним IP, а приложение при запуске грузит 25+ файлов
+if [[ -f $SITE ]] && grep -q 'burst=60 nodelay' $SITE; then
+  cp $SITE /tmp/cofi-nginx.bak
+  sed -i 's/burst=60 nodelay;/burst=400 nodelay;/' $SITE
+  sed -i 's/zone=cofi_api:10m rate=20r\/s;/zone=cofi_api:10m rate=60r\/s;/' $SITE
+  nginx -t >/dev/null 2>&1 || cp /tmp/cofi-nginx.bak $SITE
+fi
+
+# 4. Видео с телефона до 200 МБ (раньше nginx пропускал только 64 МБ)
 if [[ -f $SITE ]] && grep -q 'client_max_body_size 64m' $SITE; then
   sed -i 's/client_max_body_size 64m;.*/client_max_body_size 210m;   # видео с телефона до 200 МБ/' $SITE
   nginx -t >/dev/null 2>&1 || sed -i 's/client_max_body_size 210m;.*/client_max_body_size 64m;/' $SITE

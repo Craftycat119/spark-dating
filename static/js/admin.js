@@ -1,3 +1,4 @@
+window.__cofiBooted = true; // для boot-guard.js
 import { api, connectSocket, on } from "./api.js";
 import "./theme.js";
 import { icons } from "./icons.js";

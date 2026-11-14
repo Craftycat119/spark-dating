@@ -14,7 +14,7 @@ const DB_NAME = "cofi-uploads";
 let dbPromise = null;
 function db() {
   if (!window.indexedDB) return Promise.reject(new Error("no idb"));
-  dbPromise ??= new Promise((resolve, reject) => {
+  if (!dbPromise) dbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, 1);
     req.onupgradeneeded = () => req.result.createObjectStore("items", { keyPath: "id" });
     req.onsuccess = () => resolve(req.result);

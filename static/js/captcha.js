@@ -7,7 +7,7 @@ import { $, h } from "./ui.js";
 let turnstileLoading = null;
 
 function loadTurnstile() {
-  turnstileLoading ||= new Promise((resolve, reject) => {
+  if (!turnstileLoading) turnstileLoading = new Promise((resolve, reject) => {
     const s = document.createElement("script");
     s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
     s.async = true;

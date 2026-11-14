@@ -7,6 +7,7 @@ from datetime import timedelta
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import delete, select
@@ -234,6 +235,24 @@ app.mount("/static/v", VersionedStatic(directory=STATIC_DIR), name="static-v")
 app.mount("/static", FreshStatic(directory=STATIC_DIR), name="static")
 
 PAGE_HEADERS = {"Cache-Control": "no-cache"}
+
+
+class ClientLogIn(BaseModel):
+    kind: str = Field("", max_length=30)
+    message: str = Field("", max_length=600)
+    extra: str = Field("", max_length=600)
+    url: str = Field("", max_length=100)
+    ua: str = Field("", max_length=400)
+
+
+@app.post("/api/client-log")
+def client_log(data: ClientLogIn, request: Request):
+    """Отчёт телефона «не запустилось / ошибка в коде» — в журнал сервера: journalctl -u cofi | grep КЛИЕНТ"""
+    from .ratelimit import by_ip
+
+    by_ip(request, "client-log", 30, 3600)
+    log.warning("КЛИЕНТ %s: %s | %s | %s | %s", data.kind, data.message, data.extra, data.url, data.ua)
+    return {"status": "ok"}
 
 
 @app.get("/tg")

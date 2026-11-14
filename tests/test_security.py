@@ -213,3 +213,15 @@ def test_tg_shortcut_page():
     r = TestClient(app).get("/tg")
     assert r.status_code == 200 and "tg-launch.js" in r.text and "{{BOT}}" not in r.text
     assert 'href="/static/tg.webmanifest"' in r.text
+
+
+
+def test_client_log_accepts_reports():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    c = TestClient(app)
+    r = c.post("/api/client-log", json={"kind": "boot-timeout", "message": "x", "ua": "iPhone"})
+    assert r.status_code == 200
+    assert 'js/boot-guard.js"' in c.get("/").text
