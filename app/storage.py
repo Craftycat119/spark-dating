@@ -131,7 +131,8 @@ def to_playable(rel: str, kind: str) -> str:
         codec = ["-vn", "-c:a", "aac", "-b:a", "96k"]
     else:
         codec = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-pix_fmt", "yuv420p", "-profile:v", "main",
-                 "-vf", "scale=w='trunc(min(1280,iw)/2)*2':h=-2", "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart"]
+                 "-vf", "scale=w='trunc(min(1280,iw)/2)*2':h=-2:out_range=tv,format=yuv420p", "-color_range", "tv",
+                 "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart"]
     try:
         subprocess.run([ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(src), *codec, str(dst)],
                        check=True, timeout=180, capture_output=True)
@@ -153,7 +154,10 @@ def _normalize_circle(ffmpeg: str, rel: str) -> str:
     dst = settings.media_dir / f"{new_rel}.tmp.mp4"
     codec = ["-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "24", "-pix_fmt", "yuv420p",
              "-profile:v", "main", "-level", "3.1",
-             "-vf", "scale=480:480:force_original_aspect_ratio=increase,crop=480:480,fps=30",
+             # out_range=tv + yuv420p: запись с canvas помечена «полным» диапазоном (yuvj420p) — такой H.264
+             # аппаратный декодер iPhone иногда показывает чёрным при живом звуке. Приводим к обычному видео-диапазону
+             "-vf", "scale=480:480:force_original_aspect_ratio=increase:out_range=tv,crop=480:480,fps=30,format=yuv420p",
+             "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
              "-c:a", "aac", "-b:a", "96k", "-ar", "44100", "-movflags", "+faststart"]
     try:
         subprocess.run([ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(src), *codec, str(dst)],
@@ -167,6 +171,20 @@ def _normalize_circle(ffmpeg: str, rel: str) -> str:
         src.unlink(missing_ok=True)
     make_poster(new_rel)
     return new_rel
+
+
+def circle_ok(rel: str) -> bool:
+    """Кружок уже в общем виде (H.264, 480×480, обычный видео-диапазон yuv420p)? Тогда перекодировать не нужно."""
+    probe = shutil.which("ffprobe")
+    path = settings.media_dir / rel
+    if not probe or not path.exists():
+        return True
+    try:
+        out = subprocess.run([probe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name,width,height,pix_fmt",
+                              "-of", "csv=p=0", str(path)], capture_output=True, text=True, timeout=30).stdout.strip()
+    except (subprocess.SubprocessError, OSError):
+        return True
+    return out == "h264,480,480,yuv420p"
 
 
 def _faststart(ffmpeg: str, src: Path) -> None:

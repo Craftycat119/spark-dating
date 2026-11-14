@@ -189,14 +189,15 @@ def main() -> None:
             done = 0
             for m in db.scalars(select(Message).where(Message.kind.in_(["circle", "video", "voice"]), Message.media_path.is_not(None))):
                 if m.kind == "circle":
-                    if (settings.media_dir / storage.poster_rel(m.media_path)).exists():
-                        continue  # уже приведён к общему виду
+                    if m.media_path.endswith(".mp4") and storage.circle_ok(m.media_path):
+                        continue  # уже в общем виде (H.264, 480×480, yuv420p)
                 elif m.media_path.endswith(".m4a" if m.kind == "voice" else ".mp4"):
                     continue
                 new = storage.to_playable(m.media_path, m.kind)
                 if new != m.media_path:
                     m.media_path = new
                     db.commit()
+                if new != m.media_path or m.kind == "circle":
                     done += 1
             print(f"Перекодировано файлов: {done}")
             posters = 0

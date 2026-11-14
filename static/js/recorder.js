@@ -38,7 +38,10 @@ export class VoiceRecorder {
 }
 
 const SIDE = 480; // кружок записывается квадратом SIDE×SIDE
-const CIRCLE_MIME = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"];
+// VP8 первым: на недорогих Android кодируется заметно легче VP9 (меньше рывков), а перемотка — для раскадровки
+// и обрезки — у WebM VP8 работает везде. Сервер всё равно переводит кружок в H.264 для всех телефонов.
+// iPhone (Safari) WebM не пишет — возьмёт mp4.
+const circleMimes = () => ["video/webm;codecs=vp8,opus", "video/webm;codecs=vp9,opus", "video/webm", "video/mp4"];
 
 /** Рисует кадр видео в квадрат по центру; для фронтальной камеры зеркально, как в превью. */
 function drawSquare(ctx, video, mirror) {
@@ -155,7 +158,7 @@ export function recordCircle() {
     // запись стартует сразу, как только камера дала первый кадр
     await new Promise((r) => (live.readyState >= 2 ? r() : (live.onloadeddata = r)));
     draw();
-    const mime = pickMime(CIRCLE_MIME);
+    const mime = pickMime(circleMimes());
     const out = new MediaStream([...canvas.captureStream(30).getVideoTracks(), ...micStream.getAudioTracks()]);
     rec = new MediaRecorder(out, mime ? { mimeType: mime, videoBitsPerSecond: 900_000 } : undefined);
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);

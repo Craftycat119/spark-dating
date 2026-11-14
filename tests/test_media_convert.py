@@ -72,9 +72,19 @@ def test_circle_mp4_from_iphone_is_normalized_with_poster():
     path.parent.mkdir(parents=True, exist_ok=True)
     # как пишет iPhone: другое разрешение и «плавающая» частота кадров
     subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=640x480:rate=24:duration=1",
-                    "-f", "lavfi", "-i", "sine=duration=1", "-c:v", "libx264", "-pix_fmt", "yuv444p", "-c:a", "aac", str(path)], check=True)
+                    "-f", "lavfi", "-i", "sine=duration=1", "-c:v", "libx264", "-pix_fmt", "yuvj420p", "-c:a", "aac", str(path)], check=True)
     assert storage.to_playable("chat/999/c2.mp4", "circle") == "chat/999/c2.mp4"
     out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,pix_fmt,r_frame_rate",
                           "-of", "csv=p=0", str(path)], capture_output=True, text=True).stdout.strip()
     assert out == "480,480,yuv420p,30/1"
     assert (settings.media_dir / "chat/999/c2.poster.jpg").exists()
+
+
+def test_circle_ok_detects_full_range():
+    path = settings.media_dir / "chat/999/c3.mp4"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=480x480:rate=30:duration=1",
+                    "-c:v", "libx264", "-pix_fmt", "yuvj420p", str(path)], check=True)
+    assert not storage.circle_ok("chat/999/c3.mp4")  # «полный» диапазон — перекодировать
+    storage.to_playable("chat/999/c3.mp4", "circle")
+    assert storage.circle_ok("chat/999/c3.mp4")
