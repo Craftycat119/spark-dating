@@ -53,14 +53,21 @@ function mount3d(el, shape) {
 // ---------------- Запуск и маршрутизация ----------------
 
 async function boot() {
-  try {
-    state.config = await api.get("/api/config");
-  } catch {
-    state.config = { app_name: "COFI", survey: [], genders: {}, looking_for: {}, min_interests: 3, ice_servers: [] };
+  // Сразу говорим Telegram «загрузилось» и включаем меню (⋯ → «Настройки» → «Открыть в браузере»):
+  // раньше это происходило только после ответа сервера, и при плохой связи висела заглушка с квадратами
+  if (tgApp()?.initData) {
+    try { tgApp().ready(); tgApp().expand(); } catch { /* старый Telegram */ }
+    setupTelegramMenu();
   }
   try {
-    state.me = await api.get("/api/auth/me");
+    state.config = await api.get("/api/config", 15000);
   } catch {
+    return offlineScreen();
+  }
+  try {
+    state.me = await api.get("/api/auth/me", 15000);
+  } catch (ex) {
+    if (ex.status === 0) return offlineScreen();
     state.me = null;
   }
   await enterFromTelegram();
@@ -165,9 +172,11 @@ function iphoneShortcut() {
  * Пункт «Настройки» во всплывающем меню Telegram (⋯ в правом верхнем углу). Свои пункты туда добавить нельзя,
  * Telegram разрешает только этот, поэтому по нажатию показываем своё меню. Работает на любом шаге, даже до входа.
  */
+let tgMenuReady = false;
 function setupTelegramMenu() {
   const wa = tgApp();
-  if (!wa?.SettingsButton) return;
+  if (!wa?.SettingsButton || tgMenuReady) return;
+  tgMenuReady = true;
   try {
     wa.SettingsButton.show();
     wa.SettingsButton.onClick(() => {
@@ -2085,5 +2094,18 @@ document.addEventListener("error", (e) => {
     img.src = PLACEHOLDER;
   }
 }, true);
+
+/** Сервер не ответил: понятный экран вместо вечной загрузки. */
+function offlineScreen() {
+  const app = document.getElementById("app");
+  app.innerHTML = `<div class="screen offline-screen"><div class="empty">
+    <h1>Нет связи с COFI</h1>
+    <p class="lead">Сервер не ответил. Проверьте интернет и попробуйте ещё раз. Если не помогает — откройте COFI в браузере.</p>
+    <button class="btn block" data-retry>Повторить</button>
+    <button class="btn ghost block" data-browser>${icons.globe} Открыть в браузере</button>
+  </div></div>`;
+  app.querySelector("[data-retry]").onclick = () => location.reload();
+  app.querySelector("[data-browser]").onclick = openInBrowser;
+}
 
 boot();

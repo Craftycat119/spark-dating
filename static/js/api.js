@@ -9,8 +9,10 @@ export class ApiError extends Error {
   }
 }
 
-async function request(method, url, body) {
-  const opts = { method, credentials: "same-origin", headers: {} };
+async function request(method, url, body, timeoutMs = method === "GET" ? 30000 : 120000) {
+  const ctrl = window.AbortController ? new AbortController() : null;
+  const timer = ctrl && setTimeout(() => ctrl.abort(), timeoutMs); // сервер молчит — не ждём бесконечно
+  const opts = { method, credentials: "same-origin", headers: {}, signal: ctrl?.signal };
   if (body instanceof FormData) opts.body = body;
   else if (body !== undefined) {
     opts.headers["Content-Type"] = "application/json";
@@ -21,6 +23,8 @@ async function request(method, url, body) {
     res = await fetch(url, opts);
   } catch {
     throw new ApiError(0, "Нет соединения с сервером. Проверьте интернет");
+  } finally {
+    clearTimeout(timer);
   }
   const data = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
   if (!res.ok) {
@@ -53,7 +57,7 @@ function upload(url, form, onProgress) {
 
 export const api = {
   upload,
-  get: (u) => request("GET", u),
+  get: (u, timeoutMs) => request("GET", u, undefined, timeoutMs),
   post: (u, b) => request("POST", u, b ?? {}),
   put: (u, b) => request("PUT", u, b),
   patch: (u, b) => request("PATCH", u, b),
