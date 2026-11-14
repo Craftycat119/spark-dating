@@ -188,7 +188,10 @@ def main() -> None:
         with SessionLocal() as db:
             done = 0
             for m in db.scalars(select(Message).where(Message.kind.in_(["circle", "video", "voice"]), Message.media_path.is_not(None))):
-                if m.media_path.endswith(".m4a" if m.kind == "voice" else ".mp4"):
+                if m.kind == "circle":
+                    if (settings.media_dir / storage.poster_rel(m.media_path)).exists():
+                        continue  # уже приведён к общему виду
+                elif m.media_path.endswith(".m4a" if m.kind == "voice" else ".mp4"):
                     continue
                 new = storage.to_playable(m.media_path, m.kind)
                 if new != m.media_path:

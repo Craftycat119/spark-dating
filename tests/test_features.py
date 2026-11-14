@@ -220,3 +220,31 @@ def test_city_from_location_and_hide_switch():
 def test_new_user_gets_max_radius():
     me = make_user("radius@x.io", name="Новичок")
     assert me.get("/api/profile").json()["max_distance_km"] == 7000
+
+
+
+def _pair_chat():
+    a = make_user("pa@x.io", name="Аня", gender="female", looking_for="any")
+    b = make_user("pb@x.io", name="Боря", gender="male", looking_for="any")
+    b.post("/api/feed/swipe", json={"user_id": a.user_id, "like": True})
+    conv = a.post("/api/feed/swipe", json={"user_id": b.user_id, "like": True}).json()["conversation_id"]
+    return a, b, conv
+
+
+def test_reply_edit_pin():
+    a, b, conv = _pair_chat()
+    first = a.post(f"/api/chats/{conv}/messages", json={"text": "Привет! Как дела?"}).json()
+    reply = b.post(f"/api/chats/{conv}/messages", json={"text": "Отлично", "reply_to": first["id"]}).json()
+    assert reply["reply_to"]["id"] == first["id"] and reply["reply_to"]["text"].startswith("Привет")
+    # изменить можно только своё
+    assert b.patch(f"/api/chats/{conv}/messages/{first['id']}", json={"text": "взлом"}).status_code == 403
+    edited = a.patch(f"/api/chats/{conv}/messages/{first['id']}", json={"text": "Привет! Как ты?"}).json()
+    assert edited["edited"] and edited["text"] == "Привет! Как ты?"
+    # закрепить — видно обоим
+    assert b.post(f"/api/chats/{conv}/pin", json={"message_id": first["id"]}).json()["pinned"]["id"] == first["id"]
+    assert a.get(f"/api/chats/{conv}").json()["pinned"]["text"] == "Привет! Как ты?"
+    b.post(f"/api/chats/{conv}/pin", json={"message_id": None})
+    assert a.get(f"/api/chats/{conv}").json()["pinned"] is None
+    # чужой чат — нельзя
+    c = make_user("pc@x.io", name="Чужой")
+    assert c.post(f"/api/chats/{conv}/pin", json={"message_id": first["id"]}).status_code in (403, 404)

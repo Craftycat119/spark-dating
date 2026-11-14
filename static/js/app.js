@@ -1532,11 +1532,13 @@ async function openChat(convId) {
       <button class="icon-btn" data-call="video" aria-label="Видеозвонок">${icons.video}</button>` : ""}
       <button class="icon-btn" data-menu aria-label="Ещё">${icons.more}</button>
     </header>
+    <button class="pinned-bar" data-pinned hidden><span class="pin-ico">${icons.pushPin}</span><span class="pin-body"><b>Закреплено</b><span class="pin-text"></span></span><span class="pin-x" data-unpin aria-label="Открепить">${icons.x}</span></button>
     <div class="messages" tabindex="0" translate="no"></div>
     <div class="typing" aria-live="polite"></div>
     <div class="upload-status" aria-live="polite" hidden><span></span><i><b></b></i>
       <button class="icon-btn" data-cancel-all aria-label="Отменить загрузку">${icons.x}</button></div>
     <div class="sticker-panel" hidden></div>
+    <div class="reply-bar" hidden><span class="rb-ico"></span><span class="rb-body"><b></b><span class="rb-text"></span></span><button class="icon-btn" data-rb-close aria-label="Отменить">${icons.x}</button></div>
     <div class="composer"></div>
     <input type="file" accept="image/*,video/*" multiple hidden>
     <input type="file" accept="video/*" capture="environment" hidden data-video-capture>
@@ -1565,9 +1567,172 @@ async function openChat(convId) {
       lastDay = day;
     }
     const stick = atBottom();
-    put(messageEl(m, m.sender_id === state.me.id));
+    put(decorate(messageEl(m, m.sender_id === state.me.id), m));
     if (stick || m.sender_id === state.me.id) scrollDown();
   }
+
+  // ---- Ответ, изменение, закрепление (долгое нажатие на сообщение) ----
+  const msgs = new Map(); // id → сообщение (для меню и правки)
+  const who = (senderId) => (senderId === state.me.id ? "Вы" : other.name);
+  function decorate(node, m) {
+    msgs.set(m.id, m);
+    node.dataset.mid = m.id;
+    if (m.reply_to) {
+      const q = h(`<button class="reply-quote" type="button"><b>${esc(who(m.reply_to.sender_id))}</b><span>${esc(m.reply_to.text || "Сообщение")}</span></button>`);
+      q.onclick = (e) => { e.stopPropagation(); jumpTo(m.reply_to.id); };
+      const bubble = $(".bubble", node);
+      if (bubble) bubble.prepend(q); else node.prepend(q);
+    }
+    if (m.edited) $(".time", node)?.insertAdjacentHTML("afterbegin", '<span class="edited">изм. </span>');
+    return node;
+  }
+  function replaceMessage(m) {
+    const old = $(`[data-mid="${m.id}"]`, list);
+    if (old) old.replaceWith(decorate(messageEl(m, m.sender_id === state.me.id), m));
+    else msgs.set(m.id, m);
+  }
+
+  // Переход к сообщению (из цитаты или закрепа). Если оно старое и ещё не загружено — догружаем историю
+  async function jumpTo(id) {
+    let node = $(`[data-mid="${id}"]`, list);
+    for (let guard = 0; !node && guard < 20; guard++) {
+      const firstId = Math.min(...[...msgs.keys()]);
+      if (!Number.isFinite(firstId)) break;
+      const older = await api.get(`/api/chats/${convId}?before_id=${firstId}&limit=100`).catch(() => null);
+      if (!older?.messages?.length) break;
+      const frag = document.createDocumentFragment();
+      let day = null;
+      for (const m of older.messages) {
+        if (seen.has(m.id)) continue;
+        seen.add(m.id);
+        const d = fmtDay(m.created_at);
+        if (d !== day) { frag.append(h(`<div class="day-sep">${d}</div>`)); day = d; }
+        frag.append(decorate(messageEl(m, m.sender_id === state.me.id), m));
+      }
+      list.prepend(frag);
+      node = $(`[data-mid="${id}"]`, list);
+    }
+    if (!node) return toast("Сообщение не найдено — возможно, его удалили");
+    node.scrollIntoView({ block: "center", behavior: "smooth" });
+    node.classList.remove("flash");
+    void node.offsetWidth;
+    node.classList.add("flash");
+  }
+
+  // Закреплённое — плашка под шапкой
+  const pinnedBar = $("[data-pinned]", el);
+  let pinned = data.pinned || null;
+  function drawPinned() {
+    pinnedBar.hidden = !pinned;
+    if (pinned) $(".pin-text", pinnedBar).textContent = pinned.text || "Сообщение";
+  }
+  pinnedBar.onclick = (e) => {
+    if (e.target.closest("[data-unpin]")) return setPin(null);
+    if (pinned) jumpTo(pinned.id);
+  };
+  async function setPin(messageId) {
+    try {
+      pinned = (await api.post(`/api/chats/${convId}/pin`, { message_id: messageId })).pinned;
+      drawPinned();
+      if (messageId) toast("Сообщение закреплено");
+    } catch (ex) { toast(ex.message, { error: true }); }
+  }
+  drawPinned();
+
+  // Ответ / правка — полоса над полем ввода
+  let replyTo = null, editing = null;
+  const replyBar = $(".reply-bar", el);
+  function drawReplyBar() {
+    const m = editing || replyTo;
+    replyBar.hidden = !m;
+    replyBar.classList.toggle("editing", !!editing);
+    if (!m) return;
+    $(".rb-ico", replyBar).innerHTML = editing ? icons.pencil : icons.reply;
+    $(".rb-body b", replyBar).textContent = editing ? "Редактирование" : `Ответ: ${who(m.sender_id)}`;
+    $(".rb-text", replyBar).textContent = m.kind === "text" || m.kind === "sticker" ? m.text : (m.text || "Вложение");
+  }
+  $("[data-rb-close]", replyBar).onclick = () => {
+    if (editing) draft = "";
+    replyTo = editing = null;
+    drawReplyBar();
+    drawComposer();
+  };
+  function startReply(m) {
+    editing = null;
+    replyTo = { id: m.id, sender_id: m.sender_id, kind: m.kind, text: m.kind === "text" || m.kind === "sticker" ? m.text : ({ image: "📷 Фото", video: "🎬 Видео", voice: "🎤 Голосовое", circle: "⭕ Кружок" }[m.kind] || "") };
+    drawReplyBar();
+    drawComposer();
+    $("textarea", composer)?.focus();
+  }
+  function startEdit(m) {
+    replyTo = null;
+    editing = m;
+    draft = m.text;
+    drawReplyBar();
+    drawComposer();
+    const ta = $("textarea", composer);
+    ta?.focus();
+    ta?.setSelectionRange(ta.value.length, ta.value.length);
+  }
+
+  // Меню сообщения
+  function openMsgMenu(m, y) {
+    const mine = m.sender_id === state.me.id;
+    const isPinned = pinned?.id === m.id;
+    const menu = h(`<div class="msg-menu-overlay" role="dialog" aria-label="Действия с сообщением">
+      <div class="msg-menu" role="menu">
+        <button role="menuitem" data-a="reply">${icons.reply}<span>Ответить</span></button>
+        ${mine && m.kind === "text" ? `<button role="menuitem" data-a="edit">${icons.pencil}<span>Изменить</span></button>` : ""}
+        <button role="menuitem" data-a="pin">${icons.pushPin}<span>${isPinned ? "Открепить" : "Закрепить"}</span></button>
+        ${m.kind === "text" ? `<button role="menuitem" data-a="copy">${icons.copy}<span>Копировать</span></button>` : ""}
+      </div></div>`);
+    document.body.append(menu);
+    const box = $(".msg-menu", menu);
+    const top = Math.min(Math.max(12, y - 20), window.innerHeight - box.offsetHeight - 12);
+    box.style.top = `${top}px`;
+    box.classList.toggle("right", mine);
+    requestAnimationFrame(() => menu.classList.add("show"));
+    menu.onclick = (e) => {
+      const a = e.target.closest("[data-a]")?.dataset.a;
+      if (!a && e.target !== menu) return;
+      menu.remove();
+      if (a === "reply") startReply(m);
+      else if (a === "edit") startEdit(m);
+      else if (a === "pin") setPin(isPinned ? null : m.id);
+      else if (a === "copy") navigator.clipboard?.writeText(m.text).then(() => toast("Скопировано"), () => {});
+    };
+  }
+  // долгое нажатие на телефоне, правая кнопка мыши на компьютере
+  let pressTimer = 0, pressStart = null, suppressClick = false;
+  list.addEventListener("pointerdown", (e) => {
+    const node = e.target.closest(".msg[data-mid]");
+    if (!node || e.target.closest(".reply-quote")) return;
+    pressStart = { x: e.clientX, y: e.clientY };
+    clearTimeout(pressTimer);
+    pressTimer = setTimeout(() => {
+      const m = msgs.get(Number(node.dataset.mid));
+      if (!m || m.kind === "call") return;
+      suppressClick = true;
+      navigator.vibrate?.(15);
+      openMsgMenu(m, pressStart.y);
+    }, 450);
+  });
+  const cancelPress = (e) => {
+    if (e?.type === "pointermove" && pressStart && Math.hypot(e.clientX - pressStart.x, e.clientY - pressStart.y) < 10) return;
+    clearTimeout(pressTimer);
+  };
+  list.addEventListener("pointermove", cancelPress);
+  list.addEventListener("pointerup", cancelPress);
+  list.addEventListener("pointercancel", cancelPress);
+  list.addEventListener("click", (e) => { if (suppressClick) { e.stopPropagation(); e.preventDefault(); suppressClick = false; } }, true);
+  list.addEventListener("contextmenu", (e) => {
+    const node = e.target.closest(".msg[data-mid]");
+    const m = node && msgs.get(Number(node.dataset.mid));
+    if (!m || m.kind === "call") return;
+    e.preventDefault();
+    clearTimeout(pressTimer);
+    openMsgMenu(m, e.clientY);
+  });
 
   if (!data.messages.length) {
     list.append(h(`<div class="empty" style="text-align:center"><h3>Вы понравились друг другу</h3><p class="muted small">Начните с общего интереса или запишите кружочек.</p></div>`));
@@ -1586,6 +1751,8 @@ async function openChat(convId) {
   // --- События ---
   let typingTimer;
   const offs = [
+    on("message_edit", (d) => { if (d.message.conversation_id === convId) replaceMessage(d.message); }),
+    on("pin", (d) => { if (d.conversation_id === convId) { pinned = d.message; drawPinned(); } }),
     on("message", (d) => {
       if (d.message.conversation_id !== convId) return;
       $(".empty", list)?.remove();
@@ -1703,8 +1870,15 @@ async function openChat(convId) {
       const text = ta.value.trim();
       if (!text) return;
       draft = ""; ta.value = ""; sync();
+      const editingNow = editing, replyNow = replyTo;
+      editing = replyTo = null;
+      drawReplyBar();
       try {
-        const m = await api.post(`/api/chats/${convId}/messages`, { text });
+        if (editingNow) {
+          replaceMessage(await api.patch(`/api/chats/${convId}/messages/${editingNow.id}`, { text }));
+          return;
+        }
+        const m = await api.post(`/api/chats/${convId}/messages`, { text, reply_to: replyNow?.id || null });
         $(".empty", list)?.remove();
         append(m);
       } catch (ex) {
@@ -1806,7 +1980,7 @@ function circleEl(m, mine, time) {
   const C = 2 * Math.PI * 48;
   const el = h(`<div class="msg circle ${mine ? "mine" : ""}">
     <div class="circle-msg" role="button" tabindex="0" aria-label="Видеосообщение, нажмите для звука">
-      <video src="${esc(m.media_url)}" muted loop playsinline autoplay preload="metadata"></video>
+      <video src="${esc(m.media_url)}#t=0.1" ${m.poster_url ? `poster="${esc(m.poster_url)}"` : ""} muted loop playsinline autoplay preload="metadata"></video>
       <svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="48" fill="none" stroke="var(--orange)" stroke-width="2.5" stroke-dasharray="${C}" stroke-dashoffset="${C}"/></svg>
       <span class="dur">${fmtDur(m.duration)}</span>
     </div>${time}</div>`);

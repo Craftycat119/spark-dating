@@ -1,4 +1,5 @@
 // Сканер лица: три кадра (прямо, поворот в одну сторону, в другую) → сервер сверяет с фото
+import { getCamera, release } from "./media.js";
 import { api } from "./api.js";
 import { h } from "./ui.js";
 
@@ -40,7 +41,7 @@ export async function runScanner(root, { consent = false } = {}) {
 
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 960 }, height: { ideal: 1280 } }, audio: false });
+    stream = await getCamera("user");
   } catch {
     return { ok: false, reason: "Нет доступа к камере. Разрешите его в настройках браузера и попробуйте снова." };
   }
@@ -86,7 +87,7 @@ export async function runScanner(root, { consent = false } = {}) {
     }
   } finally {
     drawing = false;
-    stream.getTracks().forEach((t) => t.stop());
+    release("video");
   }
 
   arrow.textContent = "";

@@ -117,6 +117,8 @@ def to_playable(rel: str, kind: str) -> str:
     ffmpeg = shutil.which("ffmpeg")
     src = settings.media_dir / rel
     target_ext = ".m4a" if kind == "voice" else ".mp4"
+    if kind == "circle":
+        return _normalize_circle(ffmpeg, rel) if ffmpeg and src.exists() else rel
     if ffmpeg and src.exists() and kind == "video" and src.suffix in (".mp4", ".mov"):
         _faststart(ffmpeg, src)
         return rel
@@ -139,6 +141,31 @@ def to_playable(rel: str, kind: str) -> str:
         return rel
     dst.replace(settings.media_dir / new_rel)
     src.unlink(missing_ok=True)
+    return new_rel
+
+
+def _normalize_circle(ffmpeg: str, rel: str) -> str:
+    """Кружок из любого телефона — к одному виду, который показывается везде: H.264 Main, 480×480, ровно 30 кадров/с.
+    Запись с камеры через canvas на iPhone даёт «плавающую» частоту кадров — на части айфонов такой ролик
+    играет только звук на чёрном фоне. После перекодирования — нормальная картинка."""
+    src = settings.media_dir / rel
+    new_rel = f"{rel.rsplit('.', 1)[0]}.mp4"
+    dst = settings.media_dir / f"{new_rel}.tmp.mp4"
+    codec = ["-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "24", "-pix_fmt", "yuv420p",
+             "-profile:v", "main", "-level", "3.1",
+             "-vf", "scale=480:480:force_original_aspect_ratio=increase,crop=480:480,fps=30",
+             "-c:a", "aac", "-b:a", "96k", "-ar", "44100", "-movflags", "+faststart"]
+    try:
+        subprocess.run([ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(src), *codec, str(dst)],
+                       check=True, timeout=180, capture_output=True)
+    except (subprocess.SubprocessError, OSError) as exc:
+        log.warning("Не удалось подготовить кружок %s: %s", rel, (getattr(exc, "stderr", None) or b"")[-300:] or exc)
+        dst.unlink(missing_ok=True)
+        return rel
+    dst.replace(settings.media_dir / new_rel)
+    if new_rel != rel:
+        src.unlink(missing_ok=True)
+    make_poster(new_rel)
     return new_rel
 
 

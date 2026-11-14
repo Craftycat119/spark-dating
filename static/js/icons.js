@@ -3,6 +3,11 @@ const i = (name, fill = false) => `<i class="${fill ? "ph-fill" : "ph"} ph-${nam
 
 export const icons = {
   heart: i("heart", true),
+  heartLine: i("heart"),
+  pushPin: i("push-pin"),
+  copy: i("copy"),
+  pencil: i("pencil-simple"),
+  reply: i("arrow-bend-up-left"),
   x: i("x"),
   flame: i("cards"),
   chat: i("chat-circle"),

@@ -2,6 +2,7 @@
 // Слева вверху — живая картинка с основной камеры, нажатие открывает съёмку фото.
 import { takePhoto } from "./camera.js";
 import { icons } from "./icons.js";
+import { cameraAllowed, getCamera, release } from "./media.js";
 import { $, h } from "./ui.js";
 
 const HALF = 0.5, FULL = 0.92;
@@ -38,7 +39,8 @@ export function openAttachSheet({ onPick, pickGallery, pickVideo }) {
   const video = $("video", el), canvas = $("canvas", el);
   (async () => {
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 480 }, height: { ideal: 480 } }, audio: false });
+      if (!(await cameraAllowed())) return; // не спрашиваем разрешение просто за открытие меню — спросим при съёмке
+      stream = await getCamera("environment");
       if (!drawing) return stopCam();
       video.muted = true;
       video.playsInline = true;
@@ -60,7 +62,7 @@ export function openAttachSheet({ onPick, pickGallery, pickVideo }) {
   })();
   function stopCam() {
     drawing = false;
-    stream?.getTracks().forEach((t) => t.stop());
+    if (stream) release("video"); // камера остаётся открытой ещё немного — съёмка фото возьмёт её без нового вопроса
     stream = null;
   }
   const close = () => {

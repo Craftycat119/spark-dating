@@ -2,6 +2,7 @@
 // Если камера недоступна (нет HTTPS, нет разрешения), отдаём выбор системе: input с capture="user",
 // на телефоне он сразу открывает камеру.
 import { icons } from "./icons.js";
+import { getCamera, release } from "./media.js";
 import { $, h } from "./ui.js";
 
 function nativeCapture() {
@@ -13,8 +14,7 @@ function nativeCapture() {
   });
 }
 
-const openStream = (facing) =>
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1920 } }, audio: false });
+const openStream = (facing) => getCamera(facing); // общий поток: разрешение спрашивается один раз
 
 /**
  * Возвращает File с JPEG-снимком или null, если человек передумал.
@@ -65,7 +65,7 @@ export async function takePhoto({ facing = "user", chat = false } = {}) {
       requestAnimationFrame(draw);
     };
     draw();
-    const done = (file) => { drawing = false; stream.getTracks().forEach((t) => t.stop()); el.remove(); resolve(file); };
+    const done = (file) => { drawing = false; release("video"); el.remove(); resolve(file); };
     const toggle = (shot) => {
       live.hidden = shot; canvas.hidden = !shot;
       $("[data-flip]", el).hidden = shot;
@@ -74,9 +74,7 @@ export async function takePhoto({ facing = "user", chat = false } = {}) {
     $("[data-flip]", el).onclick = async () => {
       const next = facing === "user" ? "environment" : "user";
       try {
-        const s2 = await openStream(next);
-        stream.getTracks().forEach((t) => t.stop());
-        stream = s2;
+        stream = await openStream(next); // общий модуль сам выключит прежнюю камеру
         facing = next;
         live.width = 0; // размер кадра у другой камеры свой
         attach();

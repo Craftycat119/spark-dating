@@ -192,6 +192,7 @@ class Conversation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    pinned_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # закреплённое сообщение в шапке
 
     user_a: Mapped[User] = relationship(foreign_keys=[user_a_id], lazy="joined")
     user_b: Mapped[User] = relationship(foreign_keys=[user_b_id], lazy="joined")
@@ -218,6 +219,8 @@ class Message(Base):
     duration: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
     read_at: Mapped[datetime | None] = mapped_column(DateTime)
+    reply_to_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # ответ на сообщение
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class UserPhoto(Base):

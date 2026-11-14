@@ -1,5 +1,6 @@
 // Голосовые и «кружочки»
 import { icons } from "./icons.js";
+import { getCamera, getMic, release } from "./media.js";
 import { h, pickMime, fmtDur, toast } from "./ui.js";
 
 const MAX_CIRCLE_SEC = 60;
@@ -8,7 +9,7 @@ const MAX_VOICE_SEC = 300;
 /** Голосовое: start() → stop() возвращает {blob, duration} либо cancel(). */
 export class VoiceRecorder {
   async start() {
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    this.stream = await getMic();
     const mime = pickMime(["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"]);
     this.rec = new MediaRecorder(this.stream, mime ? { mimeType: mime } : undefined);
     this.chunks = [];
@@ -22,7 +23,7 @@ export class VoiceRecorder {
     clearTimeout(this.limit);
     return new Promise((resolve) => {
       this.rec.onstop = () => {
-        this.stream.getTracks().forEach((t) => t.stop());
+        release("audio");
         resolve({ blob: new Blob(this.chunks, { type: this.rec.mimeType || "audio/webm" }), duration: this.elapsed() });
       };
       this.rec.stop();
@@ -32,7 +33,7 @@ export class VoiceRecorder {
     clearTimeout(this.limit);
     this.rec.onstop = null;
     try { this.rec.stop(); } catch { /* уже остановлен */ }
-    this.stream.getTracks().forEach((t) => t.stop());
+    release("audio");
   }
 }
 
@@ -111,7 +112,7 @@ export function recordCircle() {
     let blob = null, total = 0, a = 0, b = 0;
 
     const elapsed = () => recorded + (paused || !spanStart ? 0 : (performance.now() - spanStart) / 1000);
-    const stopTracks = () => { camStream?.getTracks().forEach((t) => t.stop()); micStream?.getTracks().forEach((t) => t.stop()); };
+    const stopTracks = () => { if (camStream) release("video"); if (micStream) release("audio"); }; // общие потоки — гаснут сами чуть позже
     const close = (result) => {
       if (closed) return;
       closed = true;
@@ -125,8 +126,7 @@ export function recordCircle() {
     };
 
     async function openCamera() {
-      camStream?.getTracks().forEach((t) => t.stop());
-      camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 720 }, height: { ideal: 720 } }, audio: false });
+      camStream = await getCamera(facing);
       live.muted = true;
       live.playsInline = true;
       live.setAttribute("playsinline", "");
@@ -136,7 +136,7 @@ export function recordCircle() {
     }
     try {
       // звук отдельным потоком: при смене камеры во время записи он не прерывается
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      micStream = await getMic();
       await openCamera();
     } catch {
       close(null);

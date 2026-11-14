@@ -20,7 +20,7 @@ from ..deps import COOKIE_NAME, current_user, user_from_token
 from ..models import Conversation, Message, User, utcnow
 from ..ratelimit import hit
 from ..realtime import manager, notify
-from ..serializers import conversation_out, message_out, photo_url
+from ..serializers import conversation_out, message_out, message_preview, photo_url
 
 router = APIRouter(prefix="/api/chats", tags=["chat"])
 ws_router = APIRouter()
@@ -35,6 +35,15 @@ CALL_EVENTS = {"call:offer", "call:answer", "call:ice", "call:end", "call:reject
 class MessageIn(BaseModel):
     kind: str = "text"
     text: str = Field("", max_length=4000)
+    reply_to: int | None = None
+
+
+class EditIn(BaseModel):
+    text: str = Field("", max_length=4000)
+
+
+class PinIn(BaseModel):
+    message_id: int | None = None  # None — открепить
 
 
 def get_conversation(db: Session, conv_id: int, user: User) -> Conversation:
@@ -105,7 +114,48 @@ def get_chat(conv_id: int, before_id: int | None = None, limit: int = 50, user: 
             "online": manager.is_online(other.id),
         },
         "messages": [message_out(m) for m in reversed(rows)],
+        "pinned": message_preview(db.get(Message, conv.pinned_message_id)) if conv.pinned_message_id else None,
     }
+
+
+def _own_message(db: Session, conv: Conversation, message_id: int) -> Message:
+    m = db.get(Message, message_id)
+    if not m or m.conversation_id != conv.id:
+        raise HTTPException(404, "Сообщение не найдено")
+    return m
+
+
+@router.patch("/{conv_id}/messages/{message_id}")
+def edit_message(conv_id: int, message_id: int, data: EditIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Изменить своё текстовое сообщение. Собеседник увидит новый текст и пометку «изм.»."""
+    conv = get_conversation(db, conv_id, user)
+    hit(f"msg:{user.id}", 30, 60)
+    m = _own_message(db, conv, message_id)
+    if m.sender_id != user.id or m.kind != "text":
+        raise HTTPException(403, "Изменить можно только своё текстовое сообщение")
+    text = data.text.strip()
+    if not text:
+        raise HTTPException(422, "Пустое сообщение")
+    m.text = text
+    m.edited_at = utcnow()
+    db.commit()
+    out = message_out(m)
+    for uid in (conv.user_a_id, conv.user_b_id):
+        notify(uid, {"type": "message_edit", "message": out})
+    return out
+
+
+@router.post("/{conv_id}/pin")
+def pin_message(conv_id: int, data: PinIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Закрепить сообщение в шапке чата (видно обоим) или открепить."""
+    conv = get_conversation(db, conv_id, user)
+    pinned = _own_message(db, conv, data.message_id) if data.message_id else None
+    conv.pinned_message_id = pinned.id if pinned else None
+    db.commit()
+    payload = {"type": "pin", "conversation_id": conv.id, "message": message_preview(pinned)}
+    for uid in (conv.user_a_id, conv.user_b_id):
+        notify(uid, payload)
+    return {"pinned": message_preview(pinned)}
 
 
 def _maybe_bot_reply(conv: Conversation, user: User, background: BackgroundTasks) -> None:
@@ -125,7 +175,11 @@ def send_message(conv_id: int, data: MessageIn, background: BackgroundTasks, use
         raise HTTPException(422, "Пустое сообщение")
     if data.kind == "sticker" and len(text) > 64:
         raise HTTPException(422, "Некорректный стикер")
-    msg = _store(db, conv, Message(conversation_id=conv.id, sender_id=user.id, kind=data.kind, text=text))
+    reply_to = None
+    if data.reply_to:
+        target = db.get(Message, data.reply_to)
+        reply_to = target.id if target and target.conversation_id == conv.id else None
+    msg = _store(db, conv, Message(conversation_id=conv.id, sender_id=user.id, kind=data.kind, text=text, reply_to_id=reply_to))
     _publish(conv, msg)
     push.notify_message(conv.other(user.id), user.name, conv.id, "Стикер" if data.kind == "sticker" else text)
     _maybe_bot_reply(conv, user, background)

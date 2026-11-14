@@ -8,7 +8,7 @@ from .models import Conversation, Message, User
 
 
 def _poster(m) -> str | None:
-    if m.kind != "video" or not m.media_path:
+    if m.kind not in ("video", "circle") or not m.media_path:
         return None
     rel = storage.poster_rel(m.media_path)
     return f"/media/{rel}" if (settings.media_dir / rel).exists() else None
@@ -100,7 +100,25 @@ def public_card(user: User, match: int, common: list[str], distance_km: float | 
     }
 
 
+PREVIEW = {"image": "📷 Фото", "video": "🎬 Видео", "voice": "🎤 Голосовое", "circle": "⭕ Кружок", "sticker": "Стикер", "call": "Звонок"}
+
+
+def message_preview(m: Message | None) -> dict | None:
+    """Коротко о сообщении — для цитаты в ответе и плашки «Закреплено»."""
+    if m is None:
+        return None
+    text = m.text if m.kind == "text" else (m.text if m.kind == "sticker" else PREVIEW.get(m.kind, ""))
+    return {"id": m.id, "sender_id": m.sender_id, "kind": m.kind, "text": (text or "")[:140]}
+
+
 def message_out(m: Message) -> dict:
+    reply = None
+    if m.reply_to_id:
+        from sqlalchemy.orm import object_session
+
+        db = object_session(m)
+        target = db.get(Message, m.reply_to_id) if db else None
+        reply = message_preview(target) if target and target.conversation_id == m.conversation_id else None
     return {
         "id": m.id,
         "conversation_id": m.conversation_id,
@@ -112,6 +130,8 @@ def message_out(m: Message) -> dict:
         "duration": m.duration,
         "created_at": m.created_at.isoformat() + "Z",
         "read_at": m.read_at.isoformat() + "Z" if m.read_at else None,
+        "reply_to": reply,
+        "edited": bool(m.edited_at),
     }
 
 
