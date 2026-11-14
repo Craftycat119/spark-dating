@@ -37,7 +37,8 @@ async def lifespan(_app: FastAPI):
     from .demo import cleanup, ensure_bots
 
     with SessionLocal() as db:
-        ensure_bots(db)  # боты демо-версии — один общий набор на всех гостей
+        if settings.demo_enabled:
+            ensure_bots(db)  # боты демо-версии — один общий набор на всех гостей
         removed = cleanup(db)
         if removed:
             log.info("Удалено устаревших демо-аккаунтов: %s", removed)
@@ -99,6 +100,7 @@ def public_config():
         "min_interests": MIN_INTERESTS,
         "telegram_bot_username": telegram_bot.bot_username() if settings.telegram_bot_token else None,
         "calls_enabled": settings.calls_enabled,
+        "demo_enabled": settings.demo_enabled,
         "stats_tz_hours": settings.stats_tz_hours,  # часовой пояс админ-панели
         "ice_servers": settings.stun_servers,  # без паролей TURN: их выдаёт /api/calls/ice только вошедшим
         "face_dev_mode": face_verify.is_dev_mode(),

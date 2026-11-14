@@ -280,7 +280,7 @@ let stopGuide = null;
 function showGuide() {
   stopGuide?.();
   const main = screen("", { nav: false, cls: "guide" });
-  stopGuide = renderGuide(main, { loggedIn: !!state.me, onDemo: startDemo, calls: !!state.config.calls_enabled });
+  stopGuide = renderGuide(main, { loggedIn: !!state.me, onDemo: state.config.demo_enabled ? startDemo : null, calls: !!state.config.calls_enabled });
 }
 
 function startDemo() {
@@ -354,7 +354,7 @@ function renderAuth(mode = "login") {
         <h1>Знакомства, где общее находится сразу</h1>
         <p>Отметьте, что любите, и мы покажем людей рядом с похожими интересами.</p>
         <div class="hero-links">
-          <button class="chip hot" data-demo>Демо без регистрации</button>
+          ${state.config.demo_enabled ? `<button class="chip hot" data-demo>Демо без регистрации</button>` : ""}
           <a class="chip" href="#/guide">Как это работает</a>
         </div>
         <div class="hero-foot"><a href="#/ads">Реклама в COFI</a><button class="lang-toggle" data-lang-toggle>${getLang() === "en" ? "RU" : "EN"}</button></div>
@@ -362,7 +362,7 @@ function renderAuth(mode = "login") {
     </section>
 ${sheet}`, { nav: false, cls: "auth" });
     mount3d($(".stage", root), "knot");
-    $("[data-demo]", root).onclick = startDemo;
+    $("[data-demo]", root)?.addEventListener("click", startDemo);
     $("[data-lang-toggle]", root).onclick = () => { setLang(getLang() === "en" ? "ru" : "en"); rerender(); };
     $(".theme-toggle", root).onclick = (e) => {
       setTheme(resolvedTheme() === "light" ? "dark" : "light");

@@ -76,3 +76,13 @@ def test_bots_shared_by_all_guests_and_separate_in_admin():
     assert guests["total"] == 4 and all(u["is_demo"] for u in guests["items"])
     assert sorted(u["name"] for u in res["items"]) == ["Андрей", "Настоящий"]  # во вкладке «Люди» только люди
     assert all(u["is_bot"] for u in bots["items"])
+
+
+def test_demo_disabled(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "demo_enabled", False)
+    c = new_client()
+    assert c.get("/api/config").json()["demo_enabled"] is False
+    r = c.post("/api/auth/demo")
+    assert r.status_code == 404 and "отключена" in r.json()["detail"]

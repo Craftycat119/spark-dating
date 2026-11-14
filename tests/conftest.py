@@ -9,6 +9,7 @@ os.environ["DEV_MODE"] = "1"
 os.environ["SMTP_HOST"] = ""
 os.environ["ADMIN_EMAILS"] = "boss@example.com"
 os.environ["DEMO_REPLY_DELAY"] = "0"
+os.environ["DEMO_ENABLED"] = "1"  # демо тестируем включённым; выключенное — test_demo_disabled
 os.environ["CALLS_ENABLED"] = "1"  # звонки тестируем включёнными; выключенный режим — в test_security.py
 os.environ["CAPTCHA"] = "off"  # проверку на робота тестируем отдельно (test_captcha.py)
 

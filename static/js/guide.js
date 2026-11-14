@@ -224,7 +224,7 @@ export function renderGuide(main, { loggedIn, onDemo, calls = false }) {
       </div>`).join("")}
     <div class="stack" style="margin-top:28px">
       ${loggedIn ? `<a class="btn block" href="#/feed">К анкетам</a>`
-        : `<button class="btn block" data-demo>Открыть демо без регистрации</button><a class="btn ghost block" href="#/">Создать аккаунт</a>`}
+        : `${onDemo ? `<button class="btn block" data-demo>Открыть демо без регистрации</button>` : ""}<a class="btn ${onDemo ? "ghost " : ""}block" href="#/">Создать аккаунт</a>`}
     </div>`;
   $("[data-demo]", main)?.addEventListener("click", onDemo);
   return player(main);

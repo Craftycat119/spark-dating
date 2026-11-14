@@ -129,6 +129,8 @@ class Settings:
     # Общий секрет coturn (use-auth-secret): из него для каждого звонка делается временный пароль на час
     turn_secret: str = os.environ.get("TURN_SECRET", "")
 
+    # Демо-версия без регистрации (боты). Выключена: кнопок нет, вход в демо закрыт. Включить: DEMO_ENABLED=1
+    demo_enabled: bool = _bool("DEMO_ENABLED", False)
     # Пауза перед ответом бота в демо, секунды
     demo_reply_delay: float = float(os.environ.get("DEMO_REPLY_DELAY", "2.5"))
 

@@ -346,6 +346,8 @@ class DemoIn(BaseModel):
 @router.post("/demo")
 def demo_login(request: Request, response: Response, data: DemoIn | None = None, db: Session = Depends(get_db)):
     """Вход в демо без регистрации: готовая анкета и анкеты-боты рядом («Знакомства» 18+ или «Дружба» до 18 лет)."""
+    if not settings.demo_enabled:
+        raise HTTPException(404, "Демо-версия отключена")
     by_ip(request, "demo", 15, 3600)
     guest = demo.create_guest(db, client_ip(request), request.headers.get("user-agent", ""), teen=bool(data and data.teen))
     start_session(db, guest, request, response)
