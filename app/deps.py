@@ -65,6 +65,8 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     user = user_from_token(db, request.cookies.get(COOKIE_NAME))
     if not user:
         raise HTTPException(401, "Нужно войти в аккаунт")
+    if user.is_demo and not settings.demo_enabled:
+        raise HTTPException(401, "Демо-версия отключена. Войдите через Telegram или почту")
     now = utcnow()
     gap = (now - user.last_seen_at).total_seconds() if user.last_seen_at else None
     if gap is None or gap > 60:

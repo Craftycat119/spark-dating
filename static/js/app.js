@@ -126,7 +126,7 @@ function watchHomeScreen() {
     wa.onEvent?.("homeScreenFailed", () => shortcutHelp());
   } catch { /* старый Telegram */ }
 }
-const canShortcut = () => !!tgApp()?.addToHomeScreen && homeStatus !== "unsupported";
+const canShortcut = () => tgApp()?.platform === "ios" || (!!tgApp()?.addToHomeScreen && homeStatus !== "unsupported");
 
 function shortcutHelp() {
   toast("Telegram не смог добавить ярлык. Откройте COFI в браузере (меню ⋯ → «Настройки» → «Открыть в браузере») и добавьте на экран оттуда", { error: true, timeout: 9000 });
@@ -134,7 +134,31 @@ function shortcutHelp() {
 
 function addShortcut() {
   if (homeStatus === "added") return toast("Ярлык COFI уже есть на экране телефона");
+  // На iPhone ярлык Telegram часто не запускает мини-приложение. Надёжный путь — ярлык из Safari: он открывает COFI сразу
+  if (tgApp()?.platform === "ios") return iphoneShortcut();
   try { tgApp().addToHomeScreen(); } catch { shortcutHelp(); }
+}
+
+function iphoneShortcut() {
+  const el = h(`<div class="overlay sheet-overlay" role="dialog" aria-label="Ярлык на iPhone">
+    <div class="bottom-sheet stack">
+      <h2>Ярлык COFI на iPhone</h2>
+      <ol class="howto">
+        <li>Нажмите «Открыть в Safari» ниже</li>
+        <li>В Safari нажмите «Поделиться» (квадрат со стрелкой вверх)</li>
+        <li>Выберите «На экран „Домой“» → «Добавить»</li>
+        <li>Откройте COFI с ярлыка и войдите один раз через Telegram или почту</li>
+      </ol>
+      <button class="btn block" data-a="safari">${icons.globe} Открыть в Safari</button>
+      <button class="btn quiet block" data-a="close">Закрыть</button>
+    </div></div>`);
+  document.body.append(el);
+  el.onclick = (e) => {
+    const a = e.target.closest("[data-a]")?.dataset.a;
+    if (!a && e.target !== el) return;
+    el.remove();
+    if (a === "safari") openInBrowser();
+  };
 }
 
 /**
@@ -1285,10 +1309,10 @@ async function blockUser(user) {
   } catch (ex) { toast(ex.message, { error: true }); return false; }
 }
 
-async function openProfile(userId, { onDecide = null } = {}) {
+async function openProfile(userId, { onDecide = null, preview = false } = {}) {
   let p;
   try {
-    p = await api.get(`/api/users/${userId}`);
+    p = await api.get(preview ? "/api/profile/preview" : `/api/users/${userId}`);
   } catch (ex) {
     return toast(ex.message, { error: true });
   }
@@ -1299,33 +1323,38 @@ async function openProfile(userId, { onDecide = null } = {}) {
       ${p.photos.length > 1 ? `<div class="dots">${p.photos.map((_, i) => `<i class="${i ? "" : "on"}"></i>`).join("")}</div>` : ""}
     </div>
     <button class="icon-btn close" aria-label="Закрыть">${icons.back}</button>
+    ${preview ? `<div class="preview-pill">${icons.user} Так вашу анкету видят другие</div>` : ""}
     <div class="profile-body">
       <div class="pname" translate="no">${esc(p.name)}<span>, ${p.age}</span></div>
       <div class="meta muted small" style="margin-top:6px">${[kmText(p.distance_km), p.verified ? "фото подтверждено" : "", p.online ? "в сети" : ""].filter(Boolean).join(" · ")}</div>
       ${aboutLine(p) ? `<p class="about-line">${aboutLine(p)}</p>` : ""}
       <div class="match-strip">
-        <div><b>${p.match}%</b><span>совпадение</span></div>
-        <div><b>${p.common.length}</b><span>${plural(p.common.length, "общий интерес", "общих интереса", "общих интересов")}</span></div>
+        <div><b>${preview ? "?" : `${p.match}%`}</b><span>${preview ? "совпадение у каждого своё" : "совпадение"}</span></div>
+        ${preview ? `<div><b>${p.interests.length}</b><span>${plural(p.interests.length, "интерес", "интереса", "интересов")}</span></div>` : `<div><b>${p.common.length}</b><span>${plural(p.common.length, "общий интерес", "общих интереса", "общих интересов")}</span></div>`}
         <div><b>${p.photos.length}</b><span>${plural(p.photos.length, "фото", "фото", "фото")}</span></div>
       </div>
       ${p.bio ? `<h3>О себе</h3><p style="font-size:16px;line-height:1.5" translate="no">${esc(p.bio)}</p>` : ""}
       ${p.goals.length ? `<h3>Ищет</h3><div class="chips">${p.goals.map((g) => `<span class="chip static ghost">${esc(g)}</span>`).join("")}</div>` : ""}
       <h3>Интересы</h3>
       <div class="chips">${p.interests.map((x) => `<span class="chip static ${goalsSet.has(x) ? "hot" : "ghost"}">${esc(x)}</span>`).join("")}</div>
-      <div class="profile-links">
+      ${preview ? "" : `<div class="profile-links">
         <button class="link report" data-report>${icons.flag} Пожаловаться</button>
         <button class="link report" data-block>${icons.block} Заблокировать</button>
-      </div>
+      </div>`}
     </div>
     <div class="profile-actions"></div>
   </section>`);
 
   const actions = $(".profile-actions", el);
   const close = () => { el.remove(); document.removeEventListener("keydown", esc_); };
-  $("[data-report]", el).onclick = () => { close(); reportUser(p, go); };
-  $("[data-block]", el).onclick = async () => { if (await blockUser(p)) { close(); onDecide?.(false, { silent: true }); } };
+  $("[data-report]", el)?.addEventListener("click", () => { close(); reportUser(p, go); });
+  $("[data-block]", el)?.addEventListener("click", async () => { if (await blockUser(p)) { close(); onDecide?.(false, { silent: true }); } });
   const esc_ = (e) => e.key === "Escape" && close();
-  if (p.conversation_id) {
+  if (preview) {
+    actions.innerHTML = `<p class="note">Совпадение и расстояние каждый видит своё. Фото, текст и интересы — как здесь</p>
+      <button class="btn block" data-edit>${icons.check} Понятно</button>`;
+    $("[data-edit]", actions).onclick = () => close();
+  } else if (p.conversation_id) {
     actions.innerHTML = `<button class="btn block" data-write>${icons.chat} Написать сообщение</button>`;
     $("[data-write]", actions).onclick = () => { close(); go(`#/chat/${p.conversation_id}`); };
   } else if (onDecide) {
@@ -1777,6 +1806,7 @@ function renderSettings() {
       <div class="stack" style="gap:8px">
         ${me.photo_verified ? `<span class="badge-ok">${icons.check} Фото подтверждено</span>` : `<span class="badge-warn">Фото не подтверждено</span>`}
         <button class="btn quiet" id="change-photo">Заменить фото</button>
+        ${me.name && me.photo_url ? `<button class="btn ghost" id="preview-profile">${icons.user} Как видят мою анкету</button>` : ""}
         <p class="hint">Новое фото снова нужно будет подтвердить камерой.</p>
       </div>
       <input type="file" accept="image/*" hidden>
@@ -1925,6 +1955,7 @@ function renderSettings() {
 
   $("#tg-link", root)?.addEventListener("click", linkTelegram);
   $("#tg-home", root)?.addEventListener("click", addShortcut);
+  $("#preview-profile", root)?.addEventListener("click", () => openProfile(me.id, { preview: true }));
   $("#open-browser", root)?.addEventListener("click", openInBrowser);
 
   const drawBlocks = async () => {

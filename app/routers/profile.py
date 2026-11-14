@@ -315,3 +315,28 @@ def delete_user_completely(db: Session, user: User) -> None:
 def delete_account(user: User = Depends(current_user), db: Session = Depends(get_db)):
     delete_user_completely(db, user)
     return {"status": "deleted"}
+
+
+@router.get("/preview")
+def preview(user: User = Depends(current_user)):
+    """Своя анкета ровно в том виде, в каком её открывают другие (без совпадения и расстояния — они у каждого свои)."""
+    from ..serializers import identity, media_url, photo_url
+
+    return {
+        "id": user.id,
+        "name": user.name,
+        "age": user.years,
+        "bio": user.bio,
+        "verified": user.photo_verified,
+        "photos": [u for u in [photo_url(user)] if u] + [media_url(x.path) for x in user.photos],
+        "interests": user.interests,
+        "goals": user.goals,
+        **identity(user),
+        "common": [],
+        "match": None,
+        "distance_km": None,
+        "online": True,
+        "liked": False,
+        "conversation_id": None,
+        "preview": True,
+    }

@@ -86,3 +86,21 @@ def test_demo_disabled(monkeypatch):
     assert c.get("/api/config").json()["demo_enabled"] is False
     r = c.post("/api/auth/demo")
     assert r.status_code == 404 and "отключена" in r.json()["detail"]
+
+
+def test_old_demo_session_stops_working_when_demo_disabled(monkeypatch):
+    from app.config import settings
+
+    guest = demo_client()
+    assert guest.get("/api/profile").status_code == 200
+    monkeypatch.setattr(settings, "demo_enabled", False)
+    r = guest.get("/api/profile")
+    assert r.status_code == 401 and "Демо-версия отключена" in r.json()["detail"]
+
+
+def test_profile_preview_shows_own_profile_like_others_see():
+    me = make_user("me@x.io", name="Катя", bio="Люблю горы")
+    p = me.get("/api/profile/preview").json()
+    assert p["preview"] and p["name"] == "Катя" and p["bio"] == "Люблю горы" and p["photos"]
+    assert p["match"] is None and p["distance_km"] is None
+    assert "email" not in p  # только то, что видят другие

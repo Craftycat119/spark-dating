@@ -888,3 +888,8 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .tg-item:active, .tg-item:hover { background: var(--surface-2); }
 .tg-item svg, .tg-item i { font-size: 20px; flex: none; }
 .tg-item.main { color: var(--orange); font-weight: 600; }
+
+/* «Как видят мою анкету» */
+.preview-pill { position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 3;
+  display: flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 999px; background: rgba(18, 12, 9, .7); color: #fff;
+  font-size: 13px; white-space: nowrap; backdrop-filter: blur(8px); }

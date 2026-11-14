@@ -344,10 +344,13 @@ def create_guest(db: Session, ip: str, user_agent: str, teen: bool = False) -> U
 
 
 def cleanup(db: Session) -> int:
-    """Удаляет демо-аккаунты старше суток."""
+    """Удаляет демо-аккаунты старше суток, а если демо выключено — все сразу."""
     from .routers.profile import delete_user_completely
 
-    old = db.scalars(select(User).where(User.is_demo.is_(True), User.created_at < utcnow() - DEMO_TTL)).all()
+    q = select(User).where(User.is_demo.is_(True))
+    if settings.demo_enabled:
+        q = q.where(User.created_at < utcnow() - DEMO_TTL)
+    old = db.scalars(q).all()
     for u in old:
         delete_user_completely(db, u)
     return len(old)
