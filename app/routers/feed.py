@@ -126,7 +126,8 @@ def likes(user: User = Depends(current_user), db: Session = Depends(get_db)):
         ids = [i for i in ids if i not in hidden]
         if not ids:
             return {}
-        rows = db.scalars(audience(visible_users(), user).where(User.id.in_(ids))).all()
+        rows = db.scalars(audience(select(User), user).where(User.id.in_(ids), User.is_banned.is_(False),
+                                                             User.name != "", User.birth_date.is_not(None))).all()
         return {u.id: u for u in rows if u.age_group == user.age_group}
 
     def card(u, at, conversation_id=None):
@@ -195,7 +196,10 @@ def swipe(data: SwipeIn, background: BackgroundTasks, user: User = Depends(curre
         raise HTTPException(404, "Анкета больше не доступна")
     existing = db.scalar(select(Swipe).where(Swipe.from_user_id == user.id, Swipe.to_user_id == target.id))
     if existing:
-        existing.liked = data.like
+        # «Дальше» на втором круге по уже лайкнутой анкете лайк НЕ снимает — просто листаем дальше.
+        # Снять лайк можно только явно: «Вернуть последнюю анкету» или в разделе «Отклики».
+        if not (existing.liked and existing.recycled_at is not None and not data.like):
+            existing.liked = data.like
         existing.recycled_at = None  # свайпнули на втором круге — анкета снова уходит из ленты
     else:
         db.add(Swipe(from_user_id=user.id, to_user_id=target.id, liked=data.like))

@@ -271,3 +271,28 @@ def test_likes_section_lists():
     assert {p["name"] for p in d["mutual"]} == {"Взаимный", "Поклонник"} and d["received"] == []
     # написать без взаимности нельзя
     assert sent.get(f"/api/users/{me.user_id}").json()["conversation_id"] is None
+
+
+
+def test_like_kept_when_skipped_on_second_round_and_after_photo_change():
+    me = make_user("keep0@x.io", name="Я", gender="female", looking_for="any")
+    him = make_user("keep1@x.io", name="Он", gender="male", looking_for="any")
+    me.post("/api/feed/swipe", json={"user_id": him.user_id, "like": True})
+    me.get("/api/feed?limit=30")
+    me.post("/api/feed/restart")  # второй круг
+    assert me.get("/api/feed?limit=30").json()["cards"][0]["liked_before"]
+    me.post("/api/feed/swipe", json={"user_id": him.user_id, "like": False})  # «Дальше» на втором круге
+    assert [p["name"] for p in me.get("/api/feed/likes").json()["sent"]] == ["Он"]  # лайк остался
+    # он сменил фото — оно ждёт проверки, но из «Вы лайкнули» не пропадает
+    from app.database import SessionLocal
+    from app.models import User
+
+    with SessionLocal() as db:
+        db.get(User, him.user_id).photo_verified = False
+        db.commit()
+    assert [p["name"] for p in me.get("/api/feed/likes").json()["sent"]] == ["Он"]
+    # а взаимность по-прежнему создаёт пару
+    with SessionLocal() as db:
+        db.get(User, him.user_id).photo_verified = True
+        db.commit()
+    assert him.post("/api/feed/swipe", json={"user_id": me.user_id, "like": True}).json()["match"] is True

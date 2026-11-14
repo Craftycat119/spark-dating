@@ -1352,7 +1352,7 @@ async function blockUser(user) {
   } catch (ex) { toast(ex.message, { error: true }); return false; }
 }
 
-async function openProfile(userId, { onDecide = null, preview = false } = {}) {
+async function openProfile(userId, { onDecide = null, preview = false, onCancelLike = null } = {}) {
   let p;
   try {
     p = await api.get(preview ? "/api/profile/preview" : `/api/users/${userId}`);
@@ -1408,7 +1408,12 @@ async function openProfile(userId, { onDecide = null, preview = false } = {}) {
     $(".skip", actions).onclick = () => { close(); onDecide(false); };
     $(".like", actions).onclick = () => { close(); onDecide(true); };
   } else {
-    actions.innerHTML = `<p class="note">${p.liked ? "Вы отметили симпатию. Чат откроется, когда она станет взаимной" : "Написать можно после взаимной симпатии"}</p>`;
+    actions.innerHTML = `<p class="note">${p.liked ? "Вы отметили симпатию. Чат откроется, когда она станет взаимной" : "Написать можно после взаимной симпатии"}</p>
+      ${p.liked && onCancelLike ? `<button class="btn ghost block" data-unlike>${icons.x} Отменить симпатию</button>` : ""}`;
+    $("[data-unlike]", actions)?.addEventListener("click", async () => {
+      if (!(await confirmDialog(`Отменить симпатию к ${p.name}?`, "Отменить"))) return;
+      try { await api.post("/api/feed/undo", { user_id: p.id }); close(); onCancelLike(); } catch (ex) { toast(ex.message, { error: true }); }
+    });
   }
 
   const track = $(".track", el);
@@ -1532,7 +1537,7 @@ async function renderLikes() {
   $$(".like-item", root).forEach((b) => (b.onclick = () => {
     const id = Number(b.dataset.id);
     if (b.dataset.kind === "mutual") return go(`#/chat/${b.dataset.conv}`);
-    if (b.dataset.kind === "sent") return openProfile(id);
+    if (b.dataset.kind === "sent") return openProfile(id, { onCancelLike: () => { toast("Симпатия отменена"); renderLikes(); } });
     openProfile(id, {
       onDecide: async (like) => {
         try {
