@@ -1830,6 +1830,11 @@ function circleEl(m, mine, time) {
 
 // ---------------- Профиль и настройки ----------------
 
+// Радиус поиска: ступени вместо сплошной шкалы — и 5 км, и 7000 км выставляются одним движением
+const RADIUS_STEPS = [1, 2, 3, 5, 10, 15, 20, 30, 50, 75, 100, 150, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000, 7000];
+const radiusIndex = (km) => RADIUS_STEPS.reduce((best, v, i) => (Math.abs(v - km) < Math.abs(RADIUS_STEPS[best] - km) ? i : best), 0);
+const fmtKm = (km) => Number(km).toLocaleString("ru-RU");
+
 function renderSettings() {
   const me = state.me;
   const step = onboardingStep(me);
@@ -1881,8 +1886,8 @@ function renderSettings() {
         <label class="field"><span>Знак</span><select class="input" name="zodiac"><option value="">—</option>${Object.entries(state.config.zodiac || {}).map(([k, l]) =>
           `<option value="${k}" ${k === me.zodiac ? "selected" : ""}>${ZODIAC_SIGNS[k] || ""} ${esc(l)}</option>`).join("")}</select></label>
       </div>
-      <label class="field"><span>Искать в радиусе <b id="dist-val">${me.max_distance_km}</b> км</span>
-        <input type="range" name="dist" min="1" max="300" value="${Math.min(me.max_distance_km, 300)}"></label>
+      <label class="field"><span>Искать в радиусе <b id="dist-val">${fmtKm(me.max_distance_km)}</b> км</span>
+        <input type="range" name="dist" min="0" max="${RADIUS_STEPS.length - 1}" step="1" value="${radiusIndex(me.max_distance_km)}"></label>
       <button type="button" class="btn ghost" id="relocate">${icons.pin} Обновить геопозицию</button>
       ${me.telegram_linked ? `<label class="switch"><input type="checkbox" name="tgnotify" ${me.tg_notifications ? "checked" : ""}>
         <span class="label">Уведомления в Telegram<small>${state.config.calls_enabled ? "Непрочитанные сообщения, пропущенные звонки и пары, когда вы не в приложении" : "Непрочитанные сообщения и пары, когда вы не в приложении"}</small></span></label>`
@@ -1972,13 +1977,13 @@ function renderSettings() {
     $$("[data-theme-pick]", root).forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
   }));
   const form = $("#profile-form", root);
-  form.dist.oninput = () => ($("#dist-val", root).textContent = form.dist.value);
+  form.dist.oninput = () => ($("#dist-val", root).textContent = fmtKm(RADIUS_STEPS[form.dist.value]));
   form.onsubmit = async (e) => {
     e.preventDefault();
     const data = {
       name: form.name.value,
       bio: form.bio.value,
-      max_distance_km: Number(form.dist.value),
+      max_distance_km: RADIUS_STEPS[Number(form.dist.value)],
       ...pick,
     };
     if (form.tgnotify) data.tg_notifications = form.tgnotify.checked;

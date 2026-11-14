@@ -172,3 +172,12 @@ def test_feed_restart_shows_skipped_again_but_not_likes():
     assert res["cards"] == [] and res["skipped"] == 1
     assert me.post("/api/feed/restart").json()["restored"] == 1
     assert [c["name"] for c in me.get("/api/feed?limit=30").json()["cards"]] == ["Аня"]  # лайкнутый не возвращается
+
+
+
+def test_radius_capped_at_7000_km():
+    me = make_user("far@x.io", name="Далеко")
+    me.put("/api/profile", json={"max_distance_km": 20000})
+    assert me.get("/api/profile").json()["max_distance_km"] == 7000
+    me.put("/api/profile", json={"max_distance_km": 5})
+    assert me.get("/api/profile").json()["max_distance_km"] == 5

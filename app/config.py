@@ -134,6 +134,7 @@ class Settings:
     # Пауза перед ответом бота в демо, секунды
     demo_reply_delay: float = float(os.environ.get("DEMO_REPLY_DELAY", "2.5"))
 
+    max_distance_km: int = 7000  # дальше анкеты в ленте не показываются
     max_image_mb: int = 10
     max_video_mb: int = 200
 

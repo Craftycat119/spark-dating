@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import blocks, demo, feed_index, push
+from ..config import settings
 from ..database import get_db
 from ..deps import current_user
 from ..geo import GRID, haversine_km, public_distance_km, snap
@@ -61,7 +62,7 @@ def get_feed(limit: int = 10, user: User = Depends(current_user), db: Session = 
     limit = max(1, min(limit, 30))
 
     swiped = set(db.scalars(select(Swipe.to_user_id).where(Swipe.from_user_id == user.id))) | blocks.hidden_ids(db, user.id)
-    radius = user.max_distance_km
+    radius = min(user.max_distance_km or 50, settings.max_distance_km)  # не дальше 7000 км, даже если сохранено больше
     my_set, my_n, my_goals = set(user.interests), len(user.interests), set(user.goals)
     # всё о себе считаем один раз, а не для каждой из тысяч анкет
     me_id, me_demo, me_group, me_gender, me_looking = user.id, bool(user.is_demo), user.age_group, user.gender, user.looking_for

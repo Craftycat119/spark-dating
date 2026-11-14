@@ -327,7 +327,7 @@ function editUser(u) {
         <label class="field"><span>Знак зодиака</span><select class="input" name="zodiac">${opts(cfg.zodiac, pr.zodiac, "—")}</select></label>
         <label class="field"><span>Рост, см</span><input class="input" type="number" name="height_cm" min="100" max="250" value="${pr.height_cm ?? ""}"></label>
         ${teen ? "" : `<label class="field"><span>Вес, кг</span><input class="input" type="number" name="weight_kg" min="30" max="250" value="${pr.weight_kg ?? ""}"></label>`}
-        <label class="field"><span>Радиус поиска, км</span><input class="input" type="number" name="max_distance_km" min="1" max="20000" value="${pr.max_distance_km ?? 50}"></label>
+        <label class="field"><span>Радиус поиска, км</span><input class="input" type="number" name="max_distance_km" min="1" max="7000" value="${pr.max_distance_km ?? 50}"></label>
       </div>
       <label class="check-row"><input type="checkbox" name="show_identity" ${pr.show_identity !== false ? "checked" : ""}> Показывать пол в анкете</label>
       ${teen ? "" : `<label class="check-row"><input type="checkbox" name="show_orientation" ${pr.show_orientation !== false ? "checked" : ""}> Показывать сексуальность</label>`}

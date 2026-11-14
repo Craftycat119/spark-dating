@@ -167,7 +167,7 @@ def apply_profile(db: Session, user: User, data: ProfileIn, ip: str | None = Non
     if data.tg_notifications is not None:
         user.tg_notifications = data.tg_notifications
     if data.max_distance_km is not None:
-        user.max_distance_km = max(1, min(data.max_distance_km, 20000))
+        user.max_distance_km = max(1, min(data.max_distance_km, settings.max_distance_km))
 
     db.commit()
     feed_index.invalidate()  # лента увидит изменения сразу
