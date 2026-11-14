@@ -80,7 +80,7 @@ export function recordCircle() {
       </div>
       <div class="timer"><i class="rec-dot"></i><span>0:00</span></div>
       <div class="trim" hidden>
-        <div class="trim-track"><div class="trim-sel"></div><div class="trim-pos"></div></div>
+        <div class="trim-track"><div class="film"></div><div class="trim-sel"></div><div class="trim-pos"></div></div>
         <input type="range" class="trim-a" min="0" max="1000" value="0" aria-label="Начало">
         <input type="range" class="trim-b" min="0" max="1000" value="1000" aria-label="Конец">
         <div class="trim-times"><span data-a>0:00</span><span data-len></span><span data-b></span></div>
@@ -93,6 +93,7 @@ export function recordCircle() {
       </div>
       <div class="controls preview-mode" hidden>
         <button class="icon-btn" data-delete aria-label="Удалить">${icons.trash}</button>
+        <button class="icon-btn big" data-resume aria-label="Продолжить запись" hidden>${icons.circle}</button>
         <button class="icon-btn send" data-send2 aria-label="Отправить">${icons.send}</button>
       </div>
       <p class="muted small hint">До ${MAX_CIRCLE_SEC} секунд</p>
@@ -163,23 +164,48 @@ export function recordCircle() {
     tick = setInterval(showTime, 100);
 
     const pauseBtn = $q("[data-pause]");
-    pauseBtn.onclick = () => {
-      if (!rec || rec.state === "inactive") return;
-      if (!paused) {
-        rec.pause();
-        recorded = elapsed();
-        paused = true;
-        el.classList.add("paused");
-        pauseBtn.innerHTML = icons.circle;
-        pauseBtn.setAttribute("aria-label", "Продолжить запись");
-      } else {
-        rec.resume();
-        spanStart = performance.now();
-        paused = false;
-        el.classList.remove("paused");
-        pauseBtn.innerHTML = icons.pause;
-        pauseBtn.setAttribute("aria-label", "Пауза");
-      }
+    pauseBtn.onclick = async () => {
+      if (!rec || rec.state === "inactive" || paused) return;
+      rec.pause();
+      recorded = elapsed();
+      paused = true;
+      // всё записанное до паузы — в файл: покажем раскадровку, можно обрезать с любой стороны и отправить
+      await new Promise((r) => {
+        const done = () => { rec.removeEventListener("dataavailable", done); setTimeout(r, 0); };
+        rec.addEventListener("dataavailable", done);
+        try { rec.requestData(); } catch { r(); }
+        setTimeout(r, 800);
+      });
+      if (closed) return;
+      blob = new Blob(chunks, { type: rec.mimeType || mime || "video/webm" });
+      total = recorded;
+      cancelAnimationFrame(frame); // камера в канвас больше не рисует: он понадобится для обрезки
+      $q("[data-resume]").hidden = false;
+      openPreview();
+    };
+    $q("[data-resume]").onclick = () => {
+      // продолжаем запись: обрезка сбрасывается, кружок пишется дальше
+      if (!rec || rec.state !== "paused") return;
+      preview.pause();
+      if (preview.src) URL.revokeObjectURL(preview.src);
+      preview.removeAttribute("src");
+      blob = null;
+      el.classList.remove("previewing");
+      preview.hidden = true;
+      canvas.hidden = false;
+      $q("[data-flipcam]").hidden = false;
+      $q(".rec-mode").hidden = false;
+      $q(".preview-mode").hidden = true;
+      $q("[data-resume]").hidden = true;
+      $q(".trim").hidden = true;
+      $q(".sound-hint").hidden = true;
+      $q(".hint").textContent = `До ${MAX_CIRCLE_SEC} секунд`;
+      ia.value = 0; ib.value = 1000;
+      draw(); // снова рисуем камеру в канвас, который пишется в кружок
+      rec.resume();
+      spanStart = performance.now();
+      paused = false;
+      tick = setInterval(showTime, 100);
     };
 
     // смена камеры работает и во время записи: пишем канвас, а звук идёт отдельным потоком
@@ -220,6 +246,7 @@ export function recordCircle() {
     const fmtT = (t) => fmtDur(Math.max(0, t));
 
     async function openPreview() {
+      clearInterval(tick);
       el.classList.remove("paused");
       el.classList.add("previewing");
       live.hidden = true;
@@ -232,7 +259,9 @@ export function recordCircle() {
       $q(".preview-mode").hidden = false;
       $q(".trim").hidden = false;
       $q(".sound-hint").hidden = false;
-      $q(".hint").textContent = "Потяните края полосы, чтобы обрезать начало и конец";
+      $q(".hint").textContent = rec && rec.state === "paused"
+        ? "Потяните края полосы, чтобы обрезать. ◎ — продолжить запись"
+        : "Потяните края полосы, чтобы обрезать начало и конец";
       ring.setAttribute("stroke-dashoffset", 0);
       preview.src = URL.createObjectURL(blob);
       await new Promise((r) => (preview.readyState >= 1 ? r() : (preview.onloadedmetadata = r)));
@@ -241,6 +270,35 @@ export function recordCircle() {
       a = 0; b = total;
       updateTrim();
       preview.play().catch(() => {});
+      drawFilm();
+    }
+
+    // Раскадровка: 8 кадров из записанного — под полосой обрезки
+    async function drawFilm() {
+      const film = $q(".film");
+      film.replaceChildren();
+      const N = 8;
+      const v = document.createElement("video");
+      v.muted = true;
+      v.playsInline = true;
+      v.preload = "auto";
+      v.src = preview.src;
+      try {
+        await new Promise((r, j) => { v.onloadeddata = r; v.onerror = j; setTimeout(r, 3000); });
+        await fixDuration(v);
+        const dur = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : total;
+        const c = document.createElement("canvas");
+        c.width = c.height = 64;
+        const cx = c.getContext("2d");
+        for (let i = 0; i < N && !closed; i++) {
+          v.currentTime = Math.min(dur - 0.05, ((i + 0.5) / N) * dur);
+          await new Promise((r) => { v.onseeked = r; setTimeout(r, 1500); });
+          const s = Math.min(v.videoWidth, v.videoHeight) || 1;
+          cx.drawImage(v, (v.videoWidth - s) / 2, (v.videoHeight - s) / 2, s, s, 0, 0, 64, 64);
+          film.append(Object.assign(document.createElement("img"), { src: c.toDataURL("image/jpeg", 0.7), alt: "" }));
+        }
+      } catch { /* без раскадровки обрезка всё равно работает */ }
+      v.removeAttribute("src");
     }
 
     function updateTrim(which) {

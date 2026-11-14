@@ -248,3 +248,26 @@ def test_reply_edit_pin():
     # чужой чат — нельзя
     c = make_user("pc@x.io", name="Чужой")
     assert c.post(f"/api/chats/{conv}/pin", json={"message_id": first["id"]}).status_code in (403, 404)
+
+
+
+def test_likes_section_lists():
+    me = make_user("lk0@x.io", name="Я", gender="female", looking_for="any")
+    mutual = make_user("lk1@x.io", name="Взаимный", gender="male", looking_for="any")
+    sent = make_user("lk2@x.io", name="Лайкнула", gender="male", looking_for="any")
+    fan = make_user("lk3@x.io", name="Поклонник", gender="male", looking_for="any")
+    me.post("/api/feed/swipe", json={"user_id": mutual.user_id, "like": True})
+    mutual.post("/api/feed/swipe", json={"user_id": me.user_id, "like": True})
+    me.post("/api/feed/swipe", json={"user_id": sent.user_id, "like": True})
+    fan.post("/api/feed/swipe", json={"user_id": me.user_id, "like": True})
+    d = me.get("/api/feed/likes").json()
+    assert [p["name"] for p in d["mutual"]] == ["Взаимный"] and d["mutual"][0]["conversation_id"]
+    assert [p["name"] for p in d["sent"]] == ["Лайкнула"]
+    assert [p["name"] for p in d["received"]] == ["Поклонник"]
+    assert "email" not in d["received"][0]
+    # ответила взаимностью — поклонник переходит во «взаимные»
+    assert me.post("/api/feed/swipe", json={"user_id": fan.user_id, "like": True}).json()["match"] is True
+    d = me.get("/api/feed/likes").json()
+    assert {p["name"] for p in d["mutual"]} == {"Взаимный", "Поклонник"} and d["received"] == []
+    # написать без взаимности нельзя
+    assert sent.get(f"/api/users/{me.user_id}").json()["conversation_id"] is None

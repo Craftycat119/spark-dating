@@ -304,6 +304,7 @@ function route() {
     case "animals": return renderAnimals(ctx);
     case "support": return arg ? renderThread({ screen, threadId: Number(arg) }) : renderSupportHub(ctx);
     case "chats": return renderChats();
+    case "likes": return renderLikes();
     case "chat": return renderChats().then(() => openChat(Number(arg)));
     case "settings": return arg === "interests" ? renderSurvey({ editing: true }) : renderSettings();
     default: return renderFeed();
@@ -328,7 +329,7 @@ function navBar() {
   const item = (key, label, icon) =>
     `<a href="#/${key}" class="${cur === key || (key === "chats" && cur === "chat") || (key === "feed" && cur === "animals") ? "on" : ""}">${icon}<span>${label}</span>${
       key === "chats" && state.unread ? `<b class="badge">${state.unread}</b>` : ""}</a>`;
-  return h(`<nav class="nav" aria-label="Разделы">${item("feed", "Ленты", icons.flame)}${item("chats", "Чаты", icons.chat)}${item("settings", "Профиль", icons.user)}</nav>`);
+  return h(`<nav class="nav" aria-label="Разделы">${item("feed", "Ленты", icons.flame)}${item("chats", "Чаты", icons.chat)}${item("likes", "Отклики", icons.heartLine)}${item("settings", "Профиль", icons.user)}</nav>`);
 }
 
 function updateNavBadge() {
@@ -1501,6 +1502,47 @@ async function renderChats() {
           <span class="row" style="gap:8px"><span class="preview" style="flex:1" translate="no">${esc(previewText(c.last_message, state.me.id))}</span>${c.unread ? `<span class="unread">${c.unread}</span>` : ""}</span>
         </span>
       </a>`).join("")}</div></div>`));
+}
+
+// ---------------- Отклики ----------------
+
+async function renderLikes() {
+  const root = screen(`<h1>Отклики</h1><div id="likes"><div class="spinner"></div></div>`);
+  let data;
+  try { data = await api.get("/api/feed/likes"); } catch (ex) {
+    $("#likes", root).innerHTML = `<p class="muted">${esc(ex.message)}</p>`;
+    return;
+  }
+  const row = (p, kind) => `
+    <button class="like-item" data-kind="${kind}" data-id="${p.id}" data-conv="${p.conversation_id || ""}">
+      <img class="avatar" src="${esc(p.photo_url || "")}" alt="">
+      <span class="body"><b translate="no">${esc(p.name)}, ${p.age}</b><span class="muted small">${[p.city ? esc(p.city) : "", p.verified ? "фото подтверждено" : ""].filter(Boolean).join(" · ")}</span></span>
+      <span class="act">${kind === "mutual" ? icons.chat : kind === "received" ? icons.heart : ""}</span>
+    </button>`;
+  const section = (kind, title, hint, list, empty) => `
+    <section class="likes-section">
+      <h2>${title} <span class="count">${list.length}</span></h2>
+      ${hint ? `<p class="hint">${hint}</p>` : ""}
+      ${list.length ? `<div class="like-list">${list.map((p) => row(p, kind)).join("")}</div>` : `<p class="muted small empty-line">${empty}</p>`}
+    </section>`;
+  $("#likes", root).innerHTML =
+    section("mutual", "Взаимные", "", data.mutual, "Пока нет. Когда симпатия совпадёт, человек появится здесь — и можно писать") +
+    section("sent", "Вы лайкнули", "Написать можно, когда симпатия станет взаимной", data.sent, "Вы ещё никого не лайкнули") +
+    section("received", "Вас лайкнули", "Ответьте взаимностью — и откроется чат", data.received, "Пока никто — но всё впереди");
+  $$(".like-item", root).forEach((b) => (b.onclick = () => {
+    const id = Number(b.dataset.id);
+    if (b.dataset.kind === "mutual") return go(`#/chat/${b.dataset.conv}`);
+    if (b.dataset.kind === "sent") return openProfile(id);
+    openProfile(id, {
+      onDecide: async (like) => {
+        try {
+          const r = await api.post("/api/feed/swipe", { user_id: id, like });
+          if (r.match && r.conversation_id) { toast("Это взаимно! Можно писать"); return go(`#/chat/${r.conversation_id}`); }
+          renderLikes();
+        } catch (ex) { toast(ex.message, { error: true }); }
+      },
+    });
+  }));
 }
 
 let chatCleanup = null;

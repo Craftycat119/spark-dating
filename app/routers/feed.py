@@ -116,6 +116,41 @@ def _second_round(db: Session, user: User) -> list[Swipe]:
     return [s for s in rows if s.to_user_id not in paired]
 
 
+@router.get("/likes")
+def likes(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Раздел «Отклики»: взаимные (есть чат), кого лайкнули вы, кто лайкнул вас. Писать — только при взаимной."""
+    _require_access(user)
+    hidden = blocks.hidden_ids(db, user.id)
+
+    def people(ids):
+        ids = [i for i in ids if i not in hidden]
+        if not ids:
+            return {}
+        rows = db.scalars(audience(visible_users(), user).where(User.id.in_(ids))).all()
+        return {u.id: u for u in rows if u.age_group == user.age_group}
+
+    def card(u, at, conversation_id=None):
+        return {"id": u.id, "name": u.name, "age": u.years, "photo_url": photo_url(u), "verified": u.photo_verified,
+                "city": u.city if u.show_city is not False else None, "at": at.isoformat() + "Z" if at else None,
+                "conversation_id": conversation_id}
+
+    convs = db.scalars(select(Conversation).where(Conversation.active.is_(True),
+                                                  (Conversation.user_a_id == user.id) | (Conversation.user_b_id == user.id))
+                       .order_by(Conversation.created_at.desc())).all()
+    pair = {c.other(user.id).id: c for c in convs}
+    mine = db.execute(select(Swipe.to_user_id, Swipe.created_at).where(Swipe.from_user_id == user.id, Swipe.liked.is_(True))
+                      .order_by(Swipe.created_at.desc())).all()
+    theirs = db.execute(select(Swipe.from_user_id, Swipe.created_at).where(Swipe.to_user_id == user.id, Swipe.liked.is_(True))
+                        .order_by(Swipe.created_at.desc())).all()
+    i_liked = {uid for uid, _ in mine}
+    found = people(list(pair) + [uid for uid, _ in mine] + [uid for uid, _ in theirs])
+    return {
+        "mutual": [card(found[uid], c.created_at, c.id) for uid, c in pair.items() if uid in found],
+        "sent": [card(found[uid], at) for uid, at in mine if uid in found and uid not in pair],
+        "received": [card(found[uid], at) for uid, at in theirs if uid in found and uid not in pair and uid not in i_liked],
+    }
+
+
 @router.post("/restart")
 def restart(user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Анкеты закончились — второй круг: пропущенные и лайкнутые (без пары) снова в ленте.

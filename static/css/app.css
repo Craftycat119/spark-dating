@@ -342,11 +342,13 @@ textarea.input { resize: vertical; min-height: 104px; line-height: 1.45; }
 @keyframes blink { 50% { opacity: .2; } }
 /* обрезка: полоса с двумя ручками */
 .trim { position: relative; width: min(86vw, 360px); }
-.trim-track { position: relative; height: 44px; border-radius: 12px; background: var(--surface); overflow: hidden; }
+.trim-track { position: relative; height: 52px; border-radius: 12px; background: var(--surface); overflow: hidden; }
+.trim-track .film { position: absolute; inset: 0; display: flex; }
+.trim-track .film img { flex: 1; min-width: 0; height: 100%; object-fit: cover; opacity: .85; }
 .trim-sel { position: absolute; top: 0; bottom: 0; left: 0; right: 0; border: 3px solid var(--orange); border-radius: 12px; background: color-mix(in srgb, var(--orange) 18%, transparent); }
 .trim-pos { position: absolute; top: 6px; bottom: 6px; width: 2px; background: var(--text); left: 0; }
-.trim input[type=range] { position: absolute; left: 0; right: 0; top: 0; width: 100%; height: 44px; margin: 0; background: none; pointer-events: none; -webkit-appearance: none; appearance: none; }
-.trim input[type=range]::-webkit-slider-thumb { pointer-events: auto; -webkit-appearance: none; width: 18px; height: 44px; border-radius: 6px; background: var(--orange); cursor: ew-resize; }
+.trim input[type=range] { position: absolute; left: 0; right: 0; top: 0; width: 100%; height: 52px; margin: 0; background: none; pointer-events: none; -webkit-appearance: none; appearance: none; }
+.trim input[type=range]::-webkit-slider-thumb { pointer-events: auto; -webkit-appearance: none; width: 18px; height: 52px; border-radius: 6px; background: var(--orange); cursor: ew-resize; }
 .trim input[type=range]::-moz-range-thumb { pointer-events: auto; width: 18px; height: 44px; border: 0; border-radius: 6px; background: var(--orange); cursor: ew-resize; }
 .trim input[type=range]::-webkit-slider-runnable-track { background: none; }
 .trim-times { display: flex; justify-content: space-between; margin-top: 6px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -941,3 +943,27 @@ html.in-tg .tg-drop { top: 32px; }
   color: var(--text); font: inherit; font-size: 15px; text-align: left; cursor: pointer; }
 .msg-menu button:active, .msg-menu button:hover { background: var(--surface-2); }
 .messages .msg { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+
+/* кадры вне выбранного куска — затемнены */
+.trim-sel { box-shadow: 0 0 0 999px rgba(0, 0, 0, .55); background: transparent !important; }
+
+/* Нижнее меню на 4 раздела: значок над подписью, чтобы помещалось на узких телефонах */
+.nav { grid-template-columns: repeat(4, 1fr); }
+.nav a { flex-direction: column; gap: 2px; min-height: 52px; font-size: 11px; }
+.nav a i { font-size: 20px; }
+.nav a .badge { position: absolute; top: 4px; right: calc(50% - 22px); }
+
+/* Отклики */
+.likes-section { margin-top: 22px; }
+.likes-section h2 { display: flex; align-items: center; gap: 8px; font-size: 18px; margin: 0 0 4px; }
+.likes-section h2 .count { min-width: 24px; height: 24px; padding: 0 8px; border-radius: 12px; background: var(--surface-2); color: var(--muted);
+  font-size: 13px; display: inline-grid; place-items: center; }
+.likes-section .hint { margin: 0 0 8px; }
+.like-list { display: flex; flex-direction: column; }
+.like-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 0; border: 0; border-bottom: 1px solid var(--line);
+  background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.like-item:last-child { border-bottom: 0; }
+.like-item .avatar { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; background: var(--surface-2); flex: none; }
+.like-item .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.like-item .act { color: var(--orange); font-size: 20px; }
+.empty-line { margin: 6px 0 0; }
