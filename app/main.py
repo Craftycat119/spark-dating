@@ -190,9 +190,9 @@ async def security_headers(request: Request, call_next):
     host = request.headers.get("host", "")
     h.setdefault("Content-Security-Policy", "; ".join([
         "default-src 'self'",
-        "script-src 'self' https://telegram.org https://challenges.cloudflare.com",  # только свои файлы, Telegram и капча Cloudflare
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-        "font-src 'self' https://fonts.gstatic.com data:",
+        "script-src 'self' https://challenges.cloudflare.com",  # только свои файлы (SDK Telegram — своя копия) и капча Cloudflare
+        "style-src 'self' 'unsafe-inline'",
+        "font-src 'self' data:",
         "img-src 'self' data: blob: https:",
         "media-src 'self' data: blob: mediastream:",  # mediastream: — без него Safari/Telegram на iPhone показывают камеру чёрной
         f"connect-src 'self' wss://{host} ws://{host}",
