@@ -629,6 +629,7 @@ function renderLoginCode(email, devCode) {
       ${codeBoxesHtml}
       <p class="error-text" id="code-error" hidden></p>
       <button class="btn ghost" id="resend">Отправить код ещё раз</button>
+      <button type="button" class="btn tg block" id="tg-instead">${icons.send} Письмо не приходит? Войти через Telegram</button>
       <p class="hint">Не вы пытаетесь войти? Смените пароль через «Забыли пароль?».</p>
     </div>`, { nav: false });
   const err = $("#code-error", root);
@@ -650,6 +651,7 @@ function renderLoginCode(email, devCode) {
       toast("Новый код отправлен" + (r.dev_code ? `: ${r.dev_code}` : ""));
     } catch (ex) { toast(ex.message, { error: true }); }
   };
+  $("#tg-instead", root).onclick = telegramLogin;
   bindBack(root, () => renderAuth("login"));
 }
 
