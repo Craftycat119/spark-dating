@@ -97,7 +97,7 @@ def test_support_and_ads_threads():
 
     # рекламодатель без аккаунта
     guest = new_client()
-    assert guest.post("/api/support/threads", json={"topic": "support", "text": "x"}).status_code == 401
+    assert guest.post("/api/support/threads", json={"topic": "support", "text": "x"}).status_code == 422  # гостю нужен контакт для ответа
     ad = guest.post("/api/support/threads", json={"topic": "ads"}).json()
     assert ad["messages"][0]["author"] == "bot"
     guest.post(f"/api/support/threads/{ad['id']}/messages", json={"text": "Какие форматы рекламы?"})
@@ -296,3 +296,17 @@ def test_like_kept_when_skipped_on_second_round_and_after_photo_change():
         db.get(User, him.user_id).photo_verified = True
         db.commit()
     assert him.post("/api/feed/swipe", json={"user_id": me.user_id, "like": True}).json()["match"] is True
+
+
+
+def test_guest_can_write_to_support_with_contact():
+    from conftest import new_client
+
+    g = new_client()
+    assert g.post("/api/support/threads", json={"topic": "support", "text": "Не приходит код"}).status_code == 422  # нет контакта
+    t = g.post("/api/support/threads", json={"topic": "support", "text": "Не приходит код", "contact": "@guest"}).json()
+    assert t["id"] and any(m["author"] == "user" for m in t["messages"])
+    assert [x["id"] for x in g.get("/api/support/threads").json()] == [t["id"]]  # гость видит своё обращение
+    boss = make_user("boss@example.com", name="Андрей")
+    threads = boss.get("/api/admin/support").json()
+    assert any(x["id"] == t["id"] for x in threads)  # и оно в админке

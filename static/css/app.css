@@ -967,3 +967,9 @@ html.in-tg .tg-drop { top: 32px; }
 .like-item .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .like-item .act { color: var(--orange); font-size: 20px; }
 .empty-line { margin: 6px 0 0; }
+
+.help-link { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 4px; padding: 10px; color: var(--muted);
+  font-size: 14px; text-decoration: none; }
+.help-link:hover { color: var(--text); }
+.hero-foot { gap: 14px; }
+.guest-support .icon-btn { align-self: flex-start; }

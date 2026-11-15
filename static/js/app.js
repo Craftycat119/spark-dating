@@ -12,7 +12,7 @@ import { openAttachSheet } from "./attach.js";
 import { createUploader } from "./uploads.js";
 import { mountCaptcha } from "./captcha.js";
 import { LEGAL_DOCS, renderTerms } from "./terms.js";
-import { renderAds, renderSupportHub, renderThread, reportUser } from "./support.js";
+import { renderAds, renderGuestSupport, renderSupportHub, renderThread, reportUser } from "./support.js";
 import { currentHash, navigate, onRoute } from "./router.js";
 import { getThemePref, resolvedTheme, setTheme } from "./theme.js";
 import { getLang, setLang, t } from "./i18n.js";
@@ -295,6 +295,7 @@ function route() {
   if (page === "terms") return renderTerms({ screen, go });
   if (page === "legal") return renderTerms({ screen, go, doc: currentHash().split("/")[2] });
   if (page === "ads") return renderAds({ screen, go, loggedIn: !!state.me });
+  if (page === "help") return state.me ? go("#/support") : renderGuestSupport({ screen, go });
   if (!state.me) { const m = nextAuthMode; nextAuthMode = "login"; return renderAuth(m); }
   const step = onboardingStep(state.me);
   const [, name, arg] = currentHash().split("/");
@@ -414,6 +415,7 @@ function renderAuth(mode = "login") {
       <div class="divider">или</div>
       <button type="button" class="btn tg block" id="tg-login">${icons.send} Войти через Telegram</button>
       <p class="hint" style="text-align:center">Через Telegram почта и пароль не нужны, только подтверждение фото.</p>
+      <a class="help-link" href="#/help">${icons.headset} Не получается войти? Напишите в поддержку</a>
     </div>`;
   // Повторный вызов (переключение вкладок) меняет только панель, 3D-сцена остаётся
   let root = $(".screen.auth");
@@ -434,7 +436,7 @@ function renderAuth(mode = "login") {
           ${state.config.demo_enabled ? `<button class="chip hot" data-demo>Демо без регистрации</button>` : ""}
           <a class="chip" href="#/guide">Как это работает</a>
         </div>
-        <div class="hero-foot"><a href="#/ads">Реклама в COFI</a><button class="lang-toggle" data-lang-toggle>${getLang() === "en" ? "RU" : "EN"}</button></div>
+        <div class="hero-foot"><a href="#/help">Поддержка</a><a href="#/ads">Реклама в COFI</a><button class="lang-toggle" data-lang-toggle>${getLang() === "en" ? "RU" : "EN"}</button></div>
       </div>
     </section>
 ${sheet}`, { nav: false, cls: "auth" });

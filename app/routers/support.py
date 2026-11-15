@@ -136,7 +136,11 @@ def create_thread(data: ThreadIn, request: Request, response: Response, db: Sess
     if data.topic not in ("support", "ads"):
         raise HTTPException(422, "Неизвестный раздел")
     if data.topic == "support" and not user:
-        raise HTTPException(401, "Чтобы написать в поддержку, войдите в аккаунт")
+        # без аккаунта (например, не получается войти) — можно, но нужен контакт, куда ответить
+        if len(data.contact.strip()) < 3:
+            raise HTTPException(422, "Укажите почту или Telegram — туда придёт ответ")
+        if not data.text.strip():
+            raise HTTPException(422, "Опишите, что случилось")
     category = "ads" if data.topic == "ads" else (data.category if data.category in CATEGORIES else "help")
     about = db.get(User, data.about_user_id) if data.about_user_id and user else None
     if about and (about.id == user.id or about.age_group != user.age_group):

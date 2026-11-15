@@ -49,6 +49,42 @@ export async function renderAds({ screen, go, loggedIn }) {
   } catch (ex) { toast(ex.message, { error: true }); go("#/"); }
 }
 
+/** Поддержка без входа: с главного экрана, если не получается зарегистрироваться или войти. */
+export async function renderGuestSupport({ screen, go }) {
+  try {
+    const mine = (await api.get("/api/support/threads")).find((t) => t.topic === "support");
+    if (mine) return renderThread({ screen, threadId: mine.id, back: "#/" });
+  } catch { /* нет прежних обращений */ }
+  const root = screen(`
+    <div class="stack guest-support">
+      <a class="icon-btn" href="#/" aria-label="Назад">${icons.back}</a>
+      <h1>Поддержка</h1>
+      <p class="muted">Не получается зарегистрироваться или войти, нашли ошибку или есть вопрос — напишите, мы ответим.</p>
+      <form class="stack" novalidate>
+        <label class="field"><span>Что случилось</span>
+          <textarea class="input" name="text" rows="5" maxlength="4000" required placeholder="Например: не приходит код на почту"></textarea></label>
+        <label class="field"><span>Куда ответить</span>
+          <input class="input" name="contact" maxlength="128" required placeholder="Почта или @telegram" autocomplete="email"></label>
+        <p class="error-text" hidden></p>
+        <button class="btn block">${icons.send} Отправить</button>
+        <p class="hint">Ответ придёт на указанный контакт. Его же будет видно здесь, если снова открыть «Поддержку» на этом устройстве.</p>
+      </form>
+    </div>`, { nav: false });
+  const form = $("form", root), err = $(".error-text", root);
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const text = form.text.value.trim(), contact = form.contact.value.trim();
+    const fail = (m) => { err.textContent = m; err.hidden = false; };
+    if (!text) return fail("Опишите, что случилось");
+    if (contact.length < 3) return fail("Укажите почту или Telegram — туда придёт ответ");
+    try {
+      const t = await api.post("/api/support/threads", { topic: "support", category: "help", text, contact });
+      toast("Сообщение отправлено");
+      renderThread({ screen, threadId: t.id, back: "#/" });
+    } catch (ex) { fail(ex.message); }
+  };
+}
+
 export async function renderThread({ screen, threadId, back = "#/support", ads = false }) {
   let t;
   try { t = await api.get(`/api/support/threads/${threadId}`); } catch (ex) { return toast(ex.message, { error: true }); }
