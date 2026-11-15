@@ -39,7 +39,10 @@ function route() {
   const [name, arg] = (location.hash.slice(1) || "overview").split("/");
   $$(".rail nav a").forEach((a) => a.classList.toggle("on", a.dataset.view === name));
   closeDrawer();
-  ({ overview, users, chats, mail, support, animals })[name]?.(arg) ?? overview();
+  // раздел по адресу; неизвестный — «Обзор». (Раньше «?? overview()» срабатывал и после разделов,
+  // которые ничего не возвращают, — «Рассылка» сразу затиралась «Обзором»)
+  const view = { overview, users, chats, mail, support, animals }[name];
+  if (view) view(arg); else overview();
 }
 
 // ---------- Обзор ----------
