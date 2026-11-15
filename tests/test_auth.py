@@ -163,3 +163,19 @@ def test_login_resend_only_after_correct_password():
     # код одноразовый
     c3 = new_client()
     assert c3.post("/api/auth/login/verify", json={"email": "z@x.io", "code": first["dev_code"]}).status_code == 400
+
+
+
+def test_login_without_code_when_switched_off(monkeypatch):
+    from app.config import settings
+
+    c = new_client()
+    register(c, "nocode@x.io")
+    c.post("/api/auth/logout")
+    monkeypatch.setattr(settings, "login_email_code", False)
+    r = c.post("/api/auth/login", json={"email": "nocode@x.io", "password": "Secret123"})
+    assert r.status_code == 200 and r.json()["email"] == "nocode@x.io"  # сразу профиль, без кода
+    assert c.get("/api/auth/me").status_code == 200
+    # регистрация по-прежнему с кодом
+    r = new_client().post("/api/auth/register", json={"email": "fresh@x.io", "password": "Secret123"})
+    assert r.json()["status"] == "code_sent"

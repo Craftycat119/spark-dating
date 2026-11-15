@@ -206,6 +206,13 @@ def login(data: Credentials, request: Request, response: Response, db: Session =
         except HTTPException:
             extra = {}
         raise HTTPException(403, {"code": "email_not_verified", "message": "Подтвердите почту — мы отправили код", **extra})
+    if not settings.login_email_code:
+        # второй шаг (код из письма) выключен — входим сразу; код остаётся ниже, включается LOGIN_EMAIL_CODE=1
+        if email in settings.admin_emails and not user.is_admin:
+            user.is_admin = True
+        reset(f"login:email:{email}")
+        start_session(db, user, request, response)
+        return own_profile(user)
     # Пароль верный — но входим только по коду из письма: даже зная пароль, без доступа к почте не войти
     security_log.event("вход: пароль верный, отправлен код", client_ip(request), email)
     try:

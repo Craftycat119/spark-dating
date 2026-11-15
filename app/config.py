@@ -69,6 +69,10 @@ class Settings:
     session_days: int = int(os.environ.get("SESSION_DAYS", "30"))
 
     # Почта
+    # Код из письма при каждом входе по почте и паролю (защита, если пароль украли).
+    # Пока выключен: Microsoft (Outlook/Hotmail) отклоняет письма Unisender. Включить: LOGIN_EMAIL_CODE=1
+    # Регистрация и сброс пароля подтверждаются кодом всегда — этот переключатель их не касается.
+    login_email_code: bool = _bool("LOGIN_EMAIL_CODE", False)
     smtp_host: str = os.environ.get("SMTP_HOST", "")
     smtp_port: int = int(os.environ.get("SMTP_PORT", "587"))
     smtp_user: str = os.environ.get("SMTP_USER", "")
