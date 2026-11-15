@@ -111,6 +111,10 @@ def _add(db: Session, t: SupportThread, author: str, text: str) -> SupportMessag
     db.commit()
     db.refresh(m)
     payload = {"type": "support", "thread_id": t.id, "message": msg_out(m)}
+    if author == "staff":
+        from ..telegram_support import deliver_staff_reply
+
+        deliver_staff_reply(t, text)
     if t.user_id:
         notify(t.user_id, payload)
     if author == "user":
@@ -198,12 +202,12 @@ def post_message(thread_id: int, data: MessageIn, request: Request, db: Session 
     return handle_user_message(db, _owned(db, thread_id, user, guest_hash), data.text)
 
 
-def handle_user_message(db: Session, t: SupportThread, text: str) -> dict:
+def handle_user_message(db: Session, t: SupportThread, text: str, greet: bool = True) -> dict:
     m = _add(db, t, "user", text.strip())
     first = db.scalar(select(SupportMessage.id).where(SupportMessage.thread_id == t.id, SupportMessage.author == "user").order_by(SupportMessage.id)) == m.id
     if t.topic == "ads":
         answer = ads_answer(text, db)
         _add(db, t, "bot", answer or HANDOFF)
-    elif first:
+    elif first and greet:
         _add(db, t, "bot", SUPPORT_GREETING.format(id=t.id))
     return msg_out(m)

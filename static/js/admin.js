@@ -672,14 +672,17 @@ function mail() {
       <p class="muted">Сообщение придёт через Telegram-бота всем, у кого подключён Telegram и включены уведомления. На почту рассылки не отправляются: почтой уходят только коды входа.</p>
       <label class="field"><span>Тема</span><input class="input" name="subject" maxlength="200" required placeholder="Например: в COFI появились кружочки"></label>
       <label class="field"><span>Текст</span><textarea class="input" name="body" rows="10" required></textarea></label>
+      <label class="check"><input type="checkbox" name="everyone"><span><b>Важное служебное — всем, кто писал боту</b><br>
+        <span class="muted small">Технические работы, сбои, изменения правил. Придёт и тем, у кого уведомления выключены, и тем, кто писал боту без аккаунта. Не для новостей и рекламы.</span></span></label>
       <button class="btn">Отправить рассылку</button>
     </form>`;
   $("form", view).onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target;
-    if (!(await confirmDialog("Отправить сообщение всем в Telegram?", "Отправить"))) return;
+    const everyone = f.everyone.checked;
+    if (!(await confirmDialog(everyone ? "Отправить служебное сообщение ВСЕМ, кто писал боту?" : "Отправить сообщение всем в Telegram?", "Отправить"))) return;
     try {
-      const r = await api.post("/api/admin/broadcast", { subject: f.subject.value, body: f.body.value });
+      const r = await api.post("/api/admin/broadcast", { subject: f.subject.value, body: f.body.value, everyone });
       toast(`Рассылка поставлена в очередь: ${r.recipients} получателей`);
       f.reset();
     } catch (ex) { toast(ex.message, { error: true }); }

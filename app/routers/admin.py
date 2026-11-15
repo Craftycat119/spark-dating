@@ -72,6 +72,7 @@ class BanIn(BaseModel):
 class BroadcastIn(BaseModel):
     subject: str = Field(min_length=1, max_length=200)
     body: str = Field(min_length=1, max_length=20000)
+    everyone: bool = False  # важное служебное: всем, кто писал боту, даже с выключенными уведомлениями
 
 
 @router.get("/stats")
@@ -338,9 +339,17 @@ def broadcast(data: BroadcastIn, background: BackgroundTasks, _: User = Depends(
     """Новость всем через Telegram-бота. Почта используется только для кодов подтверждения."""
     if not push.enabled():
         raise HTTPException(503, "Telegram-бот не настроен: укажите TELEGRAM_BOT_TOKEN в .env")
-    chats = db.scalars(select(User.telegram_id).where(
-        User.telegram_id.is_not(None), User.tg_notifications.is_(True), User.is_banned.is_(False), User.is_bot.is_(False))).all()
-    background.add_task(push.broadcast, list(chats), f"📣 {data.subject}\n\n{data.body}")
+    q = select(User.telegram_id).where(User.telegram_id.is_not(None), User.is_banned.is_(False), User.is_bot.is_(False))
+    if not data.everyone:
+        q = q.where(User.tg_notifications.is_(True))
+    chats = set(db.scalars(q).all())
+    if data.everyone:
+        # и те, кто писал боту без аккаунта (личные чаты — положительные id; группы не трогаем)
+        from ..models import TelegramContact
+
+        banned = set(db.scalars(select(User.telegram_id).where(User.is_banned.is_(True), User.telegram_id.is_not(None))))
+        chats |= {c for c in db.scalars(select(TelegramContact.chat_id)) if c and c > 0 and c not in banned}
+    background.add_task(push.broadcast, sorted(chats), f"📣 {data.subject}\n\n{data.body}")
     return {"status": "queued", "recipients": len(chats)}
 
 

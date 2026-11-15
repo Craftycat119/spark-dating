@@ -292,6 +292,7 @@ class SupportThread(Base):
     category: Mapped[str] = mapped_column(String(16), default="help")  # help | complaint | suggestion | ads
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     guest_token_hash: Mapped[str | None] = mapped_column(String(128), index=True)  # рекламодатель без аккаунта
+    telegram_chat_id: Mapped[int | None] = mapped_column(BigInteger, index=True, nullable=True)  # обращение пришло через бота
     contact: Mapped[str] = mapped_column(String(128), default="")
     about_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     status: Mapped[str] = mapped_column(String(16), default="open")  # open | closed

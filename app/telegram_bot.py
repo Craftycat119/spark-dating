@@ -133,7 +133,8 @@ HELP_TEXT = (
     f"Привет! Это бот {settings.app_name}: знакомства и дружба по общим интересам.\n\n"
     "Как войти:\n1. Откройте сайт и нажмите «Войти через Telegram».\n2. Нажмите «Открыть Telegram», вы вернётесь сюда.\n"
     "3. Нажмите «✅ Войти», и браузер войдёт сам.\n\n"
-    "Почта и пароль не нужны. Сюда же приходят заявки «Помочь» по питомцам."
+    "Почта и пароль не нужны.\n\n"
+    "💬 Вопрос, проблема или предложение? Просто напишите сюда сообщение — оно попадёт в поддержку, ответ придёт в этот чат."
 )
 DESCRIPTION = (f"Вход в {settings.app_name} без почты и пароля. Нажмите «Войти через Telegram» на сайте, "
                "затем «Запустить» здесь и «✅ Войти».")
@@ -265,6 +266,13 @@ def handle_update(upd: dict) -> list[tuple[str, dict]]:
         # в группах отвечаем только на /chatid и /start — переписку участников не трогаем
         if (msg.get("text") or "").split("@")[0].strip() in ("/chatid", "/start", "/id"):
             calls.append(("sendMessage", _chat_id_reply(msg["chat"])))
+        elif msg.get("reply_to_message"):
+            from .telegram_support import from_group
+
+            try:
+                calls += from_group(msg)
+            except Exception:  # noqa: BLE001
+                log.exception("Не удалось передать ответ поддержки")
         if new_id := msg.get("migrate_to_chat_id"):  # группа стала супергруппой — id сменился
             calls.append(("sendMessage", _chat_id_reply({"id": new_id, "title": msg["chat"].get("title")})))
         return calls
@@ -291,8 +299,17 @@ def handle_update(upd: dict) -> list[tuple[str, dict]]:
                         {"text": "Отмена", "callback_data": f"no:{token}"},
                     ]]},
                 }))
-        elif text:  # /start, /help и любое другое сообщение: подсказка, как войти
+        elif text.startswith("/"):  # /start, /help и другие команды: подсказка, как войти и как написать в поддержку
             calls.append(("sendMessage", {"chat_id": chat_id, "text": HELP_TEXT, **_site_button()}))
+        elif msg.get("chat", {}).get("type", "private") == "private":  # обычное сообщение — в поддержку
+            from .telegram_support import from_user
+
+            try:
+                support_calls, handled = from_user(msg)
+            except Exception:  # noqa: BLE001
+                log.exception("Не удалось принять сообщение в поддержку")
+                support_calls, handled = [("sendMessage", {"chat_id": chat_id, "text": "Не получилось отправить, попробуйте ещё раз чуть позже."})], True
+            calls += support_calls if handled else [("sendMessage", {"chat_id": chat_id, "text": HELP_TEXT, **_site_button()})]
     elif cb := upd.get("callback_query"):
         action, _, token = (cb.get("data") or "").partition(":")
         frm = cb.get("from") or {}
