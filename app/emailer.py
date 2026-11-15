@@ -62,15 +62,20 @@ def send_email(to: str, subject: str, text: str, html: str | None = None) -> boo
 
 
 def send_code(to: str, code: str, purpose: str) -> bool:
+    warn = "Если это были не вы — просто проигнорируйте письмо."
     if purpose == "reset":
         title, intro = "Сброс пароля", "Код для сброса пароля:"
+    elif purpose == "login":
+        title, intro = "Вход в аккаунт", f"Кто-то входит в ваш аккаунт {settings.app_name} по почте и паролю. Код для входа:"
+        warn = ("Если это не вы — никому не сообщайте код и смените пароль (в приложении: «Забыли пароль?»): "
+                "кто-то знает ваш пароль. Без этого кода войти не получится.")
     else:
         title, intro = "Подтвердите почту", "Ваш код подтверждения:"
     ttl = settings.code_ttl_minutes
-    text = f"{intro} {code}\nКод действует {ttl} минут. Если это были не вы — просто проигнорируйте письмо."
+    text = f"{intro} {code}\nКод действует {ttl} минут. {warn}"
     html = _layout(
         title,
         f"{intro}<div style='font-size:34px;letter-spacing:10px;font-weight:bold;color:#fff;"
-        f"padding:18px 0'>{code}</div>Код действует {ttl} минут. Если это были не вы — просто проигнорируйте письмо.",
+        f"padding:18px 0'>{code}</div>Код действует {ttl} минут. {warn}",
     )
     return send_email(to, f"{settings.app_name}: {title.lower()} — {code}", text, html)

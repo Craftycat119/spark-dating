@@ -476,7 +476,13 @@ ${sheet}`, { nav: false, cls: "auth" });
         renderCode(email, r.dev_code);
         if (r.status === "code_pending") toast(`Код уже отправлен на эту почту. ${r.detail}`);
       } else {
-        state.me = await api.post("/api/auth/login", { email, password, ...robot.values() });
+        const r = await api.post("/api/auth/login", { email, password, ...robot.values() });
+        if (r.status === "code_required" || r.status === "code_pending") {
+          renderLoginCode(email, r.dev_code);
+          if (r.status === "code_pending") toast(`Код уже отправлен на почту. ${r.detail}`);
+          return;
+        }
+        state.me = r;
         afterLogin();
         go("#/feed");
       }
@@ -610,6 +616,41 @@ function renderCode(email, devCode) {
   };
   $("#back", root).onclick = () => renderAuth("register");
   bindBack(root, () => renderAuth("register"));
+}
+
+/** Второй шаг входа по почте: код из письма. Без него пароль сам по себе не впускает. */
+function renderLoginCode(email, devCode) {
+  const root = screen(`
+    ${backBtn()}
+    <div class="stack">
+      <h1>Код из письма</h1>
+      <p class="muted">Для защиты аккаунта при каждом входе по почте мы присылаем код. Он ушёл на <b style="color:var(--text)">${esc(email)}</b>. Если письма нет пару минут, проверьте папку «Спам».</p>
+      ${devCode ? `<p class="hint">Режим разработки, почта не настроена. Код: <b>${esc(devCode)}</b></p>` : ""}
+      ${codeBoxesHtml}
+      <p class="error-text" id="code-error" hidden></p>
+      <button class="btn ghost" id="resend">Отправить код ещё раз</button>
+      <p class="hint">Не вы пытаетесь войти? Смените пароль через «Забыли пароль?».</p>
+    </div>`, { nav: false });
+  const err = $("#code-error", root);
+  const inputs = codeInputs($(".code-boxes", root), async (code) => {
+    err.hidden = true;
+    try {
+      state.me = await api.post("/api/auth/login/verify", { email, code });
+      afterLogin();
+      go("#/feed");
+    } catch (ex) {
+      err.textContent = ex.message;
+      err.hidden = false;
+      inputs.clear();
+    }
+  });
+  $("#resend", root).onclick = async () => {
+    try {
+      const r = await api.post("/api/auth/login/resend", { email });
+      toast("Новый код отправлен" + (r.dev_code ? `: ${r.dev_code}` : ""));
+    } catch (ex) { toast(ex.message, { error: true }); }
+  };
+  bindBack(root, () => renderAuth("login"));
 }
 
 function renderForgot(prefill = "") {

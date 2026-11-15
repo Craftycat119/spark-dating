@@ -206,9 +206,48 @@ def login(data: Credentials, request: Request, response: Response, db: Session =
         except HTTPException:
             extra = {}
         raise HTTPException(403, {"code": "email_not_verified", "message": "Подтвердите почту — мы отправили код", **extra})
+    # Пароль верный — но входим только по коду из письма: даже зная пароль, без доступа к почте не войти
+    security_log.event("вход: пароль верный, отправлен код", client_ip(request), email)
+    try:
+        sent = _issue_code(db, email, "login", request)
+    except HTTPException as ex:
+        if ex.status_code != 429:
+            raise
+        # повторно нажали «Войти» в течение минуты: письмо уже ушло, прежний код действует
+        return {"status": "code_pending", "email": email, "detail": ex.detail}
+    return {**sent, "status": "code_required"}
+
+
+class LoginResendIn(BaseModel):
+    email: str
+
+
+@router.post("/login/resend")
+def login_resend(data: LoginResendIn, request: Request, db: Session = Depends(get_db)):
+    """Новый код для входа — только если недавно ввели верный пароль (иначе можно было бы засыпать письмами чужую почту)."""
+    by_ip(request, "login-resend", 10, 3600)
+    email = normalize_email(data.email)
+    recent = db.scalar(select(EmailCode).where(EmailCode.email == email, EmailCode.purpose == "login",
+                                               EmailCode.created_at > utcnow() - timedelta(minutes=30)))
+    if not recent:
+        raise HTTPException(400, "Введите почту и пароль ещё раз")
+    return _issue_code(db, email, "login", request)
+
+
+@router.post("/login/verify")
+def login_verify(data: CodeIn, request: Request, response: Response, db: Session = Depends(get_db)):
+    by_ip(request, "login-verify", 30, 600)
+    email = normalize_email(data.email)
+    user = db.scalar(select(User).where(User.email == email))
+    if not user:
+        raise HTTPException(400, "Неверный код")
+    _check_code(db, email, data.code, "login")
+    if user.is_banned:
+        raise HTTPException(403, "Аккаунт заблокирован")
     if email in settings.admin_emails and not user.is_admin:
         user.is_admin = True
     reset(f"login:email:{email}")
+    security_log.event("вход по коду из письма", client_ip(request), email)
     start_session(db, user, request, response)
     return own_profile(user)
 

@@ -70,7 +70,8 @@ def test_admin_without_profile_and_support_to_telegram(monkeypatch):
     r = boss.post("/api/admin/admins", json={"name": "Оля", "email": "olya@x.io", "password": "Secret123"})
     assert r.status_code == 200 and r.json()["is_admin"]
     olya = new_client()
-    me = olya.post("/api/auth/login", json={"email": "olya@x.io", "password": "Secret123"}).json()
+    code = olya.post("/api/auth/login", json={"email": "olya@x.io", "password": "Secret123"}).json()["dev_code"]
+    me = olya.post("/api/auth/login/verify", json={"email": "olya@x.io", "code": code}).json()
     assert me["is_admin"] and me["name"] == "Оля" and me["terms_accepted"]
     # обращение пользователя уходит админам в Telegram
     bot = FakeBot()

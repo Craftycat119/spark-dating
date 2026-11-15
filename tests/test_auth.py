@@ -23,6 +23,10 @@ def test_register_verify_and_login():
 
     assert c.post("/api/auth/login", json={"email": "anna@example.com", "password": "Wrong1234"}).status_code == 401
     r = c.post("/api/auth/login", json={"email": "anna@example.com", "password": "Secret123"})
+    assert r.status_code == 200 and r.json()["status"] == "code_required"
+    assert c.get("/api/auth/me").status_code == 401  # один пароль не впускает — нужен код из письма
+    assert c.post("/api/auth/login/verify", json={"email": "anna@example.com", "code": "000000"}).status_code == 400
+    r = c.post("/api/auth/login/verify", json={"email": "anna@example.com", "code": r.json()["dev_code"]})
     assert r.status_code == 200
     assert c.get("/api/auth/me").json()["email"] == "anna@example.com"
 
@@ -59,7 +63,8 @@ def test_password_reset():
     r = c.post("/api/auth/reset-password", json={"email": "r@x.io", "code": code, "password": "NewPass99"})
     assert r.status_code == 200
     c2 = new_client()
-    assert c2.post("/api/auth/login", json={"email": "r@x.io", "password": "NewPass99"}).status_code == 200
+    r = c2.post("/api/auth/login", json={"email": "r@x.io", "password": "NewPass99"})
+    assert r.status_code == 200 and r.json()["status"] == "code_required"
 
 
 def _bot_confirms(token, action="ok", user_id=777):
@@ -141,3 +146,20 @@ def test_stale_tunnel_address_is_not_put_into_bot(monkeypatch):
     monkeypatch.setattr(telegram_bot, "_reachable", lambda url: False)
     telegram_bot.setup_profile()
     assert "setChatMenuButton" not in sent
+
+
+
+def test_login_resend_only_after_correct_password():
+    c = new_client()
+    register(c, "z@x.io")
+    c.post("/api/auth/logout")
+    assert new_client().post("/api/auth/login/resend", json={"email": "z@x.io"}).status_code == 400  # пароль не вводили
+    first = c.post("/api/auth/login", json={"email": "z@x.io", "password": "Secret123"}).json()
+    assert first["status"] == "code_required"
+    again = c.post("/api/auth/login", json={"email": "z@x.io", "password": "Secret123"}).json()
+    assert again["status"] == "code_pending"  # повторное «Войти» в течение минуты — тот же код
+    r = c.post("/api/auth/login/verify", json={"email": "z@x.io", "code": first["dev_code"]})
+    assert r.status_code == 200
+    # код одноразовый
+    c3 = new_client()
+    assert c3.post("/api/auth/login/verify", json={"email": "z@x.io", "code": first["dev_code"]}).status_code == 400
