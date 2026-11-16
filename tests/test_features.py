@@ -322,3 +322,21 @@ def test_deleted_accounts_counted_anonymously():
     row = d["recent"][0]
     assert row["by"] == "self" and row["age_group"] == "adult" and row["days"] == 0
     assert "Ушла" not in str(d) and "gone@x.io" not in str(d)  # ни имени, ни почты
+
+
+
+def test_registration_funnel_in_admin():
+    from conftest import new_client, register
+
+    boss = make_user("boss@example.com", name="Андрей")
+    make_user("full@x.io", name="Дошёл")  # полностью
+    half = new_client()
+    register(half, "half@x.io")  # почта подтверждена, дальше не пошёл
+    new_client().post("/api/auth/register", json={"email": "nocode@x.io", "password": "Secret123"})  # код не ввёл
+    f = boss.get("/api/admin/stats").json()["funnel"]
+    steps = {r["step"]: r for r in f["steps"]}
+    assert f["total"] == 3 and f["done"] == 1
+    assert steps["email"]["stuck"] == 1 and steps["about"]["stuck"] == 1 and steps["done"]["stuck"] == 1
+    assert steps["email"]["reached"] == 3 and steps["about"]["reached"] == 2 and steps["done"]["reached"] == 1
+    lst = boss.get("/api/admin/users?step=about").json()
+    assert lst["total"] == 1 and lst["items"][0]["email"] == "half@x.io" and lst["items"][0]["reg_step_label"].startswith("Имя")

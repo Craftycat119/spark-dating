@@ -6,7 +6,9 @@ import { $, $$, confirmDialog, esc, toast } from "./ui.js";
 
 const view = $("#view");
 const drawer = $("#drawer");
-const usersState = { q: "", interest: "", kind: "people", page: 1 };
+const usersState = { q: "", interest: "", kind: "people", step: "", page: 1 };
+const STEP_LABELS = { email: "Подтверждение почты", about: "Имя, дата рождения, согласия", identity: "Пол и кого ищет", extras: "Рост, вес, знак",
+  survey: "Интересы", photo: "Фото", scan: "Проверка лица", location: "Геопозиция", done: "Регистрация завершена" };
 let catalog = [];
 let cfg = {}; // настройки приложения: пол, сексуальность, знаки, опрос — для форм редактирования
 
@@ -46,6 +48,26 @@ function route() {
 }
 
 // ---------- Обзор ----------
+function funnelHtml(f) {
+  if (!f || !f.total) return "";
+  const pct = Math.round((100 * f.done) / f.total);
+  return `<h3 style="margin-top:28px">Регистрация <span class="muted small">кто дошёл до конца, а кто остановился · без админов, ботов и демо</span></h3>
+    <div class="kpis">
+      <div><b>${f.done}</b><span>Прошли до конца (${pct}%)</span></div>
+      <div><b>${f.total - f.done}</b><span>Остановились на полпути</span></div>
+    </div>
+    <table class="grid funnel" style="margin-top:12px">
+      <thead><tr><th>Шаг</th><th>Дошли до шага</th><th></th><th>Остановились здесь</th></tr></thead>
+      <tbody>${f.steps.map((r) => `<tr>
+        <td>${r.step === "done" ? `<b>${esc(r.label)}</b>` : esc(r.label)}</td>
+        <td>${r.reached} <span class="muted small">(${r.reached_pct}%)</span></td>
+        <td style="width:34%"><div class="bar"><i style="width:${r.reached_pct}%"></i></div></td>
+        <td>${r.stuck && r.step !== "done" ? `<a href="#users" data-step="${r.step}">${r.stuck} — показать</a>` : r.step === "done" ? r.stuck : '<span class="muted">0</span>'}</td>
+      </tr>`).join("")}</tbody>
+    </table>
+    <p class="muted small">«Рост, вес, знак» можно пропустить — там обычно не застревают. Нажмите «показать», чтобы увидеть этих людей в «Анкетах».</p>`;
+}
+
 function deletionsHtml(d) {
   if (!d) return "";
   const days = (n) => (n === 0 ? "меньше дня" : `${n} ${plural(n, "день", "дня", "дней")}`);
@@ -89,11 +111,17 @@ async function overview() {
       <div><b>${s.messages}</b><span>Сообщений</span></div>
       <div><b>${s.banned}</b><span>Заблокировано</span></div>
     </div>
+    ${funnelHtml(s.funnel)}
     ${deletionsHtml(s.deletions)}
     <h3 style="margin-top:32px">Популярные интересы</h3>
     <div class="feed-bars">${s.top_interests.map((x) => `
       <div class="r"><span>${esc(x.name)}</span><div class="track"><div class="fill" style="width:${(x.count / max) * 100}%"></div></div><b>${x.count}</b></div>`).join("") || '<p class="muted">Пока нет данных</p>'}
     </div>`;
+  $$("[data-step]", view).forEach((a) => (a.onclick = (e) => {
+    e.preventDefault();
+    usersState.kind = "people"; usersState.step = a.dataset.step; usersState.page = 1;
+    location.hash = "#users";
+  }));
 }
 
 // ---------- Анкеты ----------
@@ -107,7 +135,9 @@ async function users() {
     <p class="muted small kind-hint"></p>
     <div class="toolbar">
       <input class="input" type="search" placeholder="Имя, почта, @telegram или ID" value="${esc(usersState.q)}">
-      <select class="input"><option value="">Любые интересы</option>${catalog.map((k) => `<option ${usersState.interest === k ? "selected" : ""}>${esc(k)}</option>`).join("")}</select>
+      <select class="input" data-step-filter><option value="">Любой шаг регистрации</option>${Object.entries(STEP_LABELS).map(([k, l]) =>
+        `<option value="${k}" ${usersState.step === k ? "selected" : ""}>${k === "done" ? l : "Остановились: " + l}</option>`).join("")}</select>
+      <select class="input" data-interest><option value="">Любые интересы</option>${catalog.map((k) => `<option ${usersState.interest === k ? "selected" : ""}>${esc(k)}</option>`).join("")}</select>
     </div>
     <details class="add-admin">
       <summary>${icons.plus} Добавить администратора</summary>
@@ -138,7 +168,8 @@ async function users() {
   let t;
   search.oninput = () => { clearTimeout(t); t = setTimeout(() => { usersState.q = search.value; usersState.page = 1; loadUsers(); }, 300); };
   $$("[data-kind]", view).forEach((b) => (b.onclick = () => { usersState.kind = b.dataset.kind; usersState.page = 1; loadUsers(); }));
-  $(".toolbar select", view).onchange = (e) => { usersState.interest = e.target.value; usersState.page = 1; loadUsers(); };
+  $("[data-interest]", view).onchange = (e) => { usersState.interest = e.target.value; usersState.page = 1; loadUsers(); };
+  $("[data-step-filter]", view).onchange = (e) => { usersState.step = e.target.value; usersState.page = 1; loadUsers(); };
   loadUsers();
 }
 
@@ -153,7 +184,7 @@ document.addEventListener("visibilitychange", () => !document.hidden && $("#tabl
 
 async function loadUsers() {
   watchUsers();
-  const p = new URLSearchParams({ q: usersState.q, interest: usersState.interest, kind: usersState.kind, page: usersState.page, per_page: 30 });
+  const p = new URLSearchParams({ q: usersState.q, interest: usersState.interest, kind: usersState.kind, step: usersState.step, page: usersState.page, per_page: 30 });
   const res = await api.get(`/api/admin/users?${p}`);
   const box = $("#table");
   if (!box) return;
@@ -178,7 +209,7 @@ async function loadUsers() {
       <td>${dt(u.created_at)}</td>
       <td>${esc(u.registration_ip || "—")}</td>
       <td>${tags(u.goals)}</td>
-      <td>${u.is_banned ? '<span class="tag warn">Заблокирован</span>' : ""}${u.photo_verified ? '<span class="tag ok">Фото ✓</span>' : '<span class="tag warn">Фото не проверено</span>'}${u.online ? '<span class="tag ok">В сети</span>' : ""}</td>
+      <td>${u.reg_step && u.reg_step !== "done" ? `<span class="tag warn">Остановился: ${esc(u.reg_step_label)}</span>` : u.reg_step === "done" ? '<span class="tag ok">Регистрация ✓</span>' : ""}${u.is_banned ? '<span class="tag warn">Заблокирован</span>' : ""}${u.photo_verified ? '<span class="tag ok">Фото ✓</span>' : '<span class="tag warn">Фото не проверено</span>'}${u.online ? '<span class="tag ok">В сети</span>' : ""}</td>
     </tr>`).join("")}</tbody></table>
     <div class="pager"><button data-p="-1" ${usersState.page <= 1 ? "disabled" : ""}>Назад</button>
       <span>Страница ${usersState.page} из ${pages} · всего ${res.total}</span>

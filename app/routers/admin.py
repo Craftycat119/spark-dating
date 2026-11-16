@@ -9,6 +9,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .. import feed_index, push, storage
+from ..onboarding import LABELS, ORDER, STEPS, step_of
 from ..config import settings
 from ..interests import GENDERS, INTERESTS, LOOKING_FOR, ORIENTATIONS
 from ..database import get_db
@@ -52,6 +53,8 @@ def user_row(u: User) -> dict:
         "goals": u.goals,
         "created_at": _iso(u.created_at),
         "last_seen_at": _iso(u.last_seen_at),
+        "reg_step": (step := step_of(u)) if not (u.is_admin or u.is_bot or u.is_demo) else None,
+        "reg_step_label": LABELS.get(step) if not (u.is_admin or u.is_bot or u.is_demo) else None,
         "online": manager.is_online(u.id),
         "registration_ip": u.registration_ip,
         "registration_lat": u.registration_lat,
@@ -97,7 +100,25 @@ def stats(_: User = Depends(admin_user), db: Session = Depends(get_db)):
         "top_interests": [{"name": k, "count": v} for k, v in top],
         "audience": _audience(db),
         "deletions": _deletions(db),
+        "funnel": _funnel(db),
     }
+
+
+def _funnel(db: Session) -> dict:
+    """Воронка регистрации: где люди останавливаются. Без админов, ботов, демо и заблокированных."""
+    people = db.scalars(select(User).where(User.is_bot.is_(False), User.is_demo.is_(False), User.is_admin.is_(False),
+                                           User.is_banned.is_(False))).all()
+    stuck = {code: 0 for code, _ in STEPS}
+    for u in people:
+        stuck[step_of(u)] += 1
+    total = len(people)
+    rows, left = [], total
+    for code, label in STEPS:
+        # «дошли до шага» — все, кто сейчас на нём или дальше
+        rows.append({"step": code, "label": label, "stuck": stuck[code], "reached": left,
+                     "reached_pct": round(100 * left / total) if total else 0})
+        left -= stuck[code]
+    return {"total": total, "done": stuck["done"], "steps": rows}
 
 
 def _deletions(db: Session) -> dict:
@@ -143,7 +164,7 @@ def _audience(db: Session) -> dict:
 
 
 @router.get("/users")
-def users(q: str = "", interest: str = "", kind: str = "people", page: int = 1, per_page: int = 30,
+def users(q: str = "", interest: str = "", kind: str = "people", step: str = "", page: int = 1, per_page: int = 30,
           _: User = Depends(admin_user), db: Session = Depends(get_db)):
     """kind: people — настоящие люди, bots — боты демо-версии (общие для всех гостей), guests — демо-гости."""
     kinds = {
@@ -161,9 +182,15 @@ def users(q: str = "", interest: str = "", kind: str = "people", page: int = 1, 
         query = query.where(or_(*conds))
     if interest in INTERESTS:
         query = query.where(User.interests_json.like(f'%"{interest}"%'))
-    total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     per_page = max(1, min(per_page, 100))
-    rows = db.scalars(query.order_by(User.id.desc()).offset((max(page, 1) - 1) * per_page).limit(per_page)).unique().all()
+    if step in ORDER:
+        # шаг регистрации считается по нескольким полям — фильтруем здесь (анкет немного)
+        everyone_ = [u for u in db.scalars(query.where(User.is_admin.is_(False)).order_by(User.id.desc())).unique().all() if step_of(u) == step]
+        total = len(everyone_)
+        rows = everyone_[(max(page, 1) - 1) * per_page:max(page, 1) * per_page]
+    else:
+        total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+        rows = db.scalars(query.order_by(User.id.desc()).offset((max(page, 1) - 1) * per_page).limit(per_page)).unique().all()
     return {"total": total, "page": page, "per_page": per_page, "counts": counts, "items": [user_row(u) for u in rows]}
 
 
