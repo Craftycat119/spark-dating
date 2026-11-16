@@ -225,3 +225,22 @@ def test_client_log_accepts_reports():
     r = c.post("/api/client-log", json={"kind": "boot-timeout", "message": "x", "ua": "iPhone"})
     assert r.status_code == 200
     assert 'js/boot-guard.js"' in c.get("/").text
+
+
+def test_email_signup_inside_telegram_gets_embedded_cookie():
+    """Регистрация по почте внутри Telegram (встроенное окно): без «встроенной» cookie на следующем шаге «Нужно войти»."""
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    c = TestClient(app, base_url="https://testserver")
+    h = {"X-COFI-Embedded": "1"}
+    code = c.post("/api/auth/register", json={"email": "tgweb@x.io", "password": "Secret123"}, headers=h).json()["dev_code"]
+    r = c.post("/api/auth/verify-email", json={"email": "tgweb@x.io", "code": code}, headers=h)
+    cookie = r.headers["set-cookie"].lower()
+    assert r.status_code == 200 and "samesite=none" in cookie and "partitioned" in cookie
+    # обычный браузер — как раньше
+    c2 = TestClient(app, base_url="https://testserver")
+    code = c2.post("/api/auth/register", json={"email": "plain@x.io", "password": "Secret123"}).json()["dev_code"]
+    r = c2.post("/api/auth/verify-email", json={"email": "plain@x.io", "code": code})
+    assert "samesite=lax" in r.headers["set-cookie"].lower()

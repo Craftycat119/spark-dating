@@ -9,10 +9,14 @@ export class ApiError extends Error {
   }
 }
 
+// Открыты внутри Telegram (встроенное окно в Telegram на компьютере и в веб-версии): сервер должен выдать
+// «встроенную» cookie входа, обычную браузер там не сохранит
+const EMBEDDED = (() => { try { return window.self !== window.top || !!window.Telegram?.WebApp?.initData; } catch { return true; } })();
+
 async function request(method, url, body, timeoutMs = method === "GET" ? 30000 : 120000) {
   const ctrl = window.AbortController ? new AbortController() : null;
   const timer = ctrl && setTimeout(() => ctrl.abort(), timeoutMs); // сервер молчит — не ждём бесконечно
-  const opts = { method, credentials: "same-origin", headers: {}, signal: ctrl?.signal };
+  const opts = { method, credentials: "same-origin", headers: EMBEDDED ? { "X-COFI-Embedded": "1" } : {}, signal: ctrl?.signal };
   if (body instanceof FormData) opts.body = body;
   else if (body !== undefined) {
     opts.headers["Content-Type"] = "application/json";

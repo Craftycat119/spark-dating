@@ -41,6 +41,9 @@ def start_session(db: Session, user: User, request: Request, response: Response,
     db.commit()
     secure = settings.cookie_secure or request.url.scheme == "https"
     max_age = settings.session_days * 86400
+    # приложение само сообщает, что открыто внутри Telegram (встроенное окно): тогда и вход по почте,
+    # и регистрация, и вход через бота получают «встроенную» cookie — иначе на следующем шаге «Нужно войти в аккаунт»
+    embedded = embedded or request.headers.get("x-cofi-embedded") == "1"
     if embedded and secure:
         # Partitioned Starlette ставит только на Python 3.14+, поэтому заголовок собираем сами
         response.headers.append("set-cookie", f"{COOKIE_NAME}={token}; Max-Age={max_age}; Path=/; HttpOnly; Secure; SameSite=None; Partitioned")
