@@ -973,3 +973,6 @@ html.in-tg .tg-drop { top: 32px; }
 .help-link:hover { color: var(--text); }
 .hero-foot { gap: 14px; }
 .guest-support .icon-btn { align-self: flex-start; }
+
+.my-place { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px;
+  background: none; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

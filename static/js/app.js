@@ -244,8 +244,45 @@ function telegramInitData() {
 
 let presenceBound = false;
 
+// ---- Геопозиция обновляется сама: уехал из Нячанга в Бангкок — лента и расстояния считаются от Бангкока ----
+let lastAutoLocate = 0;
+const kmBetween = (a, b) => {
+  const r = (x) => (x * Math.PI) / 180;
+  const d = Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lon - a.lon) / 2) ** 2;
+  return 12742 * Math.asin(Math.min(1, Math.sqrt(d)));
+};
+async function geoAllowed() {
+  try { return (await navigator.permissions?.query({ name: "geolocation" }))?.state === "granted"; } catch { return false; }
+}
+/** Тихо: только если разрешение уже дано (без вопросов), не чаще раза в 30 минут. */
+async function autoLocate({ force = false } = {}) {
+  const me = state.me;
+  if (!me || me.is_demo || me.lat == null) return;
+  if (!force && Date.now() - lastAutoLocate < 30 * 60 * 1000) return;
+  lastAutoLocate = Date.now();
+  let pos;
+  if (!force) {
+    // тихо: через Telegram — если доступ уже давали, в браузере — если разрешение уже есть
+    const tg = await tgLocation(false);
+    if (tg) pos = tg;
+    else if (tg === null || !(await geoAllowed())) return;
+  }
+  try { pos = pos || (await getPosition()); } catch (ex) { if (force) toast(ex.message, { error: true }); return; }
+  const age = me.location_updated_at ? Date.now() - Date.parse(me.location_updated_at) : Infinity;
+  if (!force && kmBetween(me, pos) < 2 && age < 12 * 3600 * 1000) return; // на месте — ничего не меняем
+  try {
+    const r = await api.post("/api/profile/location", pos);
+    const before = me.city_name;
+    Object.assign(state.me, { lat: pos.lat, lon: pos.lon, city_name: r.city || null, location_updated_at: new Date().toISOString() });
+    if (force || (r.city && r.city !== before)) toast(r.city ? `Местоположение обновлено: ${r.city}` : "Местоположение обновлено");
+    if (currentHash().startsWith("#/feed") || currentHash() === "#/" || currentHash() === "") rerender();
+  } catch { /* не страшно — попробуем в следующий раз */ }
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") autoLocate(); });
+
 function afterLogin() {
   connectSocket();
+  autoLocate();
   // Сообщаем серверу, видна ли страница: свёрнутое мини-приложение держит соединение,
   // но человек ничего не видит, и тогда сообщения и звонки нужно присылать в Telegram
   if (!presenceBound) {
@@ -1131,7 +1168,37 @@ function stepScan() {
   };
 }
 
-function getPosition() {
+/**
+ * Геопозиция через Telegram (LocationManager, Bot API 8.0): Telegram запоминает разрешение, и потом
+ * место можно брать тихо. ask=false — не спрашивать, если разрешения ещё нет.
+ * Возвращает {lat, lon}; null — доступа нет/отказали; undefined — в этом Telegram не работает (берём из браузера).
+ */
+function tgLocation(ask) {
+  const wa = tgApp(), lm = wa?.LocationManager;
+  if (!lm || !wa?.initData || !wa.isVersionAtLeast?.("8.0")) return Promise.resolve(undefined);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(undefined), 10000);
+    const done = (v) => { clearTimeout(timer); resolve(v); };
+    const go = () => {
+      if (!lm.isLocationAvailable) return done(undefined);
+      if (!lm.isAccessGranted && !ask && lm.isAccessRequested) return done(null);
+      if (!lm.isAccessRequested && !ask) return done(null);
+      try { lm.getLocation((d) => done(d && d.latitude != null ? { lat: d.latitude, lon: d.longitude } : null)); } catch { done(undefined); }
+    };
+    try { lm.isInited ? go() : lm.init(go); } catch { done(undefined); }
+  });
+}
+
+async function getPosition() {
+  const tg = await tgLocation(true);
+  if (tg) return tg;
+  if (tg === null && tgApp()?.LocationManager?.isAccessRequested) {
+    throw new Error("Доступ к геопозиции для COFI выключен. Включите: ⋯ → «Настройки бота» → Геопозиция, или в настройках Telegram.");
+  }
+  return browserPosition();
+}
+
+function browserPosition() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error("Браузер не поддерживает геопозицию"));
     navigator.geolocation.getCurrentPosition(
@@ -1188,7 +1255,8 @@ const kmText = (km) => (km == null ? "" : km < 1 ? "меньше 1 км от в�
 
 async function renderFeed() {
   const root = screen(`
-    <div class="topbar"><span class="row" style="gap:8px"><span class="logo">cofi<span>°</span></span>${state.me.is_demo ? '<span class="demo-pill">демо</span>' : ""}</span><span class="counter"></span></div>
+    <div class="topbar"><span class="row" style="gap:8px"><span class="logo">cofi<span>°</span></span>${state.me.is_demo ? '<span class="demo-pill">демо</span>' : ""}</span>
+      <span class="row" style="gap:10px">${state.me.city_name ? `<button class="my-place" data-relocate title="Обновить геопозицию">${icons.pin} ${esc(state.me.city_name)}</button>` : ""}<span class="counter"></span></span></div>
     ${feedTabs("people", state.me)}
     <div class="deck" aria-live="polite"><div class="skeleton" style="position:relative;height:420px"></div></div>
     <p class="swipe-hint" hidden>Свайп по нитке вниз: нравится, вверх: дальше. Нажмите на фото, чтобы открыть анкету</p>
@@ -1202,6 +1270,7 @@ async function renderFeed() {
   if (state.me.is_admin && !state.me.is_complete) return adminHome(root);
   const hint = $(".swipe-hint", root);
   const counter = $(".counter", root);
+  $("[data-relocate]", root)?.addEventListener("click", () => autoLocate({ force: true }));
   let cards = [], total = 0, seen = 0, busy = false, loading = false, thread = null;
   const history = []; // последние решения, чтобы вернуть случайно пролистанную анкету или отменить лайк
   const undoBtn = () => $(".undo", btns);
