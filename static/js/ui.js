@@ -15,7 +15,14 @@ export function h(html) {
   return t.content.firstElementChild;
 }
 
+const NETWORK_TEXT = /failed to fetch|networkerror|load failed|network request failed/i;
+
 export function toast(text, { error = false, image = null, onClick = null, timeout = 4000 } = {}) {
+  // технические ошибки браузера — понятным текстом
+  if (NETWORK_TEXT.test(String(text))) text = "Нет соединения с сервером. Проверьте интернет";
+  // одинаковое сообщение уже на экране — не дублируем стопкой
+  const same = [...document.querySelectorAll(".toast")].find((t) => t.textContent === String(text));
+  if (same) return same;
   const el = h(`<div class="toast ${error ? "error" : ""}" role="status">${image ? `<img src="${esc(image)}" alt="">` : ""}<div>${esc(text)}</div></div>`);
   // смахнуть уведомление вверх, чтобы убрать
   let y0 = null, dy = 0;

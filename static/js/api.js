@@ -30,7 +30,13 @@ async function request(method, url, body, timeoutMs = method === "GET" ? 30000 :
   } finally {
     clearTimeout(timer);
   }
-  const data = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
+  let data = null;
+  try {
+    // связь может оборваться и пока ответ ещё идёт — тогда браузер пишет по-английски «Failed to fetch»
+    data = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
+  } catch {
+    throw new ApiError(0, "Нет соединения с сервером. Проверьте интернет");
+  }
   if (!res.ok) {
     let detail = data?.detail ?? "Ошибка сервера";
     if (Array.isArray(detail)) detail = detail.map((d) => d.msg).join("; ");
