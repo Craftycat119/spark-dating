@@ -674,14 +674,17 @@ function mail() {
     <form class="stack" style="max-width:560px">
       <p class="muted">Сообщение придёт через Telegram-бота всем, у кого подключён Telegram и включены уведомления. На почту рассылки не отправляются: почтой уходят только коды входа.</p>
       <label class="field"><span>Тема</span><input class="input" name="subject" maxlength="200" required placeholder="Например: в COFI появились кружочки"></label>
-      <label class="field"><span>Текст</span><textarea class="input" name="body" rows="10" required></textarea></label>
+      <label class="field"><span>Текст</span><textarea class="input" name="body" rows="10" maxlength="3900" required></textarea></label>
       <label class="field"><span>Картинка (необязательно)</span><input class="input" type="file" name="image" accept="image/*"></label>
       <div class="bc-preview" hidden><img alt="Картинка рассылки"><button type="button" class="btn quiet" data-clear-image>Убрать картинку</button></div>
-      <p class="muted small">С картинкой текст станет подписью к фото. Если текст длиннее 1024 символов, он придёт отдельным сообщением сразу под картинкой.</p>
+      <p class="muted small">Картинка и текст придут одним сообщением: картинка крупно над текстом. Текст — до 3900 символов. Отправленную рассылку можно изменить или удалить у всех — внизу страницы.</p>
       <label class="check"><input type="checkbox" name="everyone"><span><b>Важное служебное — всем, кто писал боту</b><br>
         <span class="muted small">Технические работы, сбои, изменения правил. Придёт и тем, у кого уведомления выключены, и тем, кто писал боту без аккаунта. Не для новостей и рекламы.</span></span></label>
       <button class="btn">Отправить рассылку</button>
-    </form>`;
+    </form>
+    <h2 style="margin-top:36px">Отправленные</h2>
+    <div class="bc-list"><p class="muted">Загрузка…</p></div>`;
+  loadBroadcasts();
   const fileIn = $("input[name=image]", view), prev = $(".bc-preview", view);
   fileIn.onchange = () => {
     const file = fileIn.files[0];
@@ -704,8 +707,58 @@ function mail() {
       toast(`Рассылка поставлена в очередь: ${r.recipients} получателей`);
       f.reset();
       prev.hidden = true;
+      setTimeout(loadBroadcasts, 1500);
     } catch (ex) { toast(ex.message, { error: true }); }
   };
+}
+
+async function loadBroadcasts() {
+  const box = $(".bc-list", view);
+  if (!box) return;
+  let list;
+  try { list = await api.get("/api/admin/broadcasts"); } catch (ex) { box.innerHTML = `<p class="error-text">${esc(ex.message)}</p>`; return; }
+  if (!list.length) { box.innerHTML = `<p class="muted">Рассылок пока не было.</p>`; return; }
+  const st = (b) => b.status === "deleted" ? '<span class="tag warn">удалена у всех</span>'
+    : b.status === "sending" ? '<span class="tag">отправляется…</span>'
+    : `<span class="tag ok">доставлено ${b.sent} из ${b.recipients}</span>${b.failed ? ` <span class="tag warn">не дошло ${b.failed}</span>` : ""}`;
+  box.innerHTML = list.map((b) => `
+    <div class="bc-item" data-id="${b.id}">
+      ${b.image_url ? `<img src="${esc(b.image_url)}" alt="">` : ""}
+      <div class="bc-body">
+        <b>${esc(b.subject)}</b> ${st(b)}${b.edited_at ? ' <span class="muted small">изменена</span>' : ""}
+        <p class="muted small">${dt(b.created_at)}${b.everyone ? " · служебная, всем" : ""}</p>
+        <p class="bc-text">${esc(b.body).slice(0, 300)}${b.body.length > 300 ? "…" : ""}</p>
+        ${b.status === "sent" ? `<div class="row" style="gap:8px;flex-wrap:wrap">
+          <button class="btn quiet" data-edit>Изменить текст</button>
+          ${b.can_delete ? `<button class="btn danger" data-del>Удалить у всех</button>` : '<span class="muted small">Удалить можно только 48 часов после отправки</span>'}
+        </div>` : ""}
+      </div>
+    </div>`).join("");
+  $$(".bc-item", box).forEach((el) => {
+    const b = list.find((x) => x.id === Number(el.dataset.id));
+    $("[data-del]", el)?.addEventListener("click", async () => {
+      if (!(await confirmDialog(`Удалить рассылку «${b.subject}» у всех ${b.sent} получателей? Вернуть будет нельзя.`, "Удалить у всех"))) return;
+      try { await api.del(`/api/admin/broadcasts/${b.id}`); toast("Удаляем у всех получателей…"); setTimeout(loadBroadcasts, 1500); } catch (ex) { toast(ex.message, { error: true }); }
+    });
+    $("[data-edit]", el)?.addEventListener("click", () => {
+      const body = $(".bc-body", el);
+      body.innerHTML = `<form class="stack">
+        <label class="field"><span>Тема</span><input class="input" name="subject" maxlength="200" required value="${esc(b.subject)}"></label>
+        <label class="field"><span>Текст</span><textarea class="input" name="body" rows="8" maxlength="3900" required>${esc(b.body)}</textarea></label>
+        <div class="row" style="gap:8px"><button class="btn">Сохранить у всех</button><button type="button" class="btn quiet" data-cancel>Отмена</button></div>
+        <p class="muted small">Текст изменится у всех ${b.sent} получателей. Картинку поменять нельзя — это ограничение Telegram.</p>
+      </form>`;
+      $("[data-cancel]", body).onclick = loadBroadcasts;
+      $("form", body).onsubmit = async (e) => {
+        e.preventDefault();
+        try {
+          await api.patch(`/api/admin/broadcasts/${b.id}`, { subject: e.target.subject.value, body: e.target.body.value });
+          toast("Текст меняется у всех получателей");
+          loadBroadcasts();
+        } catch (ex) { toast(ex.message, { error: true }); }
+      };
+    });
+  });
 }
 
 boot();

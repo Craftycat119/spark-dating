@@ -361,3 +361,22 @@ class AppFlag(Base):
 
     key: Mapped[str] = mapped_column(String(128), primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Broadcast(Base):
+    """Рассылка через Telegram-бота: что и кому ушло (номера сообщений — чтобы изменить или удалить у всех)."""
+
+    __tablename__ = "broadcasts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    subject: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text)
+    image_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    everyone: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(16), default="sending")  # sending | sent | deleted
+    recipients: Mapped[int] = mapped_column(Integer, default=0)
+    sent: Mapped[int] = mapped_column(Integer, default=0)
+    failed: Mapped[int] = mapped_column(Integer, default=0)
+    deliveries: Mapped[str] = mapped_column(Text, default="{}")  # {chat_id: message_id}
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

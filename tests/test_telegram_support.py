@@ -67,7 +67,7 @@ def test_service_broadcast_reaches_everyone_who_wrote_the_bot(monkeypatch):
 
     monkeypatch.setattr(settings, "telegram_bot_token", "x")
     got = []
-    monkeypatch.setattr("app.push.broadcast", lambda chats, text, image=None: got.append((sorted(chats), text)))
+    monkeypatch.setattr("app.broadcasts.send", lambda bid, chats: got.append(sorted(chats)))
     boss = make_user("boss@example.com", name="Андрей")
     u = make_user("bc1@x.io", name="Без уведомлений")
     with SessionLocal() as db:
@@ -78,43 +78,59 @@ def test_service_broadcast_reaches_everyone_who_wrote_the_bot(monkeypatch):
         db.commit()
     assert boss.post("/api/admin/broadcast", data={"subject": "Новость", "body": "x"}).json()["recipients"] == 0
     r = boss.post("/api/admin/broadcast", data={"subject": "Технические работы", "body": "y", "everyone": "true"}).json()
-    assert r["recipients"] == 2 and got[-1][0] == [4242, 5151]
+    assert r["recipients"] == 2 and got[-1] == [4242, 5151]
 
 
+class _Bot:
+    def __init__(self):
+        self.calls = []
 
-def test_broadcast_with_image(monkeypatch):
+    def __call__(self, method, payload=None, timeout=15):
+        self.calls.append((method, payload))
+        return {"ok": True, "result": {"message_id": 100 + len(self.calls)}}
+
+
+def test_broadcast_one_message_with_image_then_edit_and_delete(monkeypatch):
     from conftest import jpeg_bytes
 
+    from app import broadcasts, telegram_bot
     from app.database import SessionLocal
     from app.models import User
 
+    bot = _Bot()
     monkeypatch.setattr(settings, "telegram_bot_token", "x")
-    got = []
-    monkeypatch.setattr("app.push.broadcast", lambda chats, text, image=None: got.append((chats, text, image)))
+    monkeypatch.setattr(settings, "base_url", "https://cofi.example")
+    monkeypatch.setattr(telegram_bot, "api", bot)
+    monkeypatch.setattr(broadcasts, "PAUSE", 0)
     boss = make_user("boss@example.com", name="Андрей")
-    u = make_user("img1@x.io", name="Получатель")
-    with SessionLocal() as db:
-        db.get(User, u.user_id).telegram_id = 9090
-        db.commit()
-    r = boss.post("/api/admin/broadcast", data={"subject": "Новинка", "body": "Смотрите!"},
-                  files={"image": ("pic.png", jpeg_bytes(), "image/png")})
-    assert r.status_code == 200 and r.json()["recipients"] == 1
-    chats, text, image = got[-1]
-    assert image[:2] == b"\xff\xd8" and "Новинка" in text  # пересохранена в JPEG
-    bad = boss.post("/api/admin/broadcast", data={"subject": "x", "body": "y"}, files={"image": ("a.jpg", b"not image", "image/jpeg")})
-    assert bad.status_code == 400
+    for i, tid in enumerate((9001, 9002)):
+        u = make_user(f"r{i}@x.io", name=f"Получатель{i}")
+        with SessionLocal() as db:
+            db.get(User, u.user_id).telegram_id = tid
+            db.commit()
+    r = boss.post("/api/admin/broadcast", data={"subject": "Безопасность", "body": "Длинный текст " * 200},
+                  files={"image": ("pic.png", jpeg_bytes(), "image/png")}).json()
+    assert r["recipients"] == 2
+    sends = [p for m, p in bot.calls if m == "sendMessage"]
+    assert len(sends) == 2 and not [m for m, _ in bot.calls if m in ("sendPhoto",)]  # одно сообщение, без отдельного фото
+    p = sends[0]
+    assert p["text"].count("Безопасность") == 1  # заголовок не дублируется
+    assert p["link_preview_options"]["show_above_text"] and p["link_preview_options"]["url"].startswith("https://cofi.example/pub/broadcast/")
+    # картинка доступна Telegram без входа
+    name = p["link_preview_options"]["url"].rsplit("/", 1)[1]
+    from conftest import new_client
+    assert new_client().get(f"/pub/broadcast/{name}").headers["content-type"] == "image/jpeg"
+    assert new_client().get("/pub/broadcast/spark.db").status_code == 404  # только имена картинок рассылок
+    assert b"SQLite" not in new_client().get("/pub/broadcast/../../spark.db").content  # базу так не скачать
 
-
-def test_photo_uploaded_once_then_reused(monkeypatch):
-    from app import push, telegram_bot
-
-    calls = []
-    monkeypatch.setattr(telegram_bot, "api_upload", lambda m, f, ff, fn, d, mime, timeout=60: calls.append(("upload", f["chat_id"])) or
-                        {"result": {"photo": [{"file_id": "small"}, {"file_id": "BIG"}]}})
-    monkeypatch.setattr(telegram_bot, "api", lambda m, p=None, timeout=15: calls.append((m, p["chat_id"], p.get("photo"))) or {"result": {}})
-    monkeypatch.setattr(push.time, "sleep", lambda s: None)
-    push.broadcast([1, 2, 3], "📣 Тема\n\nкороткий текст", b"JPEGDATA")
-    assert calls == [("upload", 1), ("sendPhoto", 2, "BIG"), ("sendPhoto", 3, "BIG")]
-    calls.clear()
-    push.broadcast([7], "📣 Тема\n\n" + "длинно " * 300, b"JPEGDATA")  # длиннее 1024 — текст отдельным сообщением
-    assert [c[0] for c in calls] == ["upload", "sendMessage"]
+    lst = boss.get("/api/admin/broadcasts").json()
+    assert lst[0]["sent"] == 2 and lst[0]["can_delete"]
+    bid = lst[0]["id"]
+    bot.calls.clear()
+    boss.patch(f"/api/admin/broadcasts/{bid}", json={"subject": "Безопасность", "body": "Исправленный текст"})
+    edits = [p for m, p in bot.calls if m == "editMessageText"]
+    assert len(edits) == 2 and {e["message_id"] for e in edits} == {sends[0] and 101, 102} and "Исправленный" in edits[0]["text"]
+    bot.calls.clear()
+    boss.delete(f"/api/admin/broadcasts/{bid}")
+    assert sorted((p["chat_id"], p["message_id"]) for m, p in bot.calls if m == "deleteMessage") == [(9001, 101), (9002, 102)]
+    assert boss.get("/api/admin/broadcasts").json()[0]["status"] == "deleted"

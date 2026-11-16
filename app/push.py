@@ -9,7 +9,6 @@ Telegram показывает сообщение бота вверху экра�
 """
 from __future__ import annotations
 
-import json
 import logging
 import threading
 import time
@@ -315,49 +314,3 @@ def notify_admins(db, thread, text: str) -> None:
         _in_background(_send, chat, message, [admin_button("support")])
 
 
-CAPTION_MAX = 1024  # Telegram: подпись к фото не длиннее
-
-
-def _send_photo(chat_id: int, photo, caption: str, buttons: list[dict | None]) -> str | None:
-    """Фото с подписью. photo — bytes (первая отправка) или file_id (дальше: Telegram не грузит картинку заново).
-    Возвращает file_id отправленного фото."""
-    from .telegram_bot import api, api_upload
-
-    row = [b for b in buttons if b]
-    markup = {"inline_keyboard": [row]} if row else None
-    try:
-        if isinstance(photo, (bytes, bytearray)):
-            fields = {"chat_id": chat_id, "caption": caption}
-            if markup:
-                fields["reply_markup"] = json.dumps(markup, ensure_ascii=False)
-            res = api_upload("sendPhoto", fields, "photo", "image.jpg", bytes(photo), "image/jpeg")
-        else:
-            payload = {"chat_id": chat_id, "photo": photo, "caption": caption}
-            if markup:
-                payload["reply_markup"] = markup
-            res = api("sendPhoto", payload)
-        sizes = res.get("result", {}).get("photo") or []
-        log.info("Telegram: уведомление отправлено (%s): фото, %s", chat_id, caption.splitlines()[0] if caption else "")
-        return sizes[-1]["file_id"] if sizes else None
-    except urllib.error.HTTPError as ex:
-        log.warning("Telegram: уведомление не отправлено (%s): %s", chat_id, ex.read().decode("utf-8", "replace"))
-    except Exception as ex:  # noqa: BLE001
-        log.warning("Telegram: уведомление не отправлено (%s): %s", chat_id, ex)
-    return None
-
-
-def broadcast(chats: list[int], text: str, image: bytes | None = None) -> None:
-    """Рассылка из админ-панели. Не быстрее ~25 сообщений в секунду: так требует Telegram.
-    С картинкой: фото с подписью; длинный текст (больше 1024 символов) — отдельным сообщением под фото."""
-    button = [_open_button("Открыть COFI")]
-    file_id = None
-    for chat in chats:
-        if image:
-            short = len(text) <= CAPTION_MAX
-            got = _send_photo(chat, file_id or image, text if short else text.split("\n", 1)[0][:CAPTION_MAX], button if short else [])
-            file_id = file_id or got
-            if not short:
-                _send(chat, text, button)
-        else:
-            _send(chat, text, button)
-        time.sleep(0.04)

@@ -147,6 +147,19 @@ def call_ice_servers(user: User = Depends(current_user)):
     return settings.ice_servers
 
 
+@app.get("/pub/broadcast/{name}")
+def broadcast_image(name: str):
+    """Картинка рассылки — публичная: её скачивает Telegram, чтобы показать над текстом. Только наши имена файлов."""
+    import re as _re
+
+    if not _re.fullmatch(r"[0-9a-f]{32}\.jpg", name):
+        raise HTTPException(404)
+    path = settings.media_dir / "broadcast" / name
+    if not path.exists():
+        raise HTTPException(404)
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=604800"})
+
+
 @app.get("/media/{rel:path}")
 def media(rel: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Файлы отдаются только авторизованным: чат — участникам, кадр сканера — владельцу и админу."""
