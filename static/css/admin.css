@@ -123,3 +123,6 @@ dl.kv dd { margin: 0; word-break: break-word; }
 .user-kinds button span { opacity: .7; font-variant-numeric: tabular-nums; }
 .user-kinds button.on { background: var(--orange); color: var(--on-orange); }
 .kind-hint:empty { display: none; }
+
+.bc-preview { display: flex; align-items: flex-end; gap: 12px; }
+.bc-preview img { max-width: 220px; max-height: 220px; border-radius: 12px; object-fit: cover; }

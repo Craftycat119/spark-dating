@@ -173,7 +173,7 @@ def test_admin_panel():
     assert b.get("/api/auth/me").status_code == 401
 
     # без бота рассылка недоступна: почтой уходят только коды
-    assert boss.post("/api/admin/broadcast", json={"subject": "Обновление", "body": "Добавили кружочки"}).status_code == 503
+    assert boss.post("/api/admin/broadcast", data={"subject": "Обновление", "body": "Добавили кружочки"}).status_code == 503
 
     assert boss.delete(f"/api/admin/users/{a.user_id}").status_code == 200
     assert boss.get(f"/api/admin/users/{a.user_id}").status_code == 404

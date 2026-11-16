@@ -335,10 +335,29 @@ def conversation_messages(conv_id: int, _: User = Depends(admin_user), db: Sessi
 
 
 @router.post("/broadcast")
-def broadcast(data: BroadcastIn, background: BackgroundTasks, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+def broadcast(background: BackgroundTasks, subject: str = Form(..., min_length=1, max_length=200),
+              body: str = Form(..., min_length=1, max_length=20000), everyone: bool = Form(False),
+              image: UploadFile | None = File(None), _: User = Depends(admin_user), db: Session = Depends(get_db)):
     """Новость всем через Telegram-бота. Почта используется только для кодов подтверждения."""
     if not push.enabled():
         raise HTTPException(503, "Telegram-бот не настроен: укажите TELEGRAM_BOT_TOKEN в .env")
+    data = BroadcastIn(subject=subject, body=body, everyone=everyone)
+    picture = None
+    if image is not None and image.filename:
+        # картинку пересохраняем в JPEG (поворот по EXIF, без метаданных, не больше 1600 px) — как фото анкет
+        import io
+
+        from PIL import Image, ImageOps, UnidentifiedImageError
+
+        raw = storage.read_limited(image, settings.max_image_mb)
+        try:
+            pic = ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert("RGB")
+        except (UnidentifiedImageError, OSError) as exc:
+            raise HTTPException(400, "Это не картинка") from exc
+        pic.thumbnail((1600, 1600))
+        out = io.BytesIO()
+        pic.save(out, "JPEG", quality=88)
+        picture = out.getvalue()
     q = select(User.telegram_id).where(User.telegram_id.is_not(None), User.is_banned.is_(False), User.is_bot.is_(False))
     if not data.everyone:
         q = q.where(User.tg_notifications.is_(True))
@@ -349,7 +368,7 @@ def broadcast(data: BroadcastIn, background: BackgroundTasks, _: User = Depends(
 
         banned = set(db.scalars(select(User.telegram_id).where(User.is_banned.is_(True), User.telegram_id.is_not(None))))
         chats |= {c for c in db.scalars(select(TelegramContact.chat_id)) if c and c > 0 and c not in banned}
-    background.add_task(push.broadcast, sorted(chats), f"📣 {data.subject}\n\n{data.body}")
+    background.add_task(push.broadcast, sorted(chats), f"📣 {data.subject}\n\n{data.body}", picture)
     return {"status": "queued", "recipients": len(chats)}
 
 

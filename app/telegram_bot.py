@@ -45,6 +45,23 @@ def api(method: str, payload: dict | None = None, timeout: float = 15) -> dict:
         return json.loads(r.read())
 
 
+def api_upload(method: str, fields: dict, file_field: str, filename: str, data: bytes, mime: str, timeout: float = 60) -> dict:
+    """Запрос к Bot API с файлом (multipart/form-data) — например, sendPhoto с картинкой рассылки."""
+    import uuid as _uuid
+
+    boundary = _uuid.uuid4().hex
+    body = bytearray()
+    for k, v in fields.items():
+        body += (f"--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n"
+                 f"Content-Type: text/plain; charset=utf-8\r\n\r\n{v}\r\n").encode()
+    body += (f"--{boundary}\r\nContent-Disposition: form-data; name=\"{file_field}\"; filename=\"{filename}\"\r\n"
+             f"Content-Type: {mime}\r\n\r\n").encode() + data + f"\r\n--{boundary}--\r\n".encode()
+    req = urllib.request.Request(f"{settings.telegram_api_url}/bot{settings.telegram_bot_token}/{method}", data=bytes(body),
+                                 headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read())
+
+
 def bot_username() -> str:
     return _bot_username
 

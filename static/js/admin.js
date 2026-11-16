@@ -675,19 +675,35 @@ function mail() {
       <p class="muted">Сообщение придёт через Telegram-бота всем, у кого подключён Telegram и включены уведомления. На почту рассылки не отправляются: почтой уходят только коды входа.</p>
       <label class="field"><span>Тема</span><input class="input" name="subject" maxlength="200" required placeholder="Например: в COFI появились кружочки"></label>
       <label class="field"><span>Текст</span><textarea class="input" name="body" rows="10" required></textarea></label>
+      <label class="field"><span>Картинка (необязательно)</span><input class="input" type="file" name="image" accept="image/*"></label>
+      <div class="bc-preview" hidden><img alt="Картинка рассылки"><button type="button" class="btn quiet" data-clear-image>Убрать картинку</button></div>
+      <p class="muted small">С картинкой текст станет подписью к фото. Если текст длиннее 1024 символов, он придёт отдельным сообщением сразу под картинкой.</p>
       <label class="check"><input type="checkbox" name="everyone"><span><b>Важное служебное — всем, кто писал боту</b><br>
         <span class="muted small">Технические работы, сбои, изменения правил. Придёт и тем, у кого уведомления выключены, и тем, кто писал боту без аккаунта. Не для новостей и рекламы.</span></span></label>
       <button class="btn">Отправить рассылку</button>
     </form>`;
+  const fileIn = $("input[name=image]", view), prev = $(".bc-preview", view);
+  fileIn.onchange = () => {
+    const file = fileIn.files[0];
+    prev.hidden = !file;
+    if (file) $("img", prev).src = URL.createObjectURL(file);
+  };
+  $("[data-clear-image]", view).onclick = () => { fileIn.value = ""; prev.hidden = true; };
   $("form", view).onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target;
     const everyone = f.everyone.checked;
     if (!(await confirmDialog(everyone ? "Отправить служебное сообщение ВСЕМ, кто писал боту?" : "Отправить сообщение всем в Telegram?", "Отправить"))) return;
     try {
-      const r = await api.post("/api/admin/broadcast", { subject: f.subject.value, body: f.body.value, everyone });
+      const fd = new FormData();
+      fd.append("subject", f.subject.value);
+      fd.append("body", f.body.value);
+      fd.append("everyone", everyone ? "true" : "false");
+      if (fileIn.files[0]) fd.append("image", fileIn.files[0]);
+      const r = await api.post("/api/admin/broadcast", fd);
       toast(`Рассылка поставлена в очередь: ${r.recipients} получателей`);
       f.reset();
+      prev.hidden = true;
     } catch (ex) { toast(ex.message, { error: true }); }
   };
 }

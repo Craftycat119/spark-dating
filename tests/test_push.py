@@ -199,7 +199,7 @@ def test_broadcast_and_unread_count_via_telegram(monkeypatch):
     with SessionLocal() as db:
         db.get(User, b.user_id).telegram_id = 9100
         db.commit()
-    r = boss.post("/api/admin/broadcast", json={"subject": "Новое", "body": "Кружочки"})
+    r = boss.post("/api/admin/broadcast", data={"subject": "Новое", "body": "Кружочки"})
     assert r.json()["recipients"] == 1
     assert any(p["text"].startswith("📣 Новое") for _, p in bot.sent)
     a.post("/api/feed/swipe", json={"user_id": b.user_id, "like": True})
