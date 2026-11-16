@@ -291,8 +291,14 @@ def update_location(data: LocationIn, user: User = Depends(current_user), db: Se
     return {"status": "ok", "city": user.city}
 
 
-def delete_user_completely(db: Session, user: User) -> None:
-    """Полное удаление анкеты со всеми файлами, чатами и лайками."""
+def delete_user_completely(db: Session, user: User, by: str | None = None) -> None:
+    """Полное удаление анкеты со всеми файлами, чатами и лайками.
+    by: "self" — удалил сам, "admin" — администрация; None (демо, служебное) — не учитываем в статистике."""
+    if by and not user.is_demo and not user.is_bot:
+        from ..models import AccountDeletion
+
+        days = max(0, (utcnow() - user.created_at).days) if user.created_at else 0
+        db.add(AccountDeletion(days_in_app=days, age_group=user.age_group or "", provider=user.auth_provider or "", by=by))
     convs = db.scalars(
         select(Conversation).where(or_(Conversation.user_a_id == user.id, Conversation.user_b_id == user.id))
     ).all()
@@ -318,7 +324,7 @@ def delete_user_completely(db: Session, user: User) -> None:
 
 @router.delete("")
 def delete_account(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    delete_user_completely(db, user)
+    delete_user_completely(db, user, by="self")
     return {"status": "deleted"}
 
 

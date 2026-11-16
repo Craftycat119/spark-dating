@@ -380,3 +380,16 @@ class Broadcast(Base):
     deliveries: Mapped[str] = mapped_column(Text, default="{}")  # {chat_id: message_id}
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     edited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class AccountDeletion(Base):
+    """Обезличенная отметка «анкету удалили»: без имени, почты, фото и id — только для статистики в админке."""
+
+    __tablename__ = "account_deletions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    deleted_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    days_in_app: Mapped[int] = mapped_column(Integer, default=0)
+    age_group: Mapped[str] = mapped_column(String(8), default="")  # adult | teen
+    provider: Mapped[str] = mapped_column(String(16), default="")  # email | telegram
+    by: Mapped[str] = mapped_column(String(8), default="self")  # self — сам, admin — администрация

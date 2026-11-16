@@ -96,6 +96,26 @@ def stats(_: User = Depends(admin_user), db: Session = Depends(get_db)):
         "messages": db.scalar(select(func.count(Message.id))) or 0,
         "top_interests": [{"name": k, "count": v} for k, v in top],
         "audience": _audience(db),
+        "deletions": _deletions(db),
+    }
+
+
+def _deletions(db: Session) -> dict:
+    """Сколько анкет удалили — без имён: «Ушедший №1» и т. д."""
+    from ..models import AccountDeletion
+
+    now = utcnow()
+    since = lambda days: db.scalar(select(func.count(AccountDeletion.id)).where(  # noqa: E731
+        AccountDeletion.deleted_at >= now - timedelta(days=days), AccountDeletion.by == "self")) or 0
+    rows = db.scalars(select(AccountDeletion).order_by(AccountDeletion.id.desc()).limit(30)).all()
+    return {
+        "self_total": db.scalar(select(func.count(AccountDeletion.id)).where(AccountDeletion.by == "self")) or 0,
+        "admin_total": db.scalar(select(func.count(AccountDeletion.id)).where(AccountDeletion.by == "admin")) or 0,
+        "today": db.scalar(select(func.count(AccountDeletion.id)).where(
+            AccountDeletion.deleted_at >= now - timedelta(days=1), AccountDeletion.by == "self")) or 0,
+        "week": since(7), "month": since(30),
+        "recent": [{"n": r.id, "deleted_at": _iso(r.deleted_at), "days": r.days_in_app, "age_group": r.age_group,
+                    "provider": r.provider, "by": r.by} for r in rows],
     }
 
 
@@ -310,7 +330,7 @@ def remove_user(user_id: int, admin: User = Depends(admin_user), db: Session = D
     u = _get_user(db, user_id)
     if u.id == admin.id:
         raise HTTPException(400, "Свою анкету удаляйте из настроек профиля")
-    delete_user_completely(db, u)
+    delete_user_completely(db, u, by="admin")
     return {"status": "deleted"}
 
 

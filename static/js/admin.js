@@ -46,6 +46,26 @@ function route() {
 }
 
 // ---------- Обзор ----------
+function deletionsHtml(d) {
+  if (!d) return "";
+  const days = (n) => (n === 0 ? "меньше дня" : `${n} ${plural(n, "день", "дня", "дней")}`);
+  return `<h3 style="margin-top:28px">Удалили анкету <span class="muted small">без имён и фото — учёт с 16.11.2026</span></h3>
+    <div class="kpis">
+      <div><b>${d.today}</b><span>За сутки</span></div>
+      <div><b>${d.week}</b><span>За 7 дней</span></div>
+      <div><b>${d.month}</b><span>За 30 дней</span></div>
+      <div><b>${d.self_total}</b><span>Всего удалили сами</span></div>
+      <div><b>${d.admin_total}</b><span>Удалила администрация</span></div>
+    </div>
+    ${d.recent.length ? `<table class="grid" style="margin-top:12px">
+      <thead><tr><th>Кто</th><th>Когда удалил(а)</th><th>Был(а) в COFI</th><th>Группа</th><th>Вход</th><th>Удалил(а)</th></tr></thead>
+      <tbody>${d.recent.map((r) => `<tr><td>Ушедший №${r.n}</td><td>${dt(r.deleted_at)}</td><td>${days(r.days)}</td>
+        <td>${r.age_group === "teen" ? "подросток" : r.age_group === "adult" ? "взрослый" : "—"}</td>
+        <td>${r.provider === "telegram" ? "Telegram" : r.provider === "email" ? "почта" : "—"}</td>
+        <td>${r.by === "admin" ? '<span class="tag warn">администрация</span>' : "сам(а)"}</td></tr>`).join("")}</tbody></table>`
+    : '<p class="muted small">Пока никто не удалял анкету.</p>'}`;
+}
+
 async function overview() {
   const s = await api.get("/api/admin/stats");
   const max = Math.max(1, ...s.top_interests.map((x) => x.count));
@@ -69,6 +89,7 @@ async function overview() {
       <div><b>${s.messages}</b><span>Сообщений</span></div>
       <div><b>${s.banned}</b><span>Заблокировано</span></div>
     </div>
+    ${deletionsHtml(s.deletions)}
     <h3 style="margin-top:32px">Популярные интересы</h3>
     <div class="feed-bars">${s.top_interests.map((x) => `
       <div class="r"><span>${esc(x.name)}</span><div class="track"><div class="fill" style="width:${(x.count / max) * 100}%"></div></div><b>${x.count}</b></div>`).join("") || '<p class="muted">Пока нет данных</p>'}

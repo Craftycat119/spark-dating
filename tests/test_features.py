@@ -310,3 +310,15 @@ def test_guest_can_write_to_support_with_contact():
     boss = make_user("boss@example.com", name="Андрей")
     threads = boss.get("/api/admin/support").json()
     assert any(x["id"] == t["id"] for x in threads)  # и оно в админке
+
+
+
+def test_deleted_accounts_counted_anonymously():
+    boss = make_user("boss@example.com", name="Андрей")
+    gone = make_user("gone@x.io", name="Ушла")
+    assert gone.delete("/api/profile").status_code == 200
+    d = boss.get("/api/admin/stats").json()["deletions"]
+    assert d["self_total"] == 1 and d["today"] == 1 and d["week"] == 1
+    row = d["recent"][0]
+    assert row["by"] == "self" and row["age_group"] == "adult" and row["days"] == 0
+    assert "Ушла" not in str(d) and "gone@x.io" not in str(d)  # ни имени, ни почты
