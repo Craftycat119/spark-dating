@@ -699,6 +699,12 @@ function mail() {
       <label class="field"><span>Картинка (необязательно)</span><input class="input" type="file" name="image" accept="image/*"></label>
       <div class="bc-preview" hidden><img alt="Картинка рассылки"><button type="button" class="btn quiet" data-clear-image>Убрать картинку</button></div>
       <p class="muted small">Картинка и текст придут одним сообщением: картинка крупно над текстом. Текст — до 3900 символов. Отправленную рассылку можно изменить или удалить у всех — внизу страницы.</p>
+      <label class="check"><input type="checkbox" name="pin"><span><b>Закрепить в чате</b><br>
+        <span class="muted small">Пост закрепится вверху чата с ботом у каждого получателя.</span></span></label>
+      <label class="check"><input type="checkbox" name="newcomers"><span><b>Новым пользователям</b><br>
+        <span class="muted small">Каждый, кто впервые напишет боту или войдёт через Telegram, получит этот пост закреплённым — отдельно от приветствия. Такой пост только один: новый заменит прежний.</span></span></label>
+      <label class="check" style="margin-left:28px"><input type="checkbox" name="only_new"><span><b>Только новым — сейчас никому не рассылать</b><br>
+        <span class="muted small">Если этот пост уже приходил всем раньше.</span></span></label>
       <label class="check"><input type="checkbox" name="everyone"><span><b>Важное служебное — всем, кто писал боту</b><br>
         <span class="muted small">Технические работы, сбои, изменения правил. Придёт и тем, у кого уведомления выключены, и тем, кто писал боту без аккаунта. Не для новостей и рекламы.</span></span></label>
       <button class="btn">Отправить рассылку</button>
@@ -717,15 +723,19 @@ function mail() {
     e.preventDefault();
     const f = e.target;
     const everyone = f.everyone.checked;
-    if (!(await confirmDialog(everyone ? "Отправить служебное сообщение ВСЕМ, кто писал боту?" : "Отправить сообщение всем в Telegram?", "Отправить"))) return;
+    const onlyNew = f.newcomers.checked && f.only_new.checked;
+    if (!(await confirmDialog(onlyNew ? "Сохранить пост для новых пользователей? Сейчас он никому не уйдёт." : everyone ? "Отправить служебное сообщение ВСЕМ, кто писал боту?" : "Отправить сообщение всем в Telegram?", onlyNew ? "Сохранить" : "Отправить"))) return;
     try {
       const fd = new FormData();
       fd.append("subject", f.subject.value);
       fd.append("body", f.body.value);
       fd.append("everyone", everyone ? "true" : "false");
+      fd.append("pin", f.pin.checked ? "true" : "false");
+      fd.append("newcomers", f.newcomers.checked ? "true" : "false");
+      fd.append("only_new", f.newcomers.checked && f.only_new.checked ? "true" : "false");
       if (fileIn.files[0]) fd.append("image", fileIn.files[0]);
       const r = await api.post("/api/admin/broadcast", fd);
-      toast(`Рассылка поставлена в очередь: ${r.recipients} получателей`);
+      toast(onlyNew ? "Пост сохранён: его получат новые пользователи" : `Рассылка поставлена в очередь: ${r.recipients} получателей`);
       f.reset();
       prev.hidden = true;
       setTimeout(loadBroadcasts, 1500);
@@ -747,10 +757,12 @@ async function loadBroadcasts() {
       ${b.image_url ? `<img src="${esc(b.image_url)}" alt="">` : ""}
       <div class="bc-body">
         <b>${esc(b.subject)}</b> ${st(b)}${b.edited_at ? ' <span class="muted small">изменена</span>' : ""}
+        ${b.newcomers ? ' <span class="tag hot">📌 новым пользователям</span>' : b.pin ? ' <span class="tag">📌 закреплена</span>' : ""}
         <p class="muted small">${dt(b.created_at)}${b.everyone ? " · служебная, всем" : ""}</p>
         <p class="bc-text">${esc(b.body).slice(0, 300)}${b.body.length > 300 ? "…" : ""}</p>
         ${b.status === "sent" ? `<div class="row" style="gap:8px;flex-wrap:wrap">
           <button class="btn quiet" data-edit>Изменить текст</button>
+          <button class="btn quiet" data-newcomers>${b.newcomers ? "Не показывать новым" : "📌 Показывать новым"}</button>
           ${b.can_delete ? `<button class="btn danger" data-del>Удалить у всех</button>` : '<span class="muted small">Удалить можно только 48 часов после отправки</span>'}
         </div>` : ""}
       </div>
@@ -760,6 +772,13 @@ async function loadBroadcasts() {
     $("[data-del]", el)?.addEventListener("click", async () => {
       if (!(await confirmDialog(`Удалить рассылку «${b.subject}» у всех ${b.sent} получателей? Вернуть будет нельзя.`, "Удалить у всех"))) return;
       try { await api.del(`/api/admin/broadcasts/${b.id}`); toast("Удаляем у всех получателей…"); setTimeout(loadBroadcasts, 1500); } catch (ex) { toast(ex.message, { error: true }); }
+    });
+    $("[data-newcomers]", el)?.addEventListener("click", async () => {
+      try {
+        await api.post(`/api/admin/broadcasts/${b.id}/newcomers`, { on: !b.newcomers });
+        toast(b.newcomers ? "Новым пользователям больше не присылается" : "Теперь новые пользователи получат этот пост закреплённым");
+        loadBroadcasts();
+      } catch (ex) { toast(ex.message, { error: true }); }
     });
     $("[data-edit]", el)?.addEventListener("click", () => {
       const body = $(".bc-body", el);

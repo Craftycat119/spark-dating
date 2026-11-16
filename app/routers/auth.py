@@ -336,6 +336,11 @@ def _telegram_user(db: Session, tg: dict, request: Request) -> User:
         raise HTTPException(403, "Аккаунт заблокирован")
     else:
         user.telegram_username = tg.get("username") or user.telegram_username
+    # закреплённый пост «для новых пользователей» — если этот человек его ещё не получал (в фоне, с паузой)
+    from .. import broadcasts
+    from ..push import _in_background
+
+    _in_background(broadcasts.deliver_to_newcomer, tg["id"])
     return user
 
 

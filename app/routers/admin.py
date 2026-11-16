@@ -357,6 +357,7 @@ def conversation_messages(conv_id: int, _: User = Depends(admin_user), db: Sessi
 @router.post("/broadcast")
 def broadcast(background: BackgroundTasks, subject: str = Form(..., min_length=1, max_length=200),
               body: str = Form(..., min_length=1, max_length=3900), everyone: bool = Form(False),
+              pin: bool = Form(False), newcomers: bool = Form(False), only_new: bool = Form(False),
               image: UploadFile | None = File(None), _: User = Depends(admin_user), db: Session = Depends(get_db)):
     """Новость всем через Telegram-бота: картинка (если есть) и текст — одним сообщением."""
     from .. import broadcasts
@@ -393,8 +394,12 @@ def broadcast(background: BackgroundTasks, subject: str = Form(..., min_length=1
 
         banned = set(db.scalars(select(User.telegram_id).where(User.is_banned.is_(True), User.telegram_id.is_not(None))))
         chats |= {c for c in db.scalars(select(TelegramContact.chat_id)) if c and c > 0 and c not in banned}
+    if newcomers and only_new:
+        chats = set()  # сейчас никому: пост только для новых пользователей
+    if newcomers:  # «для новых» может быть только один пост — прежний перестаёт рассылаться новичкам
+        db.execute(Broadcast.__table__.update().values(newcomers=False))
     b = Broadcast(subject=data.subject.strip(), body=data.body.strip(), image_name=image_name, everyone=data.everyone,
-                  recipients=len(chats))
+                  recipients=len(chats), pin=pin or newcomers, newcomers=newcomers, status="sending" if chats else "sent")
     db.add(b)
     db.commit()
     background.add_task(broadcasts.send, b.id, sorted(chats))
@@ -405,6 +410,7 @@ def _broadcast_out(b) -> dict:
     from ..broadcasts import image_url
 
     return {"id": b.id, "subject": b.subject, "body": b.body, "everyone": b.everyone, "status": b.status,
+            "pin": b.pin, "newcomers": b.newcomers,
             "recipients": b.recipients, "sent": b.sent, "failed": b.failed,
             "image_url": f"/pub/broadcast/{b.image_name}" if b.image_name else None, "public_image": image_url(b),
             "created_at": _iso(b.created_at), "edited_at": _iso(b.edited_at),
@@ -435,6 +441,27 @@ def broadcast_edit(bid: int, data: BroadcastEdit, background: BackgroundTasks, _
     b.subject, b.body = data.subject.strip(), data.body.strip()
     db.commit()
     background.add_task(broadcasts.edit, b.id)
+    return _broadcast_out(b)
+
+
+class NewcomersIn(BaseModel):
+    on: bool
+
+
+@router.post("/broadcasts/{bid}/newcomers")
+def broadcast_newcomers(bid: int, data: NewcomersIn, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Сделать пост закреплённым «для новых пользователей» (или выключить). Такой пост только один."""
+    from ..models import Broadcast
+
+    b = db.get(Broadcast, bid)
+    if not b or b.status != "sent":
+        raise HTTPException(404, "Рассылка не найдена")
+    if data.on:
+        db.execute(Broadcast.__table__.update().values(newcomers=False))
+    b.newcomers = data.on
+    if data.on:
+        b.pin = True
+    db.commit()
     return _broadcast_out(b)
 
 

@@ -280,6 +280,10 @@ def handle_update(upd: dict) -> list[tuple[str, dict]]:
         chat_id = msg["chat"]["id"]
         if msg.get("chat", {}).get("type", "private") == "private":
             remember_contact((msg.get("from") or {}).get("username"), chat_id)
+            from . import broadcasts
+            from .push import _in_background
+
+            _in_background(broadcasts.deliver_to_newcomer, chat_id)  # закреплённый пост для новых — если ещё не получал
         text = (msg.get("text") or "").strip()
         if text.startswith("/start link_"):
             calls.append(("sendMessage", _link_question(text.removeprefix("/start link_").strip(), chat_id)))

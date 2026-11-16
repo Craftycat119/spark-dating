@@ -29,7 +29,7 @@ def test_message_to_bot_becomes_support_thread_and_staff_reply_goes_back(monkeyp
 
     # ответ из админки — человеку в Telegram
     boss.post(f"/api/admin/support/{t['id']}/reply", json={"text": "Проверьте папку «Спам»"})
-    assert any(a[0] == 555 and "Проверьте папку" in a[1] for a in sent)
+    assert any(len(a) > 1 and a[0] == 555 and "Проверьте папку" in a[1] for a in sent)
 
 
 def test_commands_still_show_help(monkeypatch):
@@ -52,7 +52,7 @@ def test_reply_in_support_group_goes_to_user(monkeypatch):
                                "reply_to_message": {"from": {"is_bot": True}, "text": f"🆘 Нужна помощь #{tid} от гостя"}}}
     calls = telegram_bot.handle_update(group_reply)
     assert "Ответ отправлен" in calls[0][1]["text"]
-    assert any(a[0] == 777 and "Уже смотрим" in a[1] for a in sent)
+    assert any(len(a) > 1 and a[0] == 777 and "Уже смотрим" in a[1] for a in sent)
     # из чужой группы — нельзя
     sent.clear()
     group_reply["message"]["chat"]["id"] = -999
@@ -134,3 +134,66 @@ def test_broadcast_one_message_with_image_then_edit_and_delete(monkeypatch):
     boss.delete(f"/api/admin/broadcasts/{bid}")
     assert sorted((p["chat_id"], p["message_id"]) for m, p in bot.calls if m == "deleteMessage") == [(9001, 101), (9002, 102)]
     assert boss.get("/api/admin/broadcasts").json()[0]["status"] == "deleted"
+
+
+def test_pinned_post_for_newcomers_without_changing_greeting(monkeypatch):
+    from app import broadcasts, telegram_bot
+    from app.database import SessionLocal
+    from app.models import User
+
+    bot = _Bot()
+    monkeypatch.setattr(settings, "telegram_bot_token", "x")
+    monkeypatch.setattr(settings, "base_url", "https://cofi.example")
+    monkeypatch.setattr(telegram_bot, "api", bot)
+    monkeypatch.setattr(broadcasts, "PAUSE", 0)
+    runs = []
+    monkeypatch.setattr("app.push._in_background", lambda fn, *a: runs.append((fn, a)))
+    boss = make_user("boss@example.com", name="Андрей")
+    u = make_user("old@x.io", name="Старожил")
+    with SessionLocal() as db:
+        db.get(User, u.user_id).telegram_id = 7001
+        db.commit()
+    boss.post("/api/admin/broadcast", data={"subject": "Безопасность в COFI", "body": "Текст", "newcomers": "true"})
+    assert ("pinChatMessage", {"chat_id": 7001, "message_id": 101, "disable_notification": True}) in bot.calls  # закреплён у получателей
+    assert boss.get("/api/admin/broadcasts").json()[0]["newcomers"]
+
+    # новичок пишет боту: приветствие — как раньше, а пост приходит отдельно и закрепляется
+    bot.calls.clear()
+    calls = telegram_bot.handle_update({"message": {"message_id": 1, "chat": {"id": 8888, "type": "private"},
+                                                    "from": {"id": 8888, "username": "newbie"}, "text": "/start"}})
+    assert "Войти через Telegram" in calls[0][1]["text"]  # приветствие не изменилось
+    fn, args = runs[-1]
+    fn(*args[:1], 0)  # то, что ушло в фон (без паузы)
+    assert [m for m, _ in bot.calls] == ["sendMessage", "pinChatMessage"]
+    assert "Безопасность в COFI" in bot.calls[0][1]["text"]
+    # второй раз тому же человеку — не присылаем
+    bot.calls.clear()
+    broadcasts.deliver_to_newcomer(8888, 0)
+    assert bot.calls == []
+    # выключили «новым» — новичкам больше не приходит
+    bid = boss.get("/api/admin/broadcasts").json()[0]["id"]
+    boss.post(f"/api/admin/broadcasts/{bid}/newcomers", json={"on": False})
+    broadcasts.deliver_to_newcomer(9999, 0)
+    assert bot.calls == []
+
+
+def test_newcomers_only_post_is_not_sent_now(monkeypatch):
+    from app import broadcasts, telegram_bot
+    from app.database import SessionLocal
+    from app.models import User
+
+    bot = _Bot()
+    monkeypatch.setattr(settings, "telegram_bot_token", "x")
+    monkeypatch.setattr(telegram_bot, "api", bot)
+    monkeypatch.setattr(broadcasts, "PAUSE", 0)
+    boss = make_user("boss@example.com", name="Андрей")
+    u = make_user("old2@x.io", name="Старожил")
+    with SessionLocal() as db:
+        db.get(User, u.user_id).telegram_id = 7002
+        db.commit()
+    r = boss.post("/api/admin/broadcast", data={"subject": "Безопасность", "body": "Текст", "newcomers": "true", "only_new": "true"}).json()
+    assert r["recipients"] == 0 and bot.calls == []  # сейчас никому
+    b = boss.get("/api/admin/broadcasts").json()[0]
+    assert b["newcomers"] and b["status"] == "sent"
+    broadcasts.deliver_to_newcomer(4321, 0)
+    assert [m for m, _ in bot.calls] == ["sendMessage", "pinChatMessage"]

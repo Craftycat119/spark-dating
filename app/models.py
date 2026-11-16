@@ -373,6 +373,8 @@ class Broadcast(Base):
     body: Mapped[str] = mapped_column(Text)
     image_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     everyone: Mapped[bool] = mapped_column(Boolean, default=False)
+    pin: Mapped[bool] = mapped_column(Boolean, default=False)  # закрепить в чате с ботом
+    newcomers: Mapped[bool] = mapped_column(Boolean, default=False)  # присылать (и закреплять) каждому новому — один такой пост
     status: Mapped[str] = mapped_column(String(16), default="sending")  # sending | sent | deleted
     recipients: Mapped[int] = mapped_column(Integer, default=0)
     sent: Mapped[int] = mapped_column(Integer, default=0)

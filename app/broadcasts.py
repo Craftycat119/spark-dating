@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 import urllib.error
 
@@ -57,6 +58,41 @@ def _call(method: str, payload: dict) -> dict | None:
     return None
 
 
+def _pin(chat: int, message_id: int) -> None:
+    # без звука: закреп не должен будить человека вторым уведомлением
+    _call("pinChatMessage", {"chat_id": chat, "message_id": message_id, "disable_notification": True})
+
+
+_newcomer_lock = threading.Lock()
+
+
+def deliver_to_newcomer(chat_id: int | None, delay: float = 2.0) -> None:
+    """Пост «для новых пользователей» (закреплённый) — тем, кто его ещё не получал. Приветствие бота не меняется:
+    пост приходит отдельным сообщением чуть позже и закрепляется вверху чата."""
+    if not chat_id or chat_id <= 0 or not settings.telegram_bot_token:
+        return
+    time.sleep(delay)
+    with _newcomer_lock, SessionLocal() as db:
+        from sqlalchemy import select
+
+        b = db.scalar(select(Broadcast).where(Broadcast.newcomers.is_(True), Broadcast.status == "sent").order_by(Broadcast.id.desc()))
+        if not b:
+            return
+        delivered = json.loads(b.deliveries or "{}")
+        if str(chat_id) in delivered:
+            return
+        res = _call("sendMessage", _payload(b, chat_id))
+        mid = (res or {}).get("result", {}).get("message_id")
+        if not mid:
+            return
+        _pin(chat_id, mid)
+        delivered[str(chat_id)] = mid
+        b.deliveries = json.dumps(delivered)
+        b.sent = len(delivered)
+        db.commit()
+        log.info("Telegram: новому пользователю (%s) — закреплённый пост #%s", chat_id, b.id)
+
+
 def send(broadcast_id: int, chats: list[int]) -> None:
     """Отправка всем. Номера сообщений сохраняются, чтобы потом изменить или удалить рассылку."""
     with SessionLocal() as db:
@@ -70,6 +106,8 @@ def send(broadcast_id: int, chats: list[int]) -> None:
             mid = (res or {}).get("result", {}).get("message_id")
             if mid:
                 delivered[str(chat)] = mid
+                if b.pin or b.newcomers:
+                    _pin(chat, mid)
                 log.info("Telegram: уведомление отправлено (%s): рассылка #%s", chat, b.id)
             else:
                 failed += 1
@@ -104,4 +142,5 @@ def delete(broadcast_id: int) -> None:
             _call("deleteMessage", {"chat_id": int(chat), "message_id": mid})
             time.sleep(PAUSE)
         b.status = "deleted"
+        b.newcomers = False
         db.commit()
