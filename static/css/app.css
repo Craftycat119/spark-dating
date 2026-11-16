@@ -976,3 +976,6 @@ html.in-tg .tg-drop { top: 32px; }
 
 .my-place { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px;
   background: none; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.hero-links .tg-chip { display: inline-flex; align-items: center; gap: 6px; background: #2aabee; color: #fff; border-color: transparent; }
+.hero-links { flex-wrap: wrap; justify-content: center; }

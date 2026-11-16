@@ -472,6 +472,7 @@ function renderAuth(mode = "login") {
         <div class="hero-links">
           ${state.config.demo_enabled ? `<button class="chip hot" data-demo>Демо без регистрации</button>` : ""}
           <a class="chip" href="#/guide">Как это работает</a>
+          ${state.config.telegram_bot_username && !tgApp()?.initData ? `<a class="chip tg-chip" href="https://t.me/${encodeURIComponent(state.config.telegram_bot_username)}" target="_blank" rel="noopener">${icons.send} Перейти в Telegram</a>` : ""}
         </div>
         <div class="hero-foot"><a href="#/help">Поддержка</a><a href="#/ads">Реклама в COFI</a><button class="lang-toggle" data-lang-toggle>${getLang() === "en" ? "RU" : "EN"}</button></div>
       </div>

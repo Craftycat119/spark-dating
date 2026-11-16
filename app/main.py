@@ -119,7 +119,9 @@ def public_config():
         "zodiac": ZODIAC,
         "looking_for": LOOKING_FOR,
         "min_interests": MIN_INTERESTS,
-        "telegram_bot_username": telegram_bot.bot_username() if settings.telegram_bot_token else None,
+        # имя бота из Telegram, а если связи с ним сейчас нет — из .env (TELEGRAM_BOT_USERNAME)
+        "telegram_bot_username": ((telegram_bot.bot_username() if settings.telegram_bot_token else "")
+                                  or settings.telegram_bot_username.lstrip("@") or None),
         "calls_enabled": settings.calls_enabled,
         "demo_enabled": settings.demo_enabled,
         "stats_tz_hours": settings.stats_tz_hours,  # часовой пояс админ-панели
