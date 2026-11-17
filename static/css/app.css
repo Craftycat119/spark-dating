@@ -120,7 +120,7 @@ p { margin: 0; }
 .btn.danger { background: transparent; color: var(--danger); box-shadow: inset 0 0 0 1.5px rgba(255, 75, 62, .45); }
 .btn.dark { background: var(--ink); color: var(--cream); box-shadow: none; }
 .btn.block { width: 100%; }
-.btn.tg { background: #2aabee; color: #fff; box-shadow: none; }
+.btn.tg { background: #1979bd; color: #fff; box-shadow: none; }
 .icon-btn { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); color: var(--text); flex: none; }
 .link { color: var(--orange); font-weight: 500; }
 
@@ -146,12 +146,15 @@ textarea.input { resize: vertical; min-height: 104px; line-height: 1.45; }
 .panel .error-text { color: #c42a1d; }
 .panel .link { color: var(--orange-deep); }
 .panel .tabs { background: #e2dace; }
-.panel .tabs button { color: var(--ink-muted); }
+.panel .tabs button { color: #5a534c; }
 .panel .tabs button.on { background: var(--ink); color: var(--cream); }
 .panel .divider { color: var(--ink-muted); }
 .panel .divider::before, .panel .divider::after { background: #d6cdc1; }
 .panel .checklist { color: var(--ink-muted); }
 .panel .checklist li.ok { color: #1c7a3c; }
+/* контраст на кремовой панели (WCAG AA): подпись капчи и ссылка поддержки */
+.panel .captcha-label, .panel .help-link, .panel .auth-legal { color: var(--ink-muted); }
+.panel .help-link:hover { color: var(--ink); }
 
 .checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
 .checklist li::before { content: "○"; display: inline-block; width: 22px; }
@@ -653,7 +656,7 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .mini .pet-stage { flex: none; }
 .mini .pet-photos .track { aspect-ratio: 16 / 10; }
 .mini-sheet.help .wide { margin-top: 8px; }
-.mini-sheet.help .wide.tg { background: #2aabee; color: #fff; }
+.mini-sheet.help .wide.tg { background: #1979bd; color: #fff; }
 
 /* ---------- Подробная карточка животного ---------- */
 .pet-view .gallery .track { aspect-ratio: 1 / 1; }
@@ -977,5 +980,5 @@ html.in-tg .tg-drop { top: 32px; }
 .my-place { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px;
   background: none; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.hero-links .tg-chip { display: inline-flex; align-items: center; gap: 6px; background: #2aabee; color: #fff; border-color: transparent; }
+.hero-links .tg-chip { display: inline-flex; align-items: center; gap: 6px; background: #1979bd; color: #fff; border-color: transparent; }
 .hero-links { flex-wrap: wrap; justify-content: center; }

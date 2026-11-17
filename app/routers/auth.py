@@ -53,7 +53,7 @@ class EmailOnly(BaseModel):
 @router.get("/captcha")
 def get_captcha(request: Request):
     """Новая картинка для проверки на робота."""
-    by_ip(request, "captcha", 60, 600)
+    by_ip(request, "captcha", 20, 600)  # картинка тяжёлая для процессора
     if captcha.mode() != "image":
         return captcha.public_config()
     return {**captcha.public_config(), **captcha.new_image()}

@@ -340,3 +340,20 @@ def test_registration_funnel_in_admin():
     assert steps["email"]["reached"] == 3 and steps["about"]["reached"] == 2 and steps["done"]["reached"] == 1
     lst = boss.get("/api/admin/users?step=about").json()
     assert lst["total"] == 1 and lst["items"][0]["email"] == "half@x.io" and lst["items"][0]["reg_step_label"].startswith("Имя")
+
+
+def test_audit_hardening():
+    from conftest import new_client
+
+    c = new_client()
+    r = c.get("/robots.txt")
+    assert r.status_code == 200 and "Disallow: /api/" in r.text
+    assert c.get("/sitemap.xml").status_code == 404 and c.get("/wp-login.php").status_code == 404
+    assert c.get("/").status_code == 200 and c.get("/feed").status_code == 200  # страницы приложения как раньше
+    h = c.get("/").headers
+    assert h["cross-origin-opener-policy"] == "same-origin-allow-popups" and h["cross-origin-resource-policy"] == "same-site"
+    r = c.post("/api/auth/register", json={"email": "x@y.io", "password": "Secret123", "junk": "<script>"})
+    bad = c.post("/api/auth/login", json={"email": "a@b.co"})
+    assert bad.status_code == 422
+    d = bad.json()["detail"][0]
+    assert set(d) == {"loc", "msg"} and d["msg"] == "Заполните поле" and "input" not in bad.text

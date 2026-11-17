@@ -7,8 +7,9 @@ from datetime import timedelta
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -90,6 +91,26 @@ async def lifespan(_app: FastAPI):
 _docs = settings.dev_mode
 app = FastAPI(title=settings.app_name, lifespan=lifespan, docs_url="/docs" if _docs else None,
               redoc_url="/redoc" if _docs else None, openapi_url="/openapi.json" if _docs else None)
+# Ошибки проверки данных (422): короткий русский текст без схемы запроса и без эха того, что прислали
+_VALIDATION_TEXT = {
+    "missing": "Заполните поле", "string_too_short": "Слишком короткое значение", "string_too_long": "Слишком длинный текст",
+    "too_short": "Слишком мало значений", "too_long": "Слишком много значений", "json_invalid": "Неверный формат запроса",
+}
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_error(_request: Request, exc: RequestValidationError):
+    out = []
+    for e in exc.errors()[:5]:
+        msg = str(e.get("msg") or "")
+        if e.get("type") == "value_error":  # наши проверки (возраст, интересы…) — уже понятный русский текст
+            msg = msg.removeprefix("Value error, ")
+        else:
+            msg = _VALIDATION_TEXT.get(e.get("type", ""), "Неверное значение")
+        out.append({"loc": [x for x in e.get("loc", ()) if isinstance(x, (str, int))][-2:], "msg": msg})
+    return JSONResponse({"detail": out}, status_code=422)
+
+
 app.include_router(auth.router)
 app.include_router(profile.router)
 app.include_router(feed.router)
@@ -217,6 +238,9 @@ async def security_headers(request: Request, call_next):
         "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org",
         "object-src 'none'", "base-uri 'self'", "form-action 'self'",
     ]))
+    # окно входа/оплаты сторонних сервисов работает, но чужая вкладка не получает доступ к нашей
+    h.setdefault("Cross-Origin-Opener-Policy", "same-origin-allow-popups")
+    h.setdefault("Cross-Origin-Resource-Policy", "same-site")
     h.setdefault("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(self), payment=()")
     if request.url.scheme == "https":
         h.setdefault("Strict-Transport-Security", "max-age=31536000")
@@ -285,8 +309,25 @@ def admin_page():
     return HTMLResponse(assets.page("admin.html", "js/admin.js"), headers=PAGE_HEADERS)
 
 
+ROBOTS = """User-agent: *
+Allow: /$
+Disallow: /api/
+Disallow: /media/
+Disallow: /admin
+Disallow: /pub/
+"""
+
+
+@app.get("/robots.txt")
+def robots():
+    return PlainTextResponse(ROBOTS, headers={"Cache-Control": "public, max-age=86400"})
+
+
 @app.get("/{path:path}")
 def spa(path: str, request: Request):
     if path.startswith(("api/", "media/", "ws")):
+        raise HTTPException(404)
+    # несуществующий файл (sitemap.xml, .env, wp-login.php…) — честный 404, а не главная страница
+    if "." in path.rsplit("/", 1)[-1]:
         raise HTTPException(404)
     return HTMLResponse(assets.page("index.html", "js/app.js"), headers=PAGE_HEADERS)
