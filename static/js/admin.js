@@ -790,9 +790,11 @@ async function loadBroadcasts() {
         <b>${esc(b.subject)}</b> ${st(b)}${b.edited_at ? ' <span class="muted small">изменена</span>' : ""}
         ${b.newcomers ? ' <span class="tag hot">📌 новым пользователям</span>' : b.pin ? ' <span class="tag">📌 закреплена</span>' : ""}
         <p class="muted small">${dt(b.created_at)}${b.everyone ? " · служебная, всем" : ""}</p>
+        ${Object.keys(b.reasons || {}).length ? `<p class="muted small">Почему не дошло: ${Object.entries(b.reasons).map(([k, n]) => `${esc(k)} — ${n}`).join(" · ")}</p>` : ""}
         <p class="bc-text">${esc(b.body).slice(0, 300)}${b.body.length > 300 ? "…" : ""}</p>
         ${b.status === "sent" ? `<div class="row" style="gap:8px;flex-wrap:wrap">
-          <button class="btn quiet" data-edit>Изменить текст</button>
+          <button class="btn quiet" data-edit>Изменить</button>
+          ${b.missing ? `<button class="btn quiet" data-resend>Дослать, кому не дошло (${b.missing})</button>` : ""}
           <button class="btn quiet" data-newcomers>${b.newcomers ? "Не показывать новым" : "📌 Показывать новым"}</button>
           ${b.can_delete ? `<button class="btn danger" data-del>Удалить у всех</button>` : '<span class="muted small">Удалить можно только 48 часов после отправки</span>'}
         </div>` : ""}
@@ -803,6 +805,14 @@ async function loadBroadcasts() {
     $("[data-del]", el)?.addEventListener("click", async () => {
       if (!(await confirmDialog(`Удалить рассылку «${b.subject}» у всех ${b.sent} получателей? Вернуть будет нельзя.`, "Удалить у всех"))) return;
       try { await api.del(`/api/admin/broadcasts/${b.id}`); toast("Удаляем у всех получателей…"); setTimeout(loadBroadcasts, 1500); } catch (ex) { toast(ex.message, { error: true }); }
+    });
+    $("[data-resend]", el)?.addEventListener("click", async () => {
+      if (!(await confirmDialog(`Дослать «${b.subject}» ещё ${b.missing} получателям? Кому уже пришло — повторно не придёт. Тем, кто заблокировал бота, не отправляем.`, "Дослать"))) return;
+      try {
+        const r = await api.post(`/api/admin/broadcasts/${b.id}/resend`, {});
+        toast(r.recipients ? `Досылаем: ${r.recipients}` : "Досылать некому");
+        setTimeout(loadBroadcasts, 1500);
+      } catch (ex) { toast(ex.message, { error: true }); }
     });
     $("[data-newcomers]", el)?.addEventListener("click", async () => {
       try {
@@ -816,15 +826,38 @@ async function loadBroadcasts() {
       body.innerHTML = `<form class="stack">
         <label class="field"><span>Тема</span><input class="input" name="subject" maxlength="200" required value="${esc(b.subject)}"></label>
         <label class="field"><span>Текст</span><textarea class="input" name="body" rows="8" maxlength="3900" required>${esc(b.body)}</textarea></label>
+        <div class="field"><span>Картинка</span>
+          <div class="bc-preview" ${b.image_url ? "" : "hidden"}><img alt="" src="${esc(b.image_url || "")}"><button type="button" class="btn quiet" data-drop>Убрать картинку</button></div>
+          <input class="input" type="file" name="image" accept="image/*">
+          <span class="muted small" data-img-hint>${b.image_url ? "Выберите файл, чтобы заменить картинку" : "Выберите файл, чтобы добавить картинку"}</span></div>
         <div class="row" style="gap:8px"><button class="btn">Сохранить у всех</button><button type="button" class="btn quiet" data-cancel>Отмена</button></div>
-        <p class="muted small">Текст изменится у всех ${b.sent} получателей. Картинку поменять нельзя — это ограничение Telegram.</p>
+        <p class="muted small">Текст и картинка изменятся у всех ${b.sent} получателей.</p>
       </form>`;
+      const f = $("form", body), fileIn = $("input[name=image]", f), prev = $(".bc-preview", f), hint = $("[data-img-hint]", f);
+      let removeImage = false;
+      fileIn.onchange = () => {
+        const file = fileIn.files[0];
+        if (!file) return;
+        removeImage = false;
+        $("img", prev).src = URL.createObjectURL(file);
+        prev.hidden = false;
+        hint.textContent = "Новая картинка — придёт у всех после сохранения";
+      };
+      $("[data-drop]", f).onclick = () => {
+        fileIn.value = ""; removeImage = true; prev.hidden = true;
+        hint.textContent = "Картинка будет убрана. Выберите файл, чтобы добавить другую";
+      };
       $("[data-cancel]", body).onclick = loadBroadcasts;
-      $("form", body).onsubmit = async (e) => {
+      f.onsubmit = async (e) => {
         e.preventDefault();
         try {
-          await api.patch(`/api/admin/broadcasts/${b.id}`, { subject: e.target.subject.value, body: e.target.body.value });
-          toast("Текст меняется у всех получателей");
+          const fd = new FormData();
+          fd.append("subject", f.subject.value);
+          fd.append("body", f.body.value);
+          fd.append("remove_image", removeImage ? "true" : "false");
+          if (fileIn.files[0]) fd.append("image", fileIn.files[0]);
+          await api.post(`/api/admin/broadcasts/${b.id}/edit`, fd);
+          toast("Меняем у всех получателей");
           loadBroadcasts();
         } catch (ex) { toast(ex.message, { error: true }); }
       };

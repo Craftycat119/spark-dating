@@ -393,34 +393,8 @@ def broadcast(background: BackgroundTasks, subject: str = Form(..., min_length=1
     if not push.enabled():
         raise HTTPException(503, "Telegram-бот не настроен: укажите TELEGRAM_BOT_TOKEN в .env")
     data = BroadcastIn(subject=subject, body=body, everyone=everyone)
-    image_name = None
-    if image is not None and image.filename:
-        # пересохраняем в JPEG (поворот по EXIF, без метаданных — в том числе координат съёмки, не больше 1600 px)
-        import io
-        import uuid
-
-        from PIL import Image, ImageOps, UnidentifiedImageError
-
-        raw = storage.read_limited(image, settings.max_image_mb)
-        try:
-            pic = ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert("RGB")
-        except (UnidentifiedImageError, OSError) as exc:
-            raise HTTPException(400, "Это не картинка") from exc
-        pic.thumbnail((1600, 1600))
-        image_name = f"{uuid.uuid4().hex}.jpg"
-        folder = settings.media_dir / "broadcast"
-        folder.mkdir(parents=True, exist_ok=True)
-        pic.save(folder / image_name, "JPEG", quality=88)
-    q = select(User.telegram_id).where(User.telegram_id.is_not(None), User.is_banned.is_(False), User.is_bot.is_(False))
-    if not data.everyone:
-        q = q.where(User.tg_notifications.is_(True))
-    chats = set(db.scalars(q).all())
-    if data.everyone:
-        # и те, кто писал боту без аккаунта (личные чаты — положительные id; группы не трогаем)
-        from ..models import TelegramContact
-
-        banned = set(db.scalars(select(User.telegram_id).where(User.is_banned.is_(True), User.telegram_id.is_not(None))))
-        chats |= {c for c in db.scalars(select(TelegramContact.chat_id)) if c and c > 0 and c not in banned}
+    image_name = _save_broadcast_image(image) if image is not None and image.filename else None
+    chats = _bc_audience(db, data.everyone)
     if newcomers and only_new:
         chats = set()  # сейчас никому: пост только для новых пользователей
     if newcomers:  # «для новых» может быть только один пост — прежний перестаёт рассылаться новичкам
@@ -433,10 +407,47 @@ def broadcast(background: BackgroundTasks, subject: str = Form(..., min_length=1
     return {"status": "queued", "recipients": len(chats), "id": b.id}
 
 
-def _broadcast_out(b) -> dict:
-    from ..broadcasts import image_url
+def _save_broadcast_image(image: UploadFile) -> str:
+    """Пересохраняем в JPEG (поворот по EXIF, без метаданных — в том числе координат съёмки, не больше 1600 px)."""
+    import io
+    import uuid
 
-    return {"id": b.id, "subject": b.subject, "body": b.body, "everyone": b.everyone, "status": b.status,
+    from PIL import Image, ImageOps, UnidentifiedImageError
+
+    raw = storage.read_limited(image, settings.max_image_mb)
+    try:
+        pic = ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert("RGB")
+    except (UnidentifiedImageError, OSError) as exc:
+        raise HTTPException(400, "Это не картинка") from exc
+    pic.thumbnail((1600, 1600))
+    name = f"{uuid.uuid4().hex}.jpg"
+    folder = settings.media_dir / "broadcast"
+    folder.mkdir(parents=True, exist_ok=True)
+    pic.save(folder / name, "JPEG", quality=88)
+    return name
+
+
+def _bc_audience(db: Session, everyone: bool) -> set[int]:
+    """Кому уходит рассылка: с подключённым Telegram (и уведомлениями), а служебная — всем, кто писал боту."""
+    q = select(User.telegram_id).where(User.telegram_id.is_not(None), User.is_banned.is_(False), User.is_bot.is_(False))
+    if not everyone:
+        q = q.where(User.tg_notifications.is_(True))
+    chats = set(db.scalars(q).all())
+    if everyone:
+        # и те, кто писал боту без аккаунта (личные чаты — положительные id; группы не трогаем)
+        from ..models import TelegramContact
+
+        banned = set(db.scalars(select(User.telegram_id).where(User.is_banned.is_(True), User.telegram_id.is_not(None))))
+        chats |= {c for c in db.scalars(select(TelegramContact.chat_id)) if c and c > 0 and c not in banned}
+    return chats
+
+
+def _broadcast_out(b, db: Session | None = None) -> dict:
+    from ..broadcasts import image_url, reasons_summary, resend_targets
+
+    # дослать можно разосланному всем посту (не «только новым», где получателей не было)
+    missing = len(resend_targets(b, _bc_audience(db, b.everyone))) if db is not None and b.status == "sent" and b.recipients else 0
+    return {"reasons": reasons_summary(b), "missing": missing,"id": b.id, "subject": b.subject, "body": b.body, "everyone": b.everyone, "status": b.status,
             "pin": b.pin, "newcomers": b.newcomers,
             "recipients": b.recipients, "sent": b.sent, "failed": b.failed,
             "image_url": f"/pub/broadcast/{b.image_name}" if b.image_name else None, "public_image": image_url(b),
@@ -448,7 +459,7 @@ def _broadcast_out(b) -> dict:
 def broadcasts_list(_: User = Depends(admin_user), db: Session = Depends(get_db)):
     from ..models import Broadcast
 
-    return [_broadcast_out(b) for b in db.scalars(select(Broadcast).order_by(Broadcast.id.desc()).limit(30))]
+    return [_broadcast_out(b, db) for b in db.scalars(select(Broadcast).order_by(Broadcast.id.desc()).limit(30))]
 
 
 class BroadcastEdit(BaseModel):
@@ -469,6 +480,47 @@ def broadcast_edit(bid: int, data: BroadcastEdit, background: BackgroundTasks, _
     db.commit()
     background.add_task(broadcasts.edit, b.id)
     return _broadcast_out(b)
+
+
+@router.post("/broadcasts/{bid}/edit")
+def broadcast_edit_full(bid: int, background: BackgroundTasks, subject: str = Form(..., min_length=1, max_length=200),
+                        body: str = Form(..., min_length=1, max_length=3900), remove_image: bool = Form(False),
+                        image: UploadFile | None = File(None), _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Изменить текст и картинку (заменить, добавить или убрать) у всех получателей."""
+    from .. import broadcasts
+    from ..models import Broadcast
+
+    b = db.get(Broadcast, bid)
+    if not b or b.status != "sent":
+        raise HTTPException(404, "Рассылка не найдена или ещё отправляется")
+    data = BroadcastEdit(subject=subject, body=body)
+    if image is not None and image.filename:
+        b.image_name = _save_broadcast_image(image)  # новое имя файла — Telegram скачает новую картинку
+    elif remove_image:
+        b.image_name = None
+    b.subject, b.body = data.subject.strip(), data.body.strip()
+    db.commit()
+    background.add_task(broadcasts.edit, b.id)
+    return _broadcast_out(b)
+
+
+@router.post("/broadcasts/{bid}/resend")
+def broadcast_resend(bid: int, background: BackgroundTasks, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Дослать тем, кому не дошло (без повторов у тех, кому уже пришло, и без заблокировавших бота)."""
+    from .. import broadcasts
+    from ..models import Broadcast
+
+    b = db.get(Broadcast, bid)
+    if not b or b.status != "sent" or not b.recipients:
+        raise HTTPException(404, "Рассылка не найдена")
+    chats = broadcasts.resend_targets(b, _bc_audience(db, b.everyone))
+    if not chats:
+        return {"status": "nothing", "recipients": 0}
+    b.status = "sending"
+    b.recipients = max(b.recipients, b.sent + len(chats))
+    db.commit()
+    background.add_task(broadcasts.send, b.id, chats)
+    return {"status": "queued", "recipients": len(chats)}
 
 
 class NewcomersIn(BaseModel):

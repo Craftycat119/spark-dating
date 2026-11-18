@@ -380,6 +380,7 @@ class Broadcast(Base):
     sent: Mapped[int] = mapped_column(Integer, default=0)
     failed: Mapped[int] = mapped_column(Integer, default=0)
     deliveries: Mapped[str] = mapped_column(Text, default="{}")  # {chat_id: message_id}
+    failures: Mapped[str] = mapped_column(Text, default="{}")  # {chat_id: ответ Telegram} — кому не дошло и почему
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     edited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

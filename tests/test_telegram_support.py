@@ -197,3 +197,71 @@ def test_newcomers_only_post_is_not_sent_now(monkeypatch):
     assert b["newcomers"] and b["status"] == "sent"
     broadcasts.deliver_to_newcomer(4321, 0)
     assert [m for m, _ in bot.calls] == ["sendMessage", "pinChatMessage"]
+
+
+def test_broadcast_retry_reasons_resend_and_image_edit(monkeypatch):
+    import io
+    import urllib.error
+
+    from conftest import jpeg_bytes
+
+    from app import broadcasts, telegram_bot
+    from app.database import SessionLocal
+    from app.models import User
+
+    state = {"n": 1, "throttled": False}
+    calls = []
+
+    def fake(method, payload=None, timeout=15):
+        calls.append((method, payload))
+        chat = (payload or {}).get("chat_id")
+        if method == "sendMessage" and chat == 6002 and not state["throttled"]:
+            state["throttled"] = True  # первый раз — «слишком быстро», потом проходит
+            raise urllib.error.HTTPError("u", 429, "x", {}, io.BytesIO(b'{"ok":false,"error_code":429,"description":"Too Many Requests: retry after 0","parameters":{"retry_after":0}}'))
+        if method == "sendMessage" and chat == 6003:
+            raise urllib.error.HTTPError("u", 403, "x", {}, io.BytesIO(b'{"ok":false,"description":"Forbidden: bot was blocked by the user"}'))
+        if method == "sendMessage" and chat == 6004 and state["n"] == 0:
+            raise urllib.error.HTTPError("u", 400, "x", {}, io.BytesIO(b'{"ok":false,"description":"Bad Request: chat not found"}'))
+        state.setdefault("mid", 500)
+        state["mid"] += 1
+        return {"ok": True, "result": {"message_id": state["mid"]}}
+
+    monkeypatch.setattr(settings, "telegram_bot_token", "x")
+    monkeypatch.setattr(settings, "base_url", "https://cofi.example")
+    monkeypatch.setattr(telegram_bot, "api", fake)
+    monkeypatch.setattr(broadcasts, "PAUSE", 0)
+    boss = make_user("boss@example.com", name="Андрей")
+    for i, tid in enumerate((6001, 6002, 6003, 6004)):
+        u = make_user(f"q{i}@x.io", name=f"Получатель{i}")
+        with SessionLocal() as db:
+            db.get(User, u.user_id).telegram_id = tid
+            db.commit()
+    boss.post("/api/admin/broadcast", data={"subject": "Новость", "body": "Текст"})
+    b = boss.get("/api/admin/broadcasts").json()[0]
+    assert b["sent"] == 3 and b["failed"] == 1  # 429 повторили и доставили
+    assert b["reasons"] == {"Заблокировали бота": 1} and b["missing"] == 0  # заблокировавшим не досылаем
+
+    # «Не начинали чат» — потом человек нажал «Старт», досылаем только ему
+    state["n"] = 0
+    boss.post("/api/admin/broadcast", data={"subject": "Вторая", "body": "Текст"})
+    b2 = boss.get("/api/admin/broadcasts").json()[0]
+    assert b2["reasons"]["Не начинали чат с ботом"] == 1 and b2["missing"] == 1
+    state["n"] = 1
+    calls.clear()
+    assert boss.post(f"/api/admin/broadcasts/{b2['id']}/resend").json()["recipients"] == 1
+    assert [p["chat_id"] for m, p in calls if m == "sendMessage"] == [6004]
+    b2 = boss.get("/api/admin/broadcasts").json()[0]
+    assert b2["sent"] == 4 - 1 and b2["missing"] == 0
+
+    # добавить картинку к уже отправленной рассылке — у всех, через правку сообщения
+    calls.clear()
+    r = boss.post(f"/api/admin/broadcasts/{b2['id']}/edit", data={"subject": "Вторая", "body": "Новый текст"},
+                  files={"image": ("p.jpg", jpeg_bytes(), "image/jpeg")})
+    assert r.status_code == 200 and r.json()["image_url"]
+    edits = [p for m, p in calls if m == "editMessageText"]
+    assert len(edits) == 3 and all(e["link_preview_options"]["url"].startswith("https://cofi.example/pub/broadcast/") for e in edits)
+    # убрать картинку
+    calls.clear()
+    boss.post(f"/api/admin/broadcasts/{b2['id']}/edit", data={"subject": "Вторая", "body": "Новый текст", "remove_image": "true"})
+    assert all(p["link_preview_options"] == {"is_disabled": True} for m, p in calls if m == "editMessageText")
+    assert boss.get("/api/admin/broadcasts").json()[0]["image_url"] is None

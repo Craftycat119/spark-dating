@@ -17,7 +17,8 @@ from .database import SessionLocal
 from .models import Broadcast, utcnow
 
 log = logging.getLogger("cofi.broadcast")
-PAUSE = 0.04  # ~25 сообщений в секунду — ограничение Telegram
+PAUSE = 0.05  # ~20 запросов в секунду (закрепление — отдельный запрос), у Telegram лимит ~30
+RETRIES = 3
 TEXT_MAX = 4096
 
 
@@ -49,16 +50,63 @@ def _payload(b: Broadcast, chat_id: int) -> dict:
     return p
 
 
-def _call(method: str, payload: dict) -> dict | None:
+def _request(method: str, payload: dict) -> tuple[dict | None, str]:
+    """(ответ, причина ошибки). На «Too Many Requests» ждёт, сколько просит Telegram, и повторяет."""
     from .telegram_bot import api
 
-    try:
-        return api(method, payload)
-    except urllib.error.HTTPError as ex:
-        log.warning("Telegram %s (%s): %s", method, payload.get("chat_id"), ex.read().decode("utf-8", "replace")[:300])
-    except Exception as ex:  # noqa: BLE001
-        log.warning("Telegram %s (%s): %s", method, payload.get("chat_id"), ex)
-    return None
+    err = ""
+    for _ in range(RETRIES + 1):
+        try:
+            return api(method, payload), ""
+        except urllib.error.HTTPError as ex:
+            raw = ex.read().decode("utf-8", "replace")[:300]
+            try:
+                data = json.loads(raw)
+            except ValueError:
+                data = {}
+            err = data.get("description") or raw or str(ex)
+            wait = (data.get("parameters") or {}).get("retry_after")
+            if ex.code == 429 and wait is not None:
+                log.info("Telegram просит подождать %s с", wait)
+                time.sleep(min(float(wait), 60) + 0.5)
+                continue
+            log.warning("Telegram %s (%s): %s", method, payload.get("chat_id"), err)
+            return None, err
+        except Exception as ex:  # noqa: BLE001 — сеть: одна повторная попытка
+            err = str(ex) or ex.__class__.__name__
+            log.warning("Telegram %s (%s): %s", method, payload.get("chat_id"), err)
+            time.sleep(1)
+    return None, err
+
+
+def _call(method: str, payload: dict) -> dict | None:
+    return _request(method, payload)[0]
+
+
+REASONS = [  # (часть ответа Telegram, понятная подпись для админки)
+    ("blocked", "Заблокировали бота"),
+    ("deactivated", "Удалили аккаунт Telegram"),
+    ("chat not found", "Не начинали чат с ботом"),
+    ("initiate conversation", "Не начинали чат с ботом"),
+    ("too many requests", "Telegram попросил подождать"),
+]
+
+
+def reason_label(err: str) -> str:
+    low = (err or "").lower()
+    return next((label for key, label in REASONS if key in low), "Сбой связи или другое")
+
+
+def reasons_summary(b: Broadcast) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for err in json.loads(b.failures or "{}").values():
+        lab = reason_label(err)
+        out[lab] = out.get(lab, 0) + 1
+    return dict(sorted(out.items(), key=lambda kv: -kv[1]))
+
+
+# повторять бесполезно: человек сам закрыл бота или удалил аккаунт
+_FINAL = ("Заблокировали бота", "Удалили аккаунт Telegram")
 
 
 def _pin(chat: int, message_id: int) -> None:
@@ -102,21 +150,25 @@ def send(broadcast_id: int, chats: list[int]) -> None:
         b = db.get(Broadcast, broadcast_id)
         if not b:
             return
-        delivered: dict[str, int] = {}
-        failed = 0
+        delivered: dict[str, int] = json.loads(b.deliveries or "{}")
+        failures: dict[str, str] = json.loads(b.failures or "{}")
         for chat in chats:
-            res = _call("sendMessage", _payload(b, chat))
+            if str(chat) in delivered:
+                continue
+            res, err = _request("sendMessage", _payload(b, chat))
             mid = (res or {}).get("result", {}).get("message_id")
             if mid:
                 delivered[str(chat)] = mid
+                failures.pop(str(chat), None)
                 if b.pin or b.newcomers:
+                    time.sleep(PAUSE)
                     _pin(chat, mid)
                 log.info("Telegram: уведомление отправлено (%s): рассылка #%s", chat, b.id)
             else:
-                failed += 1
+                failures[str(chat)] = err or "нет ответа"
             time.sleep(PAUSE)
-        b.deliveries = json.dumps(delivered)
-        b.sent, b.failed, b.status = len(delivered), failed, "sent"
+        b.deliveries, b.failures = json.dumps(delivered), json.dumps(failures)
+        b.sent, b.failed, b.status = len(delivered), len(failures), "sent"
         db.commit()
 
 
@@ -147,3 +199,11 @@ def delete(broadcast_id: int) -> None:
         b.status = "deleted"
         b.newcomers = False
         db.commit()
+
+
+def resend_targets(b: Broadcast, audience: set[int]) -> list[int]:
+    """Кому дослать: получатели рассылки без доставленных и без тех, кто заблокировал бота или удалил аккаунт."""
+    delivered = json.loads(b.deliveries or "{}")
+    failures = json.loads(b.failures or "{}")
+    final = {c for c, err in failures.items() if reason_label(err) in _FINAL}
+    return sorted(c for c in audience | {int(x) for x in failures} if str(c) not in delivered and str(c) not in final)
