@@ -324,7 +324,10 @@ function onboardingStep(me) {
 
 let nextAuthMode = "login"; // какую вкладку открыть на экране входа при следующем показе
 
+let renderHash = null; // какой экран сейчас рисуется: поздний ответ сервера для прежнего экрана не рисуется поверх
+
 function route() {
+  renderHash = currentHash();
   closeChat();
   $(".profile-view")?.remove();
   const page = currentHash().split("/")[1];
@@ -351,6 +354,8 @@ function route() {
 
 function screen(html, { nav = true, cls = "" } = {}) {
   const main = h(`<main class="screen ${nav ? "" : "no-nav"} ${cls}">${html}</main>`);
+  // Пока грузились данные, человек уже ушёл на другой экран — этот не показываем (иначе экраны «наслаиваются»)
+  if (renderHash !== null && renderHash !== currentHash()) return main;
   const swap = () => {
     app.replaceChildren(main);
     if (nav) app.append(navBar());
@@ -367,7 +372,24 @@ function navBar() {
   const item = (key, label, icon) =>
     `<a href="#/${key}" class="${cur === key || (key === "chats" && cur === "chat") || (key === "feed" && cur === "animals") ? "on" : ""}">${icon}<span>${label}</span>${
       key === "chats" && state.unread ? `<b class="badge">${state.unread}</b>` : ""}</a>`;
-  return h(`<nav class="nav" aria-label="Разделы">${item("feed", "Ленты", icons.flame)}${item("chats", "Чаты", icons.chat)}${item("likes", "Отклики", icons.heartLine)}${item("settings", "Профиль", icons.user)}</nav>`);
+  const nav = h(`<nav class="nav" aria-label="Разделы">${item("feed", "Ленты", icons.flame)}${item("chats", "Чаты", icons.chat)}${item("likes", "Отклики", icons.heartLine)}${item("settings", "Профиль", icons.user)}</nav>`);
+  nav.addEventListener("click", onNavTap);
+  return nav;
+}
+
+let lastNavTap = 0;
+/** Повторное нажатие на открытый раздел не открывает его заново, а прокручивает наверх; частые нажатия не копятся. */
+function onNavTap(e) {
+  const a = e.target.closest("a");
+  if (!a) return;
+  const now = Date.now();
+  const same = a.getAttribute("href") === `#/${currentHash().split("/")[1] || "feed"}` && !currentHash().split("/")[2];
+  if (same || now - lastNavTap < 350) {
+    e.preventDefault();
+    if (same) scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+  lastNavTap = now;
 }
 
 function updateNavBadge() {

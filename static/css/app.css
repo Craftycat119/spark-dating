@@ -244,6 +244,12 @@ textarea.input { resize: vertical; min-height: 104px; line-height: 1.45; }
   background: var(--nav-bg); backdrop-filter: blur(16px); border-radius: 999px; padding: 6px;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06), 0 14px 30px -12px rgba(0, 0, 0, .7);
 }
+/* нижняя панель не участвует в анимации смены экрана — не мерцает */
+.nav { view-transition-name: cofi-nav; }
+::view-transition-group(cofi-nav), ::view-transition-old(cofi-nav), ::view-transition-new(cofi-nav) { animation: none; }
+::view-transition-old(cofi-nav) { display: none; }
+/* без синей/бирюзовой вспышки при нажатии на Android */
+a, button, label { -webkit-tap-highlight-color: transparent; }
 .nav a { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 50px; border-radius: 999px; color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500; }
 .nav a.on { background: var(--orange); color: var(--on-orange); box-shadow: var(--puff), 0 8px 26px -6px rgba(255, 91, 31, .7); }
 .nav .badge { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--orange); color: var(--on-orange); font-size: 12px; font-weight: 700; display: grid; place-items: center; }
