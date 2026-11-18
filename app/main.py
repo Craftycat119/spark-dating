@@ -168,7 +168,7 @@ def call_ice_servers(user: User = Depends(current_user)):
     return settings.ice_servers
 
 
-@app.get("/pub/broadcast/{name}")
+@app.api_route("/pub/broadcast/{name}", methods=["GET", "HEAD"])  # HEAD: Telegram сначала проверяет картинку им
 def broadcast_image(name: str):
     """Картинка рассылки — публичная: её скачивает Telegram, чтобы показать над текстом. Только наши имена файлов."""
     import re as _re
@@ -318,12 +318,12 @@ Disallow: /admin
 """
 
 
-@app.get("/robots.txt")
+@app.api_route("/robots.txt", methods=["GET", "HEAD"])
 def robots():
     return PlainTextResponse(ROBOTS, headers={"Cache-Control": "public, max-age=86400"})
 
 
-@app.get("/{path:path}")
+@app.api_route("/{path:path}", methods=["GET", "HEAD"])
 def spa(path: str, request: Request):
     if path.startswith(("api/", "media/", "ws")):
         raise HTTPException(404)

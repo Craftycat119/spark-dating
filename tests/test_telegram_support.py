@@ -120,6 +120,8 @@ def test_broadcast_one_message_with_image_then_edit_and_delete(monkeypatch):
     name = p["link_preview_options"]["url"].rsplit("/", 1)[1].split("?")[0]
     from conftest import new_client
     assert new_client().get(f"/pub/broadcast/{name}").headers["content-type"] == "image/jpeg"
+    head = new_client().head(f"/pub/broadcast/{name}")  # Telegram проверяет картинку запросом HEAD
+    assert head.status_code == 200 and head.headers["content-type"] == "image/jpeg"
     assert new_client().get("/pub/broadcast/spark.db").status_code == 404  # только имена картинок рассылок
     assert b"SQLite" not in new_client().get("/pub/broadcast/../../spark.db").content  # базу так не скачать
 
