@@ -348,6 +348,7 @@ def test_audit_hardening():
     c = new_client()
     r = c.get("/robots.txt")
     assert r.status_code == 200 and "Disallow: /api/" in r.text
+    assert "/pub" not in r.text  # картинки рассылок должны быть доступны Telegram
     assert c.get("/sitemap.xml").status_code == 404 and c.get("/wp-login.php").status_code == 404
     assert c.get("/").status_code == 200 and c.get("/feed").status_code == 200  # страницы приложения как раньше
     h = c.get("/").headers

@@ -117,7 +117,7 @@ def test_broadcast_one_message_with_image_then_edit_and_delete(monkeypatch):
     assert p["text"].count("Безопасность") == 1  # заголовок не дублируется
     assert p["link_preview_options"]["show_above_text"] and p["link_preview_options"]["url"].startswith("https://cofi.example/pub/broadcast/")
     # картинка доступна Telegram без входа
-    name = p["link_preview_options"]["url"].rsplit("/", 1)[1]
+    name = p["link_preview_options"]["url"].rsplit("/", 1)[1].split("?")[0]
     from conftest import new_client
     assert new_client().get(f"/pub/broadcast/{name}").headers["content-type"] == "image/jpeg"
     assert new_client().get("/pub/broadcast/spark.db").status_code == 404  # только имена картинок рассылок

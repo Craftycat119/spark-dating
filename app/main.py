@@ -309,12 +309,12 @@ def admin_page():
     return HTMLResponse(assets.page("admin.html", "js/admin.js"), headers=PAGE_HEADERS)
 
 
+# /pub/ не закрываем: Telegram учитывает robots.txt и без доступа не покажет картинку рассылки
 ROBOTS = """User-agent: *
 Allow: /$
 Disallow: /api/
 Disallow: /media/
 Disallow: /admin
-Disallow: /pub/
 """
 
 

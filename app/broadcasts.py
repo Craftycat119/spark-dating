@@ -30,7 +30,10 @@ def image_url(b: Broadcast) -> str | None:
     base = settings.base_url.rstrip("/")
     if not b.image_name or not base.startswith("https://"):
         return None
-    return f"{base}/pub/broadcast/{b.image_name}"
+    # ?v= — после правки Telegram заново скачивает картинку, а не берёт старое (пустое) превью из своего кэша
+    stamp = b.edited_at or b.created_at
+    v = f"?v={int(stamp.timestamp())}" if stamp else ""
+    return f"{base}/pub/broadcast/{b.image_name}{v}"
 
 
 def _payload(b: Broadcast, chat_id: int) -> dict:
@@ -123,12 +126,12 @@ def edit(broadcast_id: int) -> None:
         b = db.get(Broadcast, broadcast_id)
         if not b:
             return
+        b.edited_at = utcnow()  # до отправки: от неё зависит адрес картинки (?v=), Telegram скачает её заново
         for chat, mid in json.loads(b.deliveries or "{}").items():
             p = _payload(b, int(chat))
             p["message_id"] = mid
             _call("editMessageText", p)
             time.sleep(PAUSE)
-        b.edited_at = utcnow()
         db.commit()
 
 
