@@ -267,3 +267,15 @@ def test_broadcast_retry_reasons_resend_and_image_edit(monkeypatch):
     boss.post(f"/api/admin/broadcasts/{b2['id']}/edit", data={"subject": "Вторая", "body": "Новый текст", "remove_image": "true"})
     assert all(p["link_preview_options"] == {"is_disabled": True} for m, p in calls if m == "editMessageText")
     assert boss.get("/api/admin/broadcasts").json()[0]["image_url"] is None
+
+
+
+def test_broadcast_image_through_relay(monkeypatch):
+    from app import broadcasts
+    from app.models import Broadcast
+
+    monkeypatch.setattr(settings, "base_url", "https://cofi.example")
+    b = Broadcast(subject="s", body="b", image_name="a" * 32 + ".jpg")
+    assert broadcasts.image_url(b).startswith("https://cofi.example/pub/broadcast/")
+    monkeypatch.setattr(settings, "public_image_url", "https://tg.cofi.example")
+    assert broadcasts.image_url(b).startswith("https://tg.cofi.example/pub/broadcast/")

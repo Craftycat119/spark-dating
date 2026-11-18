@@ -37,7 +37,14 @@ import re, sys
 domain, ip = sys.argv[1], sys.argv[2]
 path = "/etc/nginx/sites-available/tg-relay"
 s = open(path).read()
-relay = f"""location / {{
+relay = f"""location /pub/broadcast/ {{
+        # картинки рассылок COFI — их скачивает Telegram для превью, поэтому открыто для всех
+        proxy_pass https://cofilove.com;
+        proxy_ssl_server_name on;
+        proxy_set_header Host cofilove.com;
+        proxy_read_timeout 30s;
+    }}
+    location / {{
         allow {ip};
         deny all;
         proxy_pass https://api.telegram.org;

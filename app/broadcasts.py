@@ -28,7 +28,7 @@ def compose(subject: str, body: str) -> str:
 
 def image_url(b: Broadcast) -> str | None:
     """Публичная https-ссылка на картинку — Telegram скачивает её для превью. Локально (http) превью не будет."""
-    base = settings.base_url.rstrip("/")
+    base = settings.public_image_url or settings.base_url.rstrip("/")
     if not b.image_name or not base.startswith("https://"):
         return None
     # ?v= — после правки Telegram заново скачивает картинку, а не берёт старое (пустое) превью из своего кэша

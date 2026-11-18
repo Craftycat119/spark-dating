@@ -90,6 +90,9 @@ class Settings:
     telegram_bot_username: str = os.environ.get("TELEGRAM_BOT_USERNAME", "")
     # Адрес Bot API. Если с сервера api.telegram.org недоступен (бывает у российских хостингов),
     # укажите свой посредник за рубежом, например https://tg.cofilove.com (см. deploy/DEPLOY.md, «Telegram недоступен»)
+    # Откуда Telegram скачивает картинки рассылок. Из России серверы Telegram до нас часто не достают —
+    # тогда указываем посредника за рубежом (deploy/tg-relay.sh), например https://tg.cofilove.com
+    public_image_url: str = (os.environ.get("PUBLIC_IMAGE_URL", "").strip()).rstrip("/")
     telegram_api_url: str = (os.environ.get("TELEGRAM_API_URL", "").strip() or "https://api.telegram.org").rstrip("/")
     # Куда бот присылает заявки «Помочь» по животным: id группы или человека (бот должен быть добавлен / запущен)
     # Кому ещё бот дублирует заявки «Помочь» по питомцам: id чатов и/или @username через запятую
