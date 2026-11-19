@@ -1535,8 +1535,14 @@ async function openProfile(userId, { onDecide = null, preview = false, onCancelL
       <button class="btn block" data-edit>${icons.check} Понятно</button>`;
     $("[data-edit]", actions).onclick = () => close();
   } else if (p.conversation_id) {
-    actions.innerHTML = `<button class="btn block" data-write>${icons.chat} Написать сообщение</button>`;
+    actions.innerHTML = `<button class="btn block" data-write>${icons.chat} Написать сообщение</button>
+      ${onCancelLike ? `<button class="btn ghost block" data-unlike>${icons.x} Отменить симпатию</button>` : ""}`;
     $("[data-write]", actions).onclick = () => { close(); go(`#/chat/${p.conversation_id}`); };
+    $("[data-unlike]", actions)?.addEventListener("click", async () => {
+      if (!(await cancelMutual(p))) return;
+      close();
+      onCancelLike();
+    });
   } else if (onDecide) {
     actions.innerHTML = `<div class="btns">
       <div class="bw"><button class="skip" aria-label="Дальше">${icons.x}</button><span>Дальше</span></div>
@@ -1648,6 +1654,16 @@ async function renderChats() {
 
 // ---------------- Отклики ----------------
 
+/** Отменить взаимную симпатию: пара и чат исчезают у обоих. true — отменили. */
+async function cancelMutual(p) {
+  if (!(await confirmDialog(`Отменить симпатию к ${p.name}? Пара и переписка исчезнут у вас обоих. Вернуть будет нельзя.`, "Отменить симпатию"))) return false;
+  try {
+    await api.post("/api/feed/unlike", { user_id: p.id });
+    toast("Симпатия отменена");
+    return true;
+  } catch (ex) { toast(ex.message, { error: true }); return false; }
+}
+
 async function renderLikes() {
   const root = screen(`<h1>Отклики</h1><div id="likes"><div class="spinner"></div></div>`);
   let data;
@@ -1673,7 +1689,7 @@ async function renderLikes() {
     section("received", "Вас лайкнули", "Ответьте взаимностью — и откроется чат", data.received, "Пока никто — но всё впереди");
   $$(".like-item", root).forEach((b) => (b.onclick = () => {
     const id = Number(b.dataset.id);
-    if (b.dataset.kind === "mutual") return go(`#/chat/${b.dataset.conv}`);
+    if (b.dataset.kind === "mutual") return openProfile(id, { onCancelLike: () => renderLikes() });
     if (b.dataset.kind === "sent") return openProfile(id, { onCancelLike: () => { toast("Симпатия отменена"); renderLikes(); } });
     openProfile(id, {
       onDecide: async (like) => {
@@ -1962,7 +1978,7 @@ async function openChat(convId) {
   $("[data-menu]", el).onclick = () => {
     const sheet = h(`<div class="overlay sheet-overlay" role="dialog" aria-label="Действия с чатом">
       <div class="bottom-sheet stack">
-        <button class="btn ghost block" data-a="unmatch">${icons.trash} Удалить пару</button>
+        <button class="btn ghost block" data-a="unmatch">${icons.x} Отменить симпатию</button>
         <button class="btn danger block" data-a="block">${icons.block} Заблокировать</button>
         <button class="btn quiet block" data-a="close">Отмена</button>
       </div></div>`);
@@ -1971,10 +1987,7 @@ async function openChat(convId) {
       const a = e.target.closest("[data-a]")?.dataset.a;
       if (!a && e.target !== sheet) return;
       sheet.remove();
-      if (a === "unmatch" && (await confirmDialog(`Удалить пару с ${other.name}? Чат исчезнет у вас обоих.`, "Удалить пару"))) {
-        await api.del(`/api/chats/${convId}`);
-        go("#/chats");
-      } else if (a === "block" && (await blockUser(other))) go("#/chats");
+      if (a === "unmatch" && (await cancelMutual(other))) go("#/chats"); else if (a === "block" && (await blockUser(other))) go("#/chats");
     };
   };
 

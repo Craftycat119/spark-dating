@@ -268,6 +268,26 @@ def undo(data: UndoIn, user: User = Depends(current_user), db: Session = Depends
     return {"undone": "like" if was_like else "skip", "card": public_card(target, score, common, d)}
 
 
+@router.post("/unlike")
+def unlike(data: UndoIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Отменить симпатию — в том числе взаимную. Пара и чат пропадают у обоих (как «Удалить пару»),
+    человек не возвращается в ленту сразу. Если он вас лайкнул, он останется в «Вас лайкнули»."""
+    swipe = db.scalar(select(Swipe).where(Swipe.from_user_id == user.id, Swipe.to_user_id == data.user_id, Swipe.liked.is_(True)))
+    a, b = sorted((user.id, data.user_id))
+    conv = db.scalar(select(Conversation).where(Conversation.user_a_id == a, Conversation.user_b_id == b, Conversation.active.is_(True)))
+    if not swipe and conv is None:
+        raise HTTPException(404, "Симпатии нет")
+    if swipe:
+        swipe.liked = False
+        swipe.recycled_at = None
+    if conv is not None:
+        conv.active = False
+    db.commit()
+    if conv is not None:
+        notify(data.user_id, {"type": "unmatch", "conversation_id": conv.id})  # у собеседника чат пропадёт сразу
+    return {"status": "ok", "unmatched": conv is not None}
+
+
 @notifications_router.get("")
 def list_notifications(user: User = Depends(current_user), db: Session = Depends(get_db)):
     rows = db.scalars(

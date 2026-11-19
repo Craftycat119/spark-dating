@@ -358,3 +358,21 @@ def test_audit_hardening():
     assert bad.status_code == 422
     d = bad.json()["detail"][0]
     assert set(d) == {"loc", "msg"} and d["msg"] == "Заполните поле" and "input" not in bad.text
+
+
+def test_cancel_mutual_like_even_with_messages():
+    me = make_user("um1@x.io", name="Аня", gender="female", looking_for="male")
+    him = make_user("um2@x.io", name="Олег", gender="male", looking_for="female")
+    me.post("/api/feed/swipe", json={"user_id": him.user_id, "like": True})
+    conv = him.post("/api/feed/swipe", json={"user_id": me.user_id, "like": True}).json()["conversation_id"]
+    me.post(f"/api/chats/{conv}/messages", json={"text": "Привет"})
+    assert me.post("/api/feed/undo", json={"user_id": him.user_id}).status_code == 409  # «вернуть» — нельзя, переписка
+    r = me.post("/api/feed/unlike", json={"user_id": him.user_id})
+    assert r.status_code == 200 and r.json()["unmatched"]
+    mine = me.get("/api/feed/likes").json()
+    assert not mine["mutual"] and not mine["sent"]  # пары и моего лайка нет
+    assert [p["id"] for p in mine["received"]] == [him.user_id]  # он меня лайкнул — можно ответить снова
+    his = him.get("/api/feed/likes").json()
+    assert not his["mutual"] and [p["id"] for p in his["sent"]] == [me.user_id]
+    assert him.get(f"/api/chats/{conv}").status_code in (403, 404)  # чат пропал у обоих
+    assert me.post("/api/feed/unlike", json={"user_id": him.user_id}).status_code == 404
