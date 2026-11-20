@@ -1,0 +1,96 @@
+// Сборка демо COFI в один HTML-файл: node build.mjs <out.html>
+// Нужен esbuild (npm i esbuild) и Python для выгрузки данных ботов из app/demo.py.
+import { build } from "esbuild";
+import { execFileSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const root = resolve(here, "../..");
+const out = process.argv[2] || resolve(here, "cofi-demo.html");
+
+// 1. Данные ботов и опроса берём из бэкенда, чтобы демо не расходилось с приложением
+const data = execFileSync("python3", ["-c", `
+import json, sys
+sys.path.insert(0, ".")
+from app import ages, cli, demo, interests
+from app.routers import support
+import base64, io
+from PIL import Image
+from app.seed_pets import SEED_DIR
+
+def _small(name):  # готовые фото питомцев, уменьшенные для демо-страницы
+    im = Image.open(SEED_DIR / name).convert("RGB"); im.thumbnail((720, 720)); buf = io.BytesIO(); im.save(buf, "JPEG", quality=78)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+
+real_pets = [{**p, "photos": [_small(n) for n in p["photos"]]} for p in json.loads((SEED_DIR / "pets.json").read_text(encoding="utf-8"))]
+print(json.dumps({
+  "bots": [{k: b[k] for k in ("key","name","age","gender","km","likes_you","scenes","goals","interests","bio","replies","fit")} for b in demo.BOTS],
+  "guest": {k: v for k, v in demo.GUEST.items() if k != "photo"},
+  "teen_bots": [{k: b[k] for k in ("key","name","age","gender","km","likes_you","scenes","goals","interests","bio","replies")} for b in demo.TEEN_BOTS],
+  "teen_guest": demo.TEEN_GUEST, "teen_fallback": demo.TEEN_FALLBACK,
+  "fallback_reply": demo.FALLBACK_REPLY,
+  "center": demo.CENTER,
+  "survey": interests.SURVEY, "genders": interests.GENDERS, "teen_genders": interests.TEEN_GENDERS, "orientations": interests.ORIENTATIONS, "orientations_by_gender": interests.ORIENTATIONS_BY_GENDER, "zodiac": interests.ZODIAC, "looking_for": interests.LOOKING_FOR,
+  "min_interests": interests.MIN_INTERESTS,
+  "teen_goals": ages.TEEN_GOALS, "min_age": ages.MIN_AGE,
+  "real_pets": real_pets,
+  "animals": [dict(zip(("category","name","species","age_text","description","fundraising_goal","color"), a)) for a in cli.ANIMALS],
+  "support": {
+    "ads_greeting": support.ADS_GREETING, "support_greeting": support.SUPPORT_GREETING, "handoff": support.HANDOFF,
+    "greetings": support.GREETINGS, "report_greeting": support.REPORT_GREETING,
+    "formats": support.ads_answer("формат", None), "price": support.ads_answer("цена", None), "lead": support.ads_answer("заявка", None),
+  },
+}, ensure_ascii=False))
+`], { cwd: root, env: { ...process.env, DATA_DIR: resolve(here, ".tmp-data") } }).toString();
+writeFileSync(resolve(here, "data.json"), data);
+
+// 2. Бандл: api.js подменяем имитатором, three.js берём из static/vendor
+const swap = {
+  name: "swap",
+  setup(b) {
+    b.onResolve({ filter: /^\.\/api\.js$/ }, () => ({ path: resolve(here, "mock-api.js") }));
+    b.onResolve({ filter: /^\/static\/vendor\// }, (a) => ({ path: resolve(root, a.path.slice(1)) }));
+  },
+};
+const res = await build({
+  entryPoints: [resolve(here, "entry.js")], bundle: true, format: "iife", minify: true,
+  write: false, plugins: [swap], target: "es2020", charset: "utf8", logLevel: "warning",
+});
+const js = res.outputFiles[0].text.replaceAll("</script", "<\\/script");
+
+// 3. Стили: app.css + иконки Phosphor с встроенными шрифтами
+const font = (f) => `url(data:font/woff2;base64,${readFileSync(resolve(root, "static/vendor/phosphor", f)).toString("base64")}) format("woff2")`;
+const phosphor = ["regular.css", "fill.css"].map((f) =>
+  readFileSync(resolve(root, "static/vendor/phosphor", f), "utf8")
+    .replace(/url\("\.\/(Phosphor[^"]*\.woff2)"\) format\("woff2"\)/, (_, file) => font(file))).join("\n");
+// логотип встраиваем в файл: на странице по ссылке нет папки /static
+const logo = `data:image/png;base64,${readFileSync(resolve(root, "static/img/logo-64.png")).toString("base64")}`;
+const css = readFileSync(resolve(root, "static/css/app.css"), "utf8").replaceAll("/static/img/logo-64.png", logo);
+
+// 4. Разметка из index.html: фильтры «надутого» материала и контейнеры
+const index = readFileSync(resolve(root, "static/index.html"), "utf8");
+const svgDefs = index.match(/<svg width="0"[\s\S]*?<\/svg>/)[0];
+const themeScript = `<script>${readFileSync(resolve(root, "static/js/theme-boot.js"), "utf8")}</script>`; // в демо всё в одном файле
+
+const html = `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>COFI демо</title>
+<link rel="icon" href="${logo}">
+<meta name="theme-color" content="#120c09">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;800&family=Unbounded:wght@600;700&display=swap" rel="stylesheet">
+${themeScript.replace('localStorage.getItem("theme")||"dark"', 'localStorage.getItem("theme")||"system"')}
+<style>
+${phosphor}
+${css}
+html, body { min-height: 100%; }
+</style>
+${svgDefs}
+<div id="app"></div>
+<div class="toast-host" id="toasts" aria-live="polite"></div>
+<script>${js}</script>
+`;
+writeFileSync(out, html);
+console.log(`${out}: ${(html.length / 1024).toFixed(0)} КБ`);

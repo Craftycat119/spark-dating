@@ -13,32 +13,84 @@ from PIL import Image, ImageDraw
 from sqlalchemy import select
 
 from . import storage
-from .config import FEEDS
+from .config import settings
+from .ages import birth_for_age
+from .interests import GOALS, SURVEY
 from .database import SessionLocal, init_db
 from .face_verify import download_models
-from .models import ProfileFeed, User, utcnow
+from .legal import TERMS_VERSION
+from .models import AnimalPost, User, UserPhoto, utcnow
 from .security import hash_password
 
 DEMO_NAMES = ["Алина", "Марк", "Соня", "Илья", "Вера", "Тимур", "Ника", "Глеб", "Лиза", "Артём", "Мира", "Даня"]
 DEMO_BIOS = [
     "Люблю ночные прогулки по набережной и плёночные фотоаппараты.",
-    "Кофе, скалодром, и иногда — стендап по пятницам.",
+    "Кофе, скалодром и стендап по пятницам.",
     "Ищу компанию на настолки и походы выходного дня.",
     "Готовлю лучшую пасту в районе. Проверишь?",
     "Работаю в IT, по вечерам играю на гитаре.",
-    "Путешествую налегке: 14 стран за последние два года.",
+    "Путешествую налегке, в этом году была в Грузии и Армении.",
 ]
-COLORS = ["#ff5c8a", "#7c5cff", "#2ee6a8", "#ffb347", "#4cc9f0", "#f72585"]
+ANIMALS = [
+    ("charity", "Барсик", "Кошка", "3 года", (
+        "Барсика сбила машина у метро, волонтёры подобрали его ночью. Перелом задней лапы, нужна операция с пластиной "
+        "и две недели стационара. Клиника на Профсоюзной согласилась оперировать сразу, оплату ждут после.\n\n"
+        "Сам Барсик ласковый, мурчит даже на перевязках, с другими кошками ладит. После лечения будем искать ему дом. "
+        "Все чеки и выписки выкладываем в канал, отчёт пришлём каждому, кто помог."), "38 000 ₽", "#c9461a"),
+    ("adoption", "Рыжик", "Кошка", "7 месяцев", (
+        "Рыжик вырос на передержке у волонтёра: приучен к лотку и когтеточке, привит, кастрирован, обработан от паразитов. "
+        "Очень любопытный и игривый, обожает мячики и сидеть на подоконнике.\n\n"
+        "Ищем дом без маленьких детей: Рыжик пока может поцарапать в игре. Отдаём по договору ответственного содержания, "
+        "привезём сами и поможем с первыми днями."), "", "#e0743a"),
+    ("foster", "Луна", "Собака", "2 года", (
+        "Луна после стерилизации, ей нужна спокойная передержка на две недели, пока заживает шов. Она тихая, "
+        "приучена к поводку, гуляет два раза в день, ладит с людьми, к кошкам равнодушна.\n\n"
+        "Корм, попону, лекарства и пелёнки даём. Подойдёт квартира без других собак в Москве или ближнем Подмосковье. "
+        "Волонтёр на связи каждый день и приедет на снятие швов."), "", "#a8411f"),
+    ("charity", "Стерилизация бездомных животных", "Другое", "", (
+        "Собираем на стерилизацию 12 бездомных кошек и собак, которых волонтёры отловили у гаражей на Юго-Западе. "
+        "Стерилизация решает проблему гуманно: без неё за год у одной кошки рождается до 20 котят, и почти все они "
+        "погибают на улице.\n\n"
+        "Ветклиника делает операции по льготной цене: 1 700 ₽ за кошку и 2 500 ₽ за собаку, включая наркоз, "
+        "чипирование и прививку от бешенства. После операции животных подержим на передержке и выпустим в привычное "
+        "место под присмотр подкармливающих соседей, а ручных пристроим в дома. Отчёт с чеками и фото каждого хвоста "
+        "опубликуем в канале."), "20 000 ₽", "#cf5a2c"),
+]
+COLORS = ["#ff5b1f", "#c9411a", "#e8763f", "#8a3214", "#ff8a4c", "#5a2410"]
 
 
-def make_admin(email: str) -> None:
+def make_admin(who: str) -> None:
+    """Права админа по почте или по Telegram (@username или id)."""
+    who = who.strip()
     with SessionLocal() as db:
-        user = db.scalar(select(User).where(User.email == email.strip().lower()))
+        if "@" in who and not who.startswith("@"):
+            user = db.scalar(select(User).where(User.email == who.lower()))
+        else:
+            tg = who.lstrip("@")
+            user = db.scalar(select(User).where(User.telegram_id == int(tg))) if tg.isdigit() else \
+                db.scalar(select(User).where(User.telegram_username.ilike(tg)))
         if not user:
-            raise SystemExit(f"Пользователь {email} не найден — сначала зарегистрируйтесь")
+            raise SystemExit(f"{who} не найден: сначала войдите в COFI (почтой или через Telegram)")
         user.is_admin = True
+        user.terms_accepted_at, user.terms_version = utcnow(), TERMS_VERSION
         db.commit()
-        print(f"{email} теперь администратор. Панель: /admin")
+        print(f"{who} теперь администратор. Анкету заполнять не нужно. Панель: /admin")
+
+
+def create_admin(name: str, email: str, password: str) -> None:
+    """Администратор без анкеты: только имя, почта и пароль для входа."""
+    from .security import hash_password, normalize_email, password_errors
+
+    if errors := password_errors(password):
+        raise SystemExit("Пароль: " + "; ".join(errors))
+    email = normalize_email(email)
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == email)) or User(email=email, auth_provider="email")
+        db.add(user)
+        user.name, user.password_hash, user.email_verified, user.is_admin = name, hash_password(password), True, True
+        user.terms_accepted_at, user.terms_version = utcnow(), TERMS_VERSION
+        db.commit()
+    print(f"Администратор {name} создан. Вход: {email} и пароль, панель: /admin")
 
 
 def _avatar(name: str, color: str) -> str:
@@ -61,10 +113,12 @@ def seed(lat: float, lon: float, count: int) -> None:
             name = DEMO_NAMES[i % len(DEMO_NAMES)]
             u = User(
                 email=f"demo{i + 1}@example.com",
+                terms_accepted_at=utcnow(), terms_version=TERMS_VERSION, age_confirmation="adult",
                 password_hash=hash_password("Demo12345"),
                 email_verified=True,
                 name=name,
-                age=random.randint(19, 38),
+                age=(a := random.randint(19, 38)),
+                birth_date=birth_for_age(a),
                 bio=random.choice(DEMO_BIOS),
                 photo_path=_avatar(name, COLORS[i % len(COLORS)]),
                 photo_verified=True,
@@ -74,33 +128,93 @@ def seed(lat: float, lon: float, count: int) -> None:
                 registration_ip="127.0.0.1",
             )
             u.registration_lat, u.registration_lon = u.lat, u.lon
-            for key in FEEDS:
-                u.feeds.append(ProfileFeed(feed=key, enabled=random.random() > 0.25, bio=""))
+            for k in range(random.randint(1, 3)):
+                u.photos.append(UserPhoto(path=_avatar(f"{name} {k + 2}", COLORS[(i + k + 2) % len(COLORS)])))
+            u.gender = "female" if i % 2 == 0 else "male"
+            u.looking_for = random.choice(["male", "female", "any"]) if i % 3 else "any"
+            u.goals = random.sample(sorted(GOALS), k=random.randint(1, 2))
+            u.interests = [opt for q in SURVEY[1:] for opt in random.sample(q["options"], k=random.randint(1, 3))]
             db.add(u)
         db.commit()
-    print(f"Создано {count} демо-анкет (пароль у всех Demo12345)")
+        author = db.scalar(select(User).where(User.email == "demo1@example.com"))
+        for cat, name, species, age, desc, goal, color in ANIMALS:
+            post = AnimalPost(author_id=author.id, category=cat, name=name, species=species, age_text=age, city="Москва",
+                              description=desc, contact="@cofi_volunteers", fundraising_goal=goal, lat=lat, lon=lon)
+            post.photos = [_avatar(name, color), _avatar(f"{name} 2", color), _avatar(f"{name} 3", color)]
+            db.add(post)
+        db.commit()
+    print(f"Создано {count} демо-анкет (пароль у всех Demo12345) и {len(ANIMALS)} объявлений о животных")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("make-admin")
+    p = sub.add_parser("make-admin", help="дать права админа: почта, @username или Telegram id")
     p.add_argument("email")
+    ca = sub.add_parser("create-admin", help="создать админа без анкеты")
+    ca.add_argument("--name", required=True)
+    ca.add_argument("--email", required=True)
+    ca.add_argument("--password", required=True)
     s = sub.add_parser("seed")
     s.add_argument("--lat", type=float, default=55.7558)
     s.add_argument("--lon", type=float, default=37.6173)
     s.add_argument("--count", type=int, default=12)
     sub.add_parser("download-models")
+    sub.add_parser("seed-pets", help="добавить готовые объявления о питомцах из app/seed/pets")
+    sub.add_parser("outlook-login", help="подключить личную почту Outlook.com для отправки кодов")
+    sub.add_parser("convert-media", help="перекодировать старые кружки, видео и голосовые в mp4/m4a для iPhone")
+    t = sub.add_parser("test-email", help="отправить пробное письмо")
+    t.add_argument("to")
     args = parser.parse_args()
 
     init_db()
     if args.cmd == "make-admin":
         make_admin(args.email)
+    elif args.cmd == "create-admin":
+        create_admin(args.name, args.email, args.password)
     elif args.cmd == "seed":
         seed(args.lat, args.lon, args.count)
+    elif args.cmd == "seed-pets":
+        from .seed_pets import seed_pets
+
+        with SessionLocal() as db:
+            print(f"Добавлено объявлений: {seed_pets(db)}")
     elif args.cmd == "download-models":
         download_models()
         print("Готово")
+    elif args.cmd == "convert-media":
+        from .models import Message
+
+        with SessionLocal() as db:
+            done = 0
+            for m in db.scalars(select(Message).where(Message.kind.in_(["circle", "video", "voice"]), Message.media_path.is_not(None))):
+                if m.kind == "circle":
+                    if m.media_path.endswith(".mp4") and storage.circle_ok(m.media_path):
+                        continue  # уже в общем виде (H.264, 480×480, yuv420p)
+                elif m.media_path.endswith(".m4a" if m.kind == "voice" else ".mp4"):
+                    continue
+                new = storage.to_playable(m.media_path, m.kind)
+                if new != m.media_path:
+                    m.media_path = new
+                    db.commit()
+                if new != m.media_path or m.kind == "circle":
+                    done += 1
+            print(f"Перекодировано файлов: {done}")
+            posters = 0
+            for m in db.scalars(select(Message).where(Message.kind == "video", Message.media_path.is_not(None))):
+                if not (settings.media_dir / storage.poster_rel(m.media_path)).exists():
+                    storage.make_poster(m.media_path)
+                    posters += 1
+            print(f"Превью для видео: {posters}")
+    elif args.cmd == "outlook-login":
+        from .outlook_oauth import login_interactive
+
+        login_interactive()
+    elif args.cmd == "test-email":
+        from .emailer import send_email
+
+        ok = send_email(args.to, "COFI: проверка почты", "Если вы читаете это письмо, отправка кодов работает.")
+        print("Письмо отправлено" if ok and settings.smtp_host else "Не отправлено, подробности выше в логе")
 
 
 if __name__ == "__main__":
