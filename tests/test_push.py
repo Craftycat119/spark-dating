@@ -201,7 +201,7 @@ def test_broadcast_and_unread_count_via_telegram(monkeypatch):
         db.commit()
     r = boss.post("/api/admin/broadcast", data={"subject": "Новое", "body": "Кружочки"})
     assert r.json()["recipients"] == 1
-    assert any(p["text"].startswith("📣 Новое") for _, p in bot.sent)
+    assert any(p["text"].startswith("📣 <b>Новое") and p["parse_mode"] == "HTML" for _, p in bot.sent)
     a.post("/api/feed/swipe", json={"user_id": b.user_id, "like": True})
     conv = b.post("/api/feed/swipe", json={"user_id": a.user_id, "like": True}).json()["conversation_id"]
     bot.sent.clear()
