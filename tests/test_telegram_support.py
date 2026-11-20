@@ -279,3 +279,13 @@ def test_broadcast_image_through_relay(monkeypatch):
     assert broadcasts.image_url(b).startswith("https://cofi.example/pub/broadcast/")
     monkeypatch.setattr(settings, "public_image_url", "https://tg.cofi.example")
     assert broadcasts.image_url(b).startswith("https://tg.cofi.example/pub/broadcast/")
+
+
+def test_broadcast_formatting_html():
+    from app import broadcasts
+
+    t = broadcasts.compose("Новое <в> COFI", "Привет! **Важно**: *отмена лайка*\n> Цитата раз\n> два\nКонец 2*3 и user_name_x")
+    assert t.startswith("📣 <b>Новое &lt;в&gt; COFI</b>")
+    assert "<b>Важно</b>" in t and "<i>отмена лайка</i>" in t
+    assert "<blockquote>Цитата раз\ntwo".replace("two", "два") + "</blockquote>" in t
+    assert "2*3" in t and "user_name_x" in t  # одиночные символы не ломают текст

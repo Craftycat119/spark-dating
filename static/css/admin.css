@@ -135,3 +135,6 @@ dl.kv dd { margin: 0; word-break: break-word; }
 
 .funnel .bar { height: 8px; border-radius: 4px; background: var(--surface-2, rgba(127,127,127,.2)); overflow: hidden; }
 .funnel .bar i { display: block; height: 100%; background: var(--orange, #f2621f); border-radius: 4px; }
+
+.fmt-bar { display: flex; gap: 6px; margin: 2px 0 6px; }
+.fmt-bar .btn { min-height: 34px; padding: 0 14px; font-size: 14px; }

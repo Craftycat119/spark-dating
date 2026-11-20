@@ -6,7 +6,9 @@
 """
 from __future__ import annotations
 
+import html
 import json
+import re
 import logging
 import threading
 import time
@@ -22,8 +24,37 @@ RETRIES = 3
 TEXT_MAX = 4096
 
 
+_BOLD = re.compile(r"\*\*(\S(?:.*?\S)?)\*\*")
+_ITALIC = re.compile(r"(?<![\w*])\*(\S(?:[^*\n]*?\S)?)\*(?![\w*])")
+
+
+def _inline(text: str) -> str:
+    return _ITALIC.sub(r"<i>\1</i>", _BOLD.sub(r"<b>\1</b>", text))
+
+
+def format_body(body: str) -> str:
+    """Оформление в стиле Telegram: **жирный**, *курсив*, строки с «> » — цитата-блок. Остальное — как есть."""
+    out, quote = [], []
+
+    def flush():
+        if quote:
+            out.append("<blockquote>" + "\n".join(quote) + "</blockquote>")
+            quote.clear()
+
+    for line in html.escape(body.strip(), quote=False).split("\n"):
+        if line.startswith("&gt; ") or line == "&gt;":
+            quote.append(_inline(line[5:]))
+        else:
+            flush()
+            out.append(_inline(line))
+    flush()
+    return "\n".join(out)
+
+
 def compose(subject: str, body: str) -> str:
-    return f"📣 {subject.strip()}\n\n{body.strip()}"[:TEXT_MAX]
+    """Текст сообщения (HTML для Telegram): заголовок жирным, затем текст с оформлением."""
+    room = TEXT_MAX - len(subject) - 10
+    return f"📣 <b>{html.escape(subject.strip(), quote=False)}</b>\n\n{format_body(body.strip()[:room])}"
 
 
 def image_url(b: Broadcast) -> str | None:
@@ -40,7 +71,7 @@ def image_url(b: Broadcast) -> str | None:
 def _payload(b: Broadcast, chat_id: int) -> dict:
     from .push import _open_button
 
-    p: dict = {"chat_id": chat_id, "text": compose(b.subject, b.body)}
+    p: dict = {"chat_id": chat_id, "text": compose(b.subject, b.body), "parse_mode": "HTML"}
     url = image_url(b)
     # картинка над текстом, крупно; без картинки — без превью ссылок
     p["link_preview_options"] = ({"url": url, "prefer_large_media": True, "show_above_text": True} if url else {"is_disabled": True})

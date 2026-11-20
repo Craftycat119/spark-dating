@@ -726,7 +726,8 @@ function mail() {
     <form class="stack" style="max-width:560px">
       <p class="muted">Сообщение придёт через Telegram-бота всем, у кого подключён Telegram и включены уведомления. На почту рассылки не отправляются: почтой уходят только коды входа.</p>
       <label class="field"><span>Тема</span><input class="input" name="subject" maxlength="200" required placeholder="Например: в COFI появились кружочки"></label>
-      <label class="field"><span>Текст</span><textarea class="input" name="body" rows="10" maxlength="3900" required></textarea></label>
+      <div class="field"><span>Текст</span>${fmtBar()}<textarea class="input" name="body" rows="10" maxlength="3900" required></textarea></div>
+      <p class="muted small">Оформление: <b>**жирный**</b>, <i>*курсив*</i>, строка с «&gt; » в начале — цитата-блок. Шрифт в Telegram поменять нельзя — он у всех системный.</p>
       <label class="field"><span>Картинка (необязательно)</span><input class="input" type="file" name="image" accept="image/*"></label>
       <div class="bc-preview" hidden><img alt="Картинка рассылки"><button type="button" class="btn quiet" data-clear-image>Убрать картинку</button></div>
       <p class="muted small">Картинка и текст придут одним сообщением: картинка крупно над текстом. Текст — до 3900 символов. Отправленную рассылку можно изменить или удалить у всех — внизу страницы.</p>
@@ -773,6 +774,29 @@ function mail() {
     } catch (ex) { toast(ex.message, { error: true }); }
   };
 }
+
+/** Кнопки оформления над текстом рассылки: оборачивают выделенное. */
+function fmtBar() {
+  return `<span class="fmt-bar" role="toolbar" aria-label="Оформление">
+    <button type="button" class="btn quiet" data-fmt="**" title="Жирный"><b>Ж</b></button>
+    <button type="button" class="btn quiet" data-fmt="*" title="Курсив"><i>К</i></button>
+    <button type="button" class="btn quiet" data-fmt="&gt; " title="Цитата">❝ Цитата</button></span>`;
+}
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest?.("[data-fmt]");
+  if (!btn) return;
+  e.preventDefault();
+  const ta = btn.closest(".field")?.querySelector("textarea");
+  if (!ta) return;
+  const mark = btn.dataset.fmt, [a, z] = [ta.selectionStart, ta.selectionEnd];
+  const sel = ta.value.slice(a, z);
+  let ins;
+  if (mark === "> ") ins = (sel || "Текст цитаты").split("\n").map((l) => "> " + l).join("\n");
+  else ins = mark + (sel || "текст") + mark;
+  ta.setRangeText(ins, a, z, "select");
+  ta.focus();
+});
 
 async function loadBroadcasts() {
   const box = $(".bc-list", view);
@@ -825,7 +849,7 @@ async function loadBroadcasts() {
       const body = $(".bc-body", el);
       body.innerHTML = `<form class="stack">
         <label class="field"><span>Тема</span><input class="input" name="subject" maxlength="200" required value="${esc(b.subject)}"></label>
-        <label class="field"><span>Текст</span><textarea class="input" name="body" rows="8" maxlength="3900" required>${esc(b.body)}</textarea></label>
+        <div class="field"><span>Текст</span>${fmtBar()}<textarea class="input" name="body" rows="8" maxlength="3900" required>${esc(b.body)}</textarea></div>
         <div class="field"><span>Картинка</span>
           <div class="bc-preview" ${b.image_url ? "" : "hidden"}><img alt="" src="${esc(b.image_url || "")}"><button type="button" class="btn quiet" data-drop>Убрать картинку</button></div>
           <input class="input" type="file" name="image" accept="image/*">
