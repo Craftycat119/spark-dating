@@ -138,3 +138,6 @@ dl.kv dd { margin: 0; word-break: break-word; }
 
 .fmt-bar { display: flex; gap: 6px; margin: 2px 0 6px; }
 .fmt-bar .btn { min-height: 34px; padding: 0 14px; font-size: 14px; }
+
+.bc-send { display: flex; gap: 10px; flex-wrap: wrap; }
+.bc-send .btn { flex: 1 1 240px; }

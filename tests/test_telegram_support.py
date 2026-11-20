@@ -289,3 +289,21 @@ def test_broadcast_formatting_html():
     assert "<b>Важно</b>" in t and "<i>отмена лайка</i>" in t
     assert "<blockquote>Цитата раз\ntwo".replace("two", "два") + "</blockquote>" in t
     assert "2*3" in t and "user_name_x" in t  # одиночные символы не ломают текст
+
+
+
+def test_broadcast_audience_counts():
+    from app.database import SessionLocal
+    from app.models import TelegramContact, User
+
+    boss = make_user("boss@example.com", name="Андрей")
+    for i, (tid, on) in enumerate(((7101, True), (7102, False))):
+        u = make_user(f"aud{i}@x.io", name=f"Ч{i}")
+        with SessionLocal() as db:
+            x = db.get(User, u.user_id)
+            x.telegram_id, x.tg_notifications = tid, on
+            db.commit()
+    with SessionLocal() as db:
+        db.add(TelegramContact(username="g", chat_id=7103))
+        db.commit()
+    assert boss.get("/api/admin/broadcast/audience").json() == {"subscribed": 1, "everyone": 3}

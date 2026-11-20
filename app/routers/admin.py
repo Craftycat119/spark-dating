@@ -381,6 +381,12 @@ def conversation_messages(conv_id: int, _: User = Depends(admin_user), db: Sessi
     return {**_conv_row(db, c), "items": [message_out(m) for m in msgs]}
 
 
+@router.get("/broadcast/audience")
+def broadcast_audience(_: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Сколько человек получит рассылку: подписанные (уведомления включены) и все, кто заходил в бота."""
+    return {"subscribed": len(_bc_audience(db, False)), "everyone": len(_bc_audience(db, True))}
+
+
 @router.post("/broadcast")
 def broadcast(background: BackgroundTasks, subject: str = Form(..., min_length=1, max_length=200),
               body: str = Form(..., min_length=1, max_length=3900), everyone: bool = Form(False),

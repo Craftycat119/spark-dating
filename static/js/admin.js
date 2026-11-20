@@ -737,9 +737,12 @@ function mail() {
         <span class="muted small">Каждый, кто впервые напишет боту или войдёт через Telegram, получит этот пост закреплённым — отдельно от приветствия. Такой пост только один: новый заменит прежний.</span></span></label>
       <label class="check" style="margin-left:28px"><input type="checkbox" name="only_new"><span><b>Только новым — сейчас никому не рассылать</b><br>
         <span class="muted small">Если этот пост уже приходил всем раньше.</span></span></label>
-      <label class="check"><input type="checkbox" name="everyone"><span><b>Важное служебное — всем, кто писал боту</b><br>
-        <span class="muted small">Технические работы, сбои, изменения правил. Придёт и тем, у кого уведомления выключены, и тем, кто писал боту без аккаунта. Не для новостей и рекламы.</span></span></label>
-      <button class="btn">Отправить рассылку</button>
+      <div class="bc-send">
+        <button class="btn" data-send="subscribed">Отправить подписанным <span data-count="subscribed"></span></button>
+        <button class="btn ghost" data-send="everyone">Отправить всем, кто заходил в бота <span data-count="everyone"></span></button>
+      </div>
+      <p class="muted small">«Подписанным» — у кого в COFI включены уведомления в Telegram. «Всем» — ещё и тем, кто их выключил, и тем, кто писал боту без аккаунта: такие чаще блокируют бота, поэтому лучше для важного.
+        Звук у получателя зависит от его настроек: если он выключил звук у чата с ботом, сообщение придёт без звука — бот это изменить не может.</p>
     </form>
     <h2 style="margin-top:36px">Отправленные</h2>
     <div class="bc-list"><p class="muted">Загрузка…</p></div>`;
@@ -751,12 +754,21 @@ function mail() {
     if (file) $("img", prev).src = URL.createObjectURL(file);
   };
   $("[data-clear-image]", view).onclick = () => { fileIn.value = ""; prev.hidden = true; };
+  const counts = {};
+  api.get("/api/admin/broadcast/audience").then((c) => {
+    Object.assign(counts, c);
+    for (const k of ["subscribed", "everyone"]) { const el = $(`[data-count="${k}"]`, view); if (el) el.textContent = `(${c[k]})`; }
+  }).catch(() => {});
+  let target = "subscribed";
+  $$("[data-send]", view).forEach((btn) => (btn.onclick = () => { target = btn.dataset.send; }));
   $("form", view).onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target;
-    const everyone = f.everyone.checked;
+    const everyone = (e.submitter?.dataset.send || target) === "everyone";
     const onlyNew = f.newcomers.checked && f.only_new.checked;
-    if (!(await confirmDialog(onlyNew ? "Сохранить пост для новых пользователей? Сейчас он никому не уйдёт." : everyone ? "Отправить служебное сообщение ВСЕМ, кто писал боту?" : "Отправить сообщение всем в Telegram?", onlyNew ? "Сохранить" : "Отправить"))) return;
+    const n = counts[everyone ? "everyone" : "subscribed"];
+    const who = everyone ? "ВСЕМ, кто заходил в бота" : "подписанным";
+    if (!(await confirmDialog(onlyNew ? "Сохранить пост для новых пользователей? Сейчас он никому не уйдёт." : `Отправить рассылку ${who}${n != null ? ` (${n})` : ""}?`, onlyNew ? "Сохранить" : "Отправить"))) return;
     try {
       const fd = new FormData();
       fd.append("subject", f.subject.value);
@@ -813,7 +825,7 @@ async function loadBroadcasts() {
       <div class="bc-body">
         <b>${esc(b.subject)}</b> ${st(b)}${b.edited_at ? ' <span class="muted small">изменена</span>' : ""}
         ${b.newcomers ? ' <span class="tag hot">📌 новым пользователям</span>' : b.pin ? ' <span class="tag">📌 закреплена</span>' : ""}
-        <p class="muted small">${dt(b.created_at)}${b.everyone ? " · служебная, всем" : ""}</p>
+        <p class="muted small">${dt(b.created_at)}${b.everyone ? " · всем, кто заходил в бота" : " · подписанным"}</p>
         ${Object.keys(b.reasons || {}).length ? `<p class="muted small">Почему не дошло: ${Object.entries(b.reasons).map(([k, n]) => `${esc(k)} — ${n}`).join(" · ")}</p>` : ""}
         <p class="bc-text">${esc(b.body).slice(0, 300)}${b.body.length > 300 ? "…" : ""}</p>
         ${b.status === "sent" ? `<div class="row" style="gap:8px;flex-wrap:wrap">
