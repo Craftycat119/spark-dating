@@ -384,15 +384,19 @@ def conversation_messages(conv_id: int, _: User = Depends(admin_user), db: Sessi
 @router.get("/broadcast/audience")
 def broadcast_audience(_: User = Depends(admin_user), db: Session = Depends(get_db)):
     """Сколько человек получит рассылку: подписанные (уведомления включены) и все, кто заходил в бота."""
-    return {"subscribed": len(_bc_audience(db, False)), "everyone": len(_bc_audience(db, True))}
+    from ..broadcasts import quiet_chats
+
+    everyone = _bc_audience(db, True)
+    return {"subscribed": len(_bc_audience(db, False)), "everyone": len(everyone), "muted": len(everyone & quiet_chats(db))}
 
 
 @router.post("/broadcast")
 def broadcast(background: BackgroundTasks, subject: str = Form(..., min_length=1, max_length=200),
               body: str = Form(..., min_length=1, max_length=3900), everyone: bool = Form(False),
-              pin: bool = Form(False), newcomers: bool = Form(False), only_new: bool = Form(False),
+              pin: bool = Form(False), newcomers: bool = Form(False), only_new: bool = Form(False), loud: bool = Form(False),
               image: UploadFile | None = File(None), _: User = Depends(admin_user), db: Session = Depends(get_db)):
-    """Новость всем через Telegram-бота: картинка (если есть) и текст — одним сообщением."""
+    """Новость через Telegram-бота: картинка (если есть) и текст — одним сообщением.
+    Кто выключил уведомления в COFI, получает беззвучно, если не отмечено «со звуком всем» (loud)."""
     from .. import broadcasts
     from ..models import Broadcast
 
@@ -406,7 +410,8 @@ def broadcast(background: BackgroundTasks, subject: str = Form(..., min_length=1
     if newcomers:  # «для новых» может быть только один пост — прежний перестаёт рассылаться новичкам
         db.execute(Broadcast.__table__.update().values(newcomers=False))
     b = Broadcast(subject=data.subject.strip(), body=data.body.strip(), image_name=image_name, everyone=data.everyone,
-                  recipients=len(chats), pin=pin or newcomers, newcomers=newcomers, status="sending" if chats else "sent")
+                  recipients=len(chats), pin=pin or newcomers, newcomers=newcomers, loud=loud,
+                  status="sending" if chats else "sent")
     db.add(b)
     db.commit()
     background.add_task(broadcasts.send, b.id, sorted(chats))
@@ -453,7 +458,7 @@ def _broadcast_out(b, db: Session | None = None) -> dict:
 
     # дослать можно разосланному всем посту (не «только новым», где получателей не было)
     missing = len(resend_targets(b, _bc_audience(db, b.everyone))) if db is not None and b.status == "sent" and b.recipients else 0
-    return {"reasons": reasons_summary(b), "missing": missing,"id": b.id, "subject": b.subject, "body": b.body, "everyone": b.everyone, "status": b.status,
+    return {"reasons": reasons_summary(b), "missing": missing, "loud": b.loud,"id": b.id, "subject": b.subject, "body": b.body, "everyone": b.everyone, "status": b.status,
             "pin": b.pin, "newcomers": b.newcomers,
             "recipients": b.recipients, "sent": b.sent, "failed": b.failed,
             "image_url": f"/pub/broadcast/{b.image_name}" if b.image_name else None, "public_image": image_url(b),

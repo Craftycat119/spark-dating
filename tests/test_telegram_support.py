@@ -306,4 +306,33 @@ def test_broadcast_audience_counts():
     with SessionLocal() as db:
         db.add(TelegramContact(username="g", chat_id=7103))
         db.commit()
-    assert boss.get("/api/admin/broadcast/audience").json() == {"subscribed": 1, "everyone": 3}
+    assert boss.get("/api/admin/broadcast/audience").json() == {"subscribed": 1, "everyone": 3, "muted": 1}
+
+
+
+def test_broadcast_silent_for_muted_unless_loud(monkeypatch):
+    from app import broadcasts, telegram_bot
+    from app.database import SessionLocal
+    from app.models import User
+
+    bot = _Bot()
+    monkeypatch.setattr(settings, "telegram_bot_token", "x")
+    monkeypatch.setattr(telegram_bot, "api", bot)
+    monkeypatch.setattr(broadcasts, "PAUSE", 0)
+    boss = make_user("boss@example.com", name="Андрей")
+    for i, (tid, on) in enumerate(((7201, True), (7202, False))):
+        u = make_user(f"mute{i}@x.io", name=f"М{i}")
+        with SessionLocal() as db:
+            x = db.get(User, u.user_id)
+            x.telegram_id, x.tg_notifications = tid, on
+            db.commit()
+    assert boss.get("/api/admin/broadcast/audience").json()["muted"] == 1
+    boss.post("/api/admin/broadcast", data={"subject": "Новость", "body": "т", "everyone": "true"})
+    sends = {p["chat_id"]: p for m, p in bot.calls if m == "sendMessage"}
+    assert set(sends) == {7201, 7202}
+    assert not sends[7201].get("disable_notification") and sends[7202]["disable_notification"] is True
+    bot.calls.clear()
+    boss.post("/api/admin/broadcast", data={"subject": "Техработы", "body": "т", "everyone": "true", "loud": "true"})
+    sends = {p["chat_id"]: p for m, p in bot.calls if m == "sendMessage"}
+    assert not any(p.get("disable_notification") for p in sends.values())  # со звуком у всех
+    assert boss.get("/api/admin/broadcasts").json()[0]["loud"]

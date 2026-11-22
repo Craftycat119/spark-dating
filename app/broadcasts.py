@@ -68,6 +68,15 @@ def image_url(b: Broadcast) -> str | None:
     return f"{base}/pub/broadcast/{b.image_name}{v}"
 
 
+def quiet_chats(db) -> set[int]:
+    """Чаты тех, кто выключил уведомления в COFI: им рассылка приходит беззвучно (если не «со звуком всем»)."""
+    from sqlalchemy import select
+
+    from .models import User
+
+    return set(db.scalars(select(User.telegram_id).where(User.telegram_id.is_not(None), User.tg_notifications.is_(False))))
+
+
 def _payload(b: Broadcast, chat_id: int) -> dict:
     from .push import _open_button
 
@@ -183,10 +192,14 @@ def send(broadcast_id: int, chats: list[int]) -> None:
             return
         delivered: dict[str, int] = json.loads(b.deliveries or "{}")
         failures: dict[str, str] = json.loads(b.failures or "{}")
+        quiet = set() if b.loud else quiet_chats(db)
         for chat in chats:
             if str(chat) in delivered:
                 continue
-            res, err = _request("sendMessage", _payload(b, chat))
+            p = _payload(b, chat)
+            if chat in quiet:
+                p["disable_notification"] = True  # уведомления выключены — сообщение придёт без звука
+            res, err = _request("sendMessage", p)
             mid = (res or {}).get("result", {}).get("message_id")
             if mid:
                 delivered[str(chat)] = mid
