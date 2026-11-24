@@ -453,6 +453,22 @@ function themeIcon() {
 
 // ---------------- Вход и регистрация ----------------
 
+/** Кнопка «глаз» в поле пароля: показать / скрыть введённое. */
+const pwEye = () => `<button type="button" class="pw-eye" data-pw-eye aria-label="Показать пароль" aria-pressed="false"><i class="ph ph-eye" aria-hidden="true"></i></button>`;
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest?.("[data-pw-eye]");
+  if (!btn) return;
+  e.preventDefault();
+  const input = btn.parentElement.querySelector("input");
+  const show = input.type === "password";
+  input.type = show ? "text" : "password";
+  btn.setAttribute("aria-pressed", String(show));
+  btn.setAttribute("aria-label", show ? "Скрыть пароль" : "Показать пароль");
+  btn.innerHTML = `<i class="ph ph-eye${show ? "-slash" : ""}" aria-hidden="true"></i>`;
+  input.focus();
+});
+
 function renderAuth(mode = "login") {
   const sheet = `
     <div class="panel stack sheet">
@@ -462,7 +478,7 @@ function renderAuth(mode = "login") {
       </div>
       <form class="stack" novalidate>
         <label class="field"><span>Почта</span><input class="input" type="email" name="email" autocomplete="email" required></label>
-        <label class="field"><span>Пароль</span><input class="input" type="password" name="password" autocomplete="${mode === "login" ? "current-password" : "new-password"}" required></label>
+        <label class="field"><span>Пароль</span><span class="pw-wrap"><input class="input" type="password" name="password" autocomplete="${mode === "login" ? "current-password" : "new-password"}" required>${pwEye()}</span></label>
         ${mode === "register" ? `<ul class="checklist" id="pw-rules">
           <li data-rule="len">Не меньше 8 символов</li><li data-rule="upper">Хотя бы одна заглавная буква</li><li data-rule="digit">Хотя бы одна цифра</li></ul>` : ""}
         <div data-captcha></div>
@@ -729,7 +745,7 @@ function renderForgot(prefill = "") {
       <form class="stack" id="f2" hidden>
         <p class="hint" id="dev-hint" hidden></p>
         <label class="field"><span>Код из письма</span><input class="input" name="code" inputmode="numeric" maxlength="6" required></label>
-        <label class="field"><span>Новый пароль</span><input class="input" type="password" name="password" autocomplete="new-password" required></label>
+        <label class="field"><span>Новый пароль</span><span class="pw-wrap"><input class="input" type="password" name="password" autocomplete="new-password" required>${pwEye()}</span></label>
         <p class="hint">Не меньше 8 символов, заглавная буква и цифра.</p>
         <button class="btn block">Сохранить пароль и войти</button>
       </form>
@@ -2160,7 +2176,8 @@ function voiceEl(m, mine, time) {
     <div class="voice"><button class="play" aria-label="Слушать">${icons.play}</button><div class="bars">${bars}</div><span class="len">${fmtDur(m.duration)}</span></div>
     ${time}<audio preload="none" src="${esc(m.media_url)}"></audio></div></div>`);
   const audio = $("audio", el), btn = $(".play", el), len = $(".len", el), ticks = $$(".bars i", el);
-  btn.onclick = () => (audio.paused ? audio.play() : audio.pause());
+  btn.onclick = () => (audio.paused ? audio.play().catch((ex) => mediaFailed(el, audio, "voice", ex)) : audio.pause());
+  audio.onerror = () => mediaFailed(el, audio, "voice");
   audio.onplay = () => (btn.innerHTML = icons.pause);
   audio.onpause = () => (btn.innerHTML = icons.play);
   audio.ontimeupdate = () => {
@@ -2171,6 +2188,22 @@ function voiceEl(m, mine, time) {
   };
   audio.onended = () => { ticks.forEach((t) => t.classList.remove("on")); len.textContent = fmtDur(m.duration); };
   return el;
+}
+
+/** Не проигрывается: пишем причину в журнал сервера (journalctl -u cofi | grep МЕДИА) и даём открыть файл напрямую. */
+const reportedMedia = new Set();
+function mediaFailed(el, media, kind, ex) {
+  if (ex && ex.name === "NotAllowedError") return; // браузер ждёт нажатия — это не поломка
+  const src = (media.currentSrc || media.src || "").split("#")[0];
+  if (src && !reportedMedia.has(src)) {
+    reportedMedia.add(src);
+    const err = media.error ? `code ${media.error.code} ${media.error.message || ""}` : ex ? `${ex.name}: ${ex.message}` : "?";
+    fetch("/api/client-log", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "media", message: `МЕДИА ${kind}: ${err}`.slice(0, 500), extra: src.split("/").pop().slice(0, 80),
+        url: location.hash.slice(0, 40), ua: navigator.userAgent.slice(0, 400) }) }).catch(() => {});
+  }
+  if (!src || $(".media-fallback", el)) return;
+  el.querySelector(".bubble, .circle-msg")?.after(h(`<a class="media-fallback" href="${esc(src)}" target="_blank" rel="noopener">Не воспроизводится? Открыть файл</a>`));
 }
 
 function circleEl(m, mine, time) {
@@ -2186,11 +2219,12 @@ function circleEl(m, mine, time) {
   v.muted = true;
   v.playsInline = true;
   v.play().catch(() => {});
+  v.onerror = () => mediaFailed(el, v, "circle");
   const toggle = () => {
     if (v.muted) {
-      v.muted = false; v.loop = false; v.currentTime = 0; v.play();
+      v.muted = false; v.loop = false; v.currentTime = 0; v.play().catch((ex) => mediaFailed(el, v, "circle", ex));
     } else {
-      v.muted = true; v.loop = true; ring.setAttribute("stroke-dashoffset", C); v.play();
+      v.muted = true; v.loop = true; ring.setAttribute("stroke-dashoffset", C); v.play().catch(() => {});
     }
   };
   $(".circle-msg", el).onclick = toggle;

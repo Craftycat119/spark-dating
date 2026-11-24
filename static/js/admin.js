@@ -459,13 +459,14 @@ async function openConversation(id) {
 
 // ---------- Обращения: поддержка и реклама ----------
 const CAT = { help: "Помощь", complaint: "Жалоба", suggestion: "Предложение", ads: "Реклама" };
-const supportState = { topic: "", status: "open" };
+const supportState = { topic: "", status: "active" };
+const ST = { open: ["Новое", "hot"], in_work: ["В работе", "warn"], answered: ["Ответ отправлен", "ok"], closed: ["Решено", ""], noreply: ["Закрыто без ответа", ""] };
 
 async function support(arg) {
   view.innerHTML = `<h1>Обращения</h1>
     <div class="toolbar">
       <select class="input" data-topic><option value="">Все разделы</option><option value="support">Поддержка</option><option value="ads">Реклама</option></select>
-      <select class="input" data-status><option value="open">Открытые</option><option value="closed">Решённые</option><option value="">Все</option></select>
+      <select class="input" data-status><option value="active">Ждут ответа (новые и в работе)</option><option value="open">Новые</option><option value="in_work">В работе</option><option value="answered">Ответ отправлен</option><option value="done">Закрытые</option><option value="">Все</option></select>
     </div>
     <div id="threads"><div class="spinner"></div></div>`;
   $("[data-topic]", view).value = supportState.topic;
@@ -482,6 +483,7 @@ async function loadThreads() {
   if (!box) return;
   box.innerHTML = list.map((t) => `<div class="conv-row" data-id="${t.id}">
       <span class="tag ${t.topic === "ads" ? "hot" : t.category === "complaint" ? "warn" : ""}">${CAT[t.category]}</span>
+      <span class="tag ${(ST[t.status] || ["", ""])[1]}">${(ST[t.status] || [t.status])[0]}</span>
       <span style="flex:1"><b>${t.user ? esc(t.user.name || t.user.email || "#" + t.user.id) : "Гость" + (t.contact ? `, ${esc(t.contact)}` : "")}</b> №${t.id}
       ${t.user && (t.user.telegram_username || t.user.email) ? `<span class="muted small"> · ${esc(t.user.telegram_username ? "@" + t.user.telegram_username : t.user.email)}</span>` : ""}<br>
       <span class="muted">${t.last ? esc(((t.last.author === "user" ? "" : t.last.author === "staff" ? "Вы: " : "Бот: ") + t.last.text).slice(0, 90)) : ""}</span></span>
@@ -513,9 +515,11 @@ async function openThread(id) {
       <div class="who">${esc(who[m.author])} · ${dt(m.created_at)}</div><div class="bubble">${esc(m.text)}</div></div>`).join("")}</div>
     <form class="stack" style="margin-top:16px" data-reply>
       <textarea class="input" name="text" rows="3" placeholder="Ответ пользователю" required></textarea>
-      <div class="row"><button class="btn">Ответить</button>
-      <button type="button" class="btn quiet" data-close-thread>${t.status === "open" ? "Отметить решённым" : "Открыть снова"}</button></div>
-    </form>`;
+      <div class="row"><button class="btn">Ответить</button></div>
+      <p class="muted small">После ответа статус сам станет «Ответ отправлен». Напишет человек снова — обращение вернётся в «Новые».</p>
+    </form>
+    <div class="status-row"><span class="muted small">Статус:</span>${Object.entries(ST).map(([k, [l]]) =>
+      `<button type="button" class="chip ${t.status === k ? "on" : ""}" data-status-set="${k}">${l}</button>`).join("")}</div>`;
   $(".close", drawer).onclick = closeDrawer;
   $$("[data-user]", drawer).forEach((a) => (a.onclick = (e) => { e.preventDefault(); openUser(Number(a.dataset.user)); }));
   $("[data-reply]", drawer).onsubmit = async (e) => {
@@ -524,11 +528,11 @@ async function openThread(id) {
     openThread(id);
     loadThreads();
   };
-  $("[data-close-thread]", drawer).onclick = async () => {
-    await api.post(`/api/admin/support/${id}/status`, { status: t.status === "open" ? "closed" : "open" });
-    closeDrawer();
+  $$("[data-status-set]", drawer).forEach((b) => (b.onclick = async () => {
+    await api.post(`/api/admin/support/${id}/status`, { status: b.dataset.statusSet });
+    openThread(id);
     loadThreads();
-  };
+  }));
   const tr = $(".transcript", drawer);
   tr.lastElementChild?.scrollIntoView({ block: "end" });
 }

@@ -638,9 +638,17 @@ def support_threads(topic: str = "", status: str = "", _: User = Depends(admin_u
     q = select(SupportThread)
     if topic in ("support", "ads"):
         q = q.where(SupportThread.topic == topic)
-    if status in ("open", "closed"):
+    from .support import ACTIVE, DONE, STATUSES
+
+    if status == "active":
+        q = q.where(SupportThread.status.in_(("open", "in_work")))
+    elif status == "done":
+        q = q.where(SupportThread.status.in_(DONE))
+    elif status == "talking":
+        q = q.where(SupportThread.status.in_(ACTIVE))
+    elif status in STATUSES:
         q = q.where(SupportThread.status == status)
-    rows = db.scalars(q.order_by(SupportThread.updated_at.desc()).limit(100)).unique().all()
+    rows = db.scalars(q.order_by(SupportThread.updated_at.desc()).limit(300)).unique().all()
     out = []
     for t in rows:
         item = _thread_out(t, db)
@@ -681,7 +689,9 @@ class StatusIn(BaseModel):
 @router.post("/support/{thread_id}/status")
 def support_status(thread_id: int, data: StatusIn, _: User = Depends(admin_user), db: Session = Depends(get_db)):
     t = db.get(SupportThread, thread_id)
-    if not t or data.status not in ("open", "closed"):
+    from .support import STATUSES
+
+    if not t or data.status not in STATUSES:
         raise HTTPException(404, "Обращение не найдено")
     t.status = data.status
     db.commit()

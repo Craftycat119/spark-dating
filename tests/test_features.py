@@ -376,3 +376,37 @@ def test_cancel_mutual_like_even_with_messages():
     assert not his["mutual"] and [p["id"] for p in his["sent"]] == [me.user_id]
     assert him.get(f"/api/chats/{conv}").status_code in (403, 404)  # чат пропал у обоих
     assert me.post("/api/feed/unlike", json={"user_id": him.user_id}).status_code == 404
+
+
+
+def test_support_statuses_flow():
+    from conftest import new_client
+
+    boss = make_user("boss@example.com", name="Андрей")
+    u = make_user("sup@x.io", name="Ксения")
+    tid = u.post("/api/support/threads", json={"topic": "support", "category": "help", "text": "Не могу подключить геопозицию"}).json()["id"]
+    lst = lambda s: [t["id"] for t in boss.get(f"/api/admin/support?status={s}").json()]
+    assert tid in lst("active") and tid in lst("open")
+    assert boss.post(f"/api/admin/support/{tid}/status", json={"status": "in_work"}).json()["status"] == "in_work"
+    assert tid in lst("in_work") and tid in lst("active")
+    boss.post(f"/api/admin/support/{tid}/reply", json={"text": "Проверьте разрешение в настройках"})
+    assert tid in lst("answered") and tid not in lst("active")  # ответ ушёл — ждём человека
+    u.post(f"/api/support/threads/{tid}/messages", json={"text": "Не помогло"})
+    assert tid in lst("open")  # написал снова — опять ждёт ответа
+    boss.post(f"/api/admin/support/{tid}/status", json={"status": "noreply"})
+    assert tid in lst("done") and tid not in lst("active")
+    assert boss.post(f"/api/admin/support/{tid}/status", json={"status": "bogus"}).status_code == 404
+
+
+def test_voice_served_with_audio_type():
+    from app.config import settings
+
+    a = make_user("va@x.io", name="А", gender="female", looking_for="male")
+    b = make_user("vb@x.io", name="Б", gender="male", looking_for="female")
+    a.post("/api/feed/swipe", json={"user_id": b.user_id, "like": True})
+    conv = b.post("/api/feed/swipe", json={"user_id": a.user_id, "like": True}).json()["conversation_id"]
+    folder = settings.media_dir / "chat" / str(conv)
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "v.m4a").write_bytes(b"\x00\x00\x00\x18ftypM4A ")
+    r = a.get(f"/media/chat/{conv}/v.m4a")
+    assert r.status_code == 200 and r.headers["content-type"] == "audio/mp4"

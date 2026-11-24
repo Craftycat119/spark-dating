@@ -993,3 +993,12 @@ html.in-tg .tg-drop { top: 32px; }
 
 .hero-links .tg-chip { display: inline-flex; align-items: center; gap: 6px; background: #1979bd; color: #fff; border-color: transparent; }
 .hero-links { flex-wrap: wrap; justify-content: center; }
+
+/* поле пароля с кнопкой «показать» */
+.pw-wrap { position: relative; display: block; }
+.pw-wrap .input { width: 100%; padding-right: 52px; }
+.pw-eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; border: 0; border-radius: 50%;
+  background: transparent; color: var(--ink-muted, var(--muted)); font-size: 22px; display: grid; place-items: center; cursor: pointer; }
+.pw-eye:hover { color: var(--ink, var(--text)); }
+
+.media-fallback { display: block; margin-top: 4px; font-size: 13px; color: var(--muted); text-decoration: underline; }

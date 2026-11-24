@@ -102,12 +102,20 @@ def _owned(db: Session, thread_id: int, user: User | None, guest_hash: str | Non
     return t
 
 
+# Статусы обращения: новое → в работе → ответ отправлен → решено / закрыто без ответа
+STATUSES = {"open": "Новое", "in_work": "В работе", "answered": "Ответ отправлен", "closed": "Решено", "noreply": "Закрыто без ответа"}
+ACTIVE = ("open", "in_work", "answered")  # переписка продолжается — новое сообщение человека идёт сюда же
+DONE = ("closed", "noreply")
+
+
 def _add(db: Session, t: SupportThread, author: str, text: str) -> SupportMessage:
     m = SupportMessage(thread_id=t.id, author=author, text=text)
     db.add(m)
     t.updated_at = utcnow()
-    if author == "user" and t.status == "closed":
-        t.status = "open"
+    if author == "user" and t.status != "in_work":
+        t.status = "open"  # человек написал снова — обращение снова ждёт ответа
+    elif author == "staff":
+        t.status = "answered"
     db.commit()
     db.refresh(m)
     payload = {"type": "support", "thread_id": t.id, "message": msg_out(m)}

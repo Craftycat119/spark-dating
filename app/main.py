@@ -200,7 +200,11 @@ def media(rel: str, user: User = Depends(current_user), db: Session = Depends(ge
                 raise HTTPException(403)
     else:
         raise HTTPException(404)
-    return FileResponse(path, headers={"Cache-Control": "private, max-age=86400"})
+    from .storage import EXT_TYPE
+
+    # тип файла указываем явно: Android не проигрывает голосовое, если сервер не знает .m4a и отдаёт «text/plain»
+    kind = EXT_TYPE.get(path.suffix.lower())
+    return FileResponse(path, media_type=kind, headers={"Cache-Control": "private, max-age=86400"})
 
 
 @app.middleware("http")

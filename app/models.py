@@ -295,7 +295,7 @@ class SupportThread(Base):
     telegram_chat_id: Mapped[int | None] = mapped_column(BigInteger, index=True, nullable=True)  # обращение пришло через бота
     contact: Mapped[str] = mapped_column(String(128), default="")
     about_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
-    status: Mapped[str] = mapped_column(String(16), default="open")  # open | closed
+    status: Mapped[str] = mapped_column(String(16), default="open")  # open | in_work | answered | closed | noreply
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 

@@ -28,7 +28,7 @@ export async function renderSupportHub({ screen, go, back = "#/settings" }) {
     const list = (await api.get("/api/support/threads")).filter((t) => t.topic === "support");
     $(".thread-list", root).innerHTML = list.length
       ? list.map((t) => `<a class="chat-item" href="#/support/${t.id}"><span class="body"><span class="top"><b>${CAT[t.category]} №${t.id}</b><span class="time">${fmtShort(t.updated_at)}</span></span>
-          <span class="preview">${t.status === "open" ? "Открыто" : "Решено"}</span></span></a>`).join("")
+          <span class="preview">${["closed", "noreply"].includes(t.status) ? "Решено" : t.status === "answered" ? "Есть ответ" : "Открыто"}</span></span></a>`).join("")
       : `<p class="muted small">Обращений пока нет.</p>`;
   } catch (ex) { toast(ex.message, { error: true }); }
 }
@@ -94,7 +94,7 @@ export async function renderThread({ screen, threadId, back = "#/support", ads =
       <header class="chat-header">
         <a class="icon-btn" href="${back}" aria-label="Назад">${icons.back}</a>
         <span class="avatar support-ava">${ads ? icons.megaphone : icons.headset}</span>
-        <div class="who"><b>${ads ? "Реклама в COFI" : `${CAT[t.category]} №${t.id}`}</b><small class="status">${ads ? "Помощник и менеджер" : t.status === "open" ? "Оператор на связи" : "Решено"}</small></div>
+        <div class="who"><b>${ads ? "Реклама в COFI" : `${CAT[t.category]} №${t.id}`}</b><small class="status">${ads ? "Помощник и менеджер" : ["closed", "noreply"].includes(t.status) ? "Решено" : "Оператор на связи"}</small></div>
       </header>
       <div class="messages" tabindex="0"></div>
       ${ads ? `<div class="quick">${ADS_QUICK.map((q) => `<button class="chip" data-q="${q}">${q}</button>`).join("")}</div>` : ""}

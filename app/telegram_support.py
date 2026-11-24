@@ -35,7 +35,7 @@ def from_user(msg: dict) -> tuple[list[tuple[str, dict]], bool]:
     with SessionLocal() as db:
         user = db.scalar(select(User).where(User.telegram_id == frm.get("id"))) if frm.get("id") else None
         t = db.scalar(select(SupportThread).where(SupportThread.telegram_chat_id == chat_id, SupportThread.topic == "support",
-                                                  SupportThread.status == "open").order_by(SupportThread.id.desc()))
+                                                  SupportThread.status.in_(("open", "in_work", "answered"))).order_by(SupportThread.id.desc()))
         new = t is None
         if new:
             contact = f"Telegram @{frm['username']}" if frm.get("username") else f"Telegram id {frm.get('id')}"
