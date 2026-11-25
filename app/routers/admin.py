@@ -98,7 +98,9 @@ def stats(_: User = Depends(admin_user), db: Session = Depends(get_db)):
     top = sorted(counts.items(), key=lambda x: -x[1])[:10]
     return {
         "users": db.scalar(select(func.count(User.id))) or 0,
-        "verified": db.scalar(select(func.count(User.id)).where(User.photo_verified.is_(True))) or 0,
+        # только настоящие люди (без ботов и гостей демо): так цифра сравнима с «Прошли до конца»
+        "verified": db.scalar(select(func.count(User.id)).where(User.photo_verified.is_(True), User.is_bot.is_(False),
+                                                               User.is_demo.is_(False), User.is_admin.is_(False))) or 0,
         "new_24h": db.scalar(select(func.count(User.id)).where(User.created_at >= day_ago)) or 0,
         "banned": db.scalar(select(func.count(User.id)).where(User.is_banned.is_(True))) or 0,
         "online": len(manager.connections),

@@ -119,7 +119,7 @@ async function overview() {
     <h3 style="margin-top:28px">Активность</h3>
     <div class="kpis">
       <div><b>${s.users}</b><span>Всего анкет (с ботами и демо)</span></div>
-      <div><b>${s.verified}</b><span>С подтверждённым фото</span></div>
+      <div><b>${s.verified}</b><span>С подтверждённым фото (люди, без ботов)</span></div>
       <div><b>${s.matches}</b><span>Пар</span></div>
       <div><b>${s.messages}</b><span>Сообщений</span></div>
       <div><b>${s.banned}</b><span>Заблокировано</span></div>
