@@ -459,14 +459,14 @@ async function openConversation(id) {
 
 // ---------- Обращения: поддержка и реклама ----------
 const CAT = { help: "Помощь", complaint: "Жалоба", suggestion: "Предложение", ads: "Реклама" };
-const supportState = { topic: "", status: "active" };
+const supportState = { topic: "", status: "talking" };
 const ST = { open: ["Новое", "hot"], in_work: ["В работе", "warn"], answered: ["Ответ отправлен", "ok"], closed: ["Решено", ""], noreply: ["Закрыто без ответа", ""] };
 
 async function support(arg) {
   view.innerHTML = `<h1>Обращения</h1>
     <div class="toolbar">
       <select class="input" data-topic><option value="">Все разделы</option><option value="support">Поддержка</option><option value="ads">Реклама</option></select>
-      <select class="input" data-status><option value="active">Ждут ответа (новые и в работе)</option><option value="open">Новые</option><option value="in_work">В работе</option><option value="answered">Ответ отправлен</option><option value="done">Закрытые</option><option value="">Все</option></select>
+      <select class="input" data-status><option value="talking">Открытые (все, кроме закрытых)</option><option value="active">Ждут ответа (новые и в работе)</option><option value="open">Новые</option><option value="in_work">В работе</option><option value="answered">Ответ отправлен</option><option value="done">Закрытые</option><option value="">Все</option></select>
     </div>
     <div id="threads"><div class="spinner"></div></div>`;
   $("[data-topic]", view).value = supportState.topic;

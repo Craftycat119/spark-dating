@@ -1123,7 +1123,7 @@ function renderSurvey({ editing = false, fromEnd = false } = {}) {
         <h1>${esc(q.title)}</h1>
         ${q.hint ? `<p class="muted">${esc(q.hint)}</p>` : ""}
         ${q.key !== "goals" ? `<p class="hint">Если ваших интересов здесь нет, напишите их в описании анкеты</p>` : ""}
-        <div class="chips">${q.options.map((o, k) => `<button type="button" class="chip" style="--i:${k}" aria-pressed="${set.has(o)}">${esc(o)}</button>`).join("")}</div>
+        <div class="chips">${q.options.map((o, k) => `<button type="button" class="chip" style="--i:${k}" data-v="${esc(o)}" aria-pressed="${set.has(o)}">${esc(o)}</button>`).join("")}</div>
         ${q.key !== "goals" ? `<p class="survey-counter" data-counter></p>` : ""}
         <p class="error-text" hidden></p>
         <div class="row" style="margin-top:8px">
@@ -1146,7 +1146,9 @@ function renderSurvey({ editing = false, fromEnd = false } = {}) {
     };
     updateCounter();
     $$(".chips .chip", root).forEach((b) => (b.onclick = () => {
-      const v = b.textContent;
+      // значение — из data-v, а не из текста: английская версия и автоперевод браузера меняют текст кнопки,
+      // и сервер не узнавал «Family» вместо «Семья» — человек выбирал 3 варианта, а его не пускало дальше
+      const v = b.dataset.v;
       set.has(v) ? set.delete(v) : set.add(v);
       b.setAttribute("aria-pressed", String(set.has(v)));
       updateCounter();
