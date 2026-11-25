@@ -48,6 +48,19 @@ function route() {
 }
 
 // ---------- Обзор ----------
+function feedHtml(f) {
+  if (!f) return "";
+  const hidden = Object.entries(f.hidden || {});
+  return `<h3 style="margin-top:28px">Видимость в ленте <span class="muted small">кого видят другие · подростки и взрослые друг друга не видят</span></h3>
+    <div class="kpis">
+      <div><b>${f.visible.adult}</b><span>Взрослых в ленте</span></div>
+      <div><b>${f.visible.teen}</b><span>Подростков в ленте</span></div>
+      <div><b>${hidden.reduce((s, [, n]) => s + n, 0)}</b><span>Не видны в ленте</span></div>
+    </div>
+    ${hidden.length ? `<p class="muted small" style="margin-top:8px">Почему не видны: ${hidden.map(([k, n]) => `${esc(k)} — ${n}`).join(" · ")}</p>` : ""}
+    <p class="muted small">Ещё лента учитывает, кого ищет каждый из двух (парня, девушку, всех), и радиус до 7000 км: Россия и Вьетнам дальше друг от друга.</p>`;
+}
+
 function funnelHtml(f) {
   if (!f || !f.total) return "";
   const pct = Math.round((100 * f.done) / f.total);
@@ -111,6 +124,7 @@ async function overview() {
       <div><b>${s.messages}</b><span>Сообщений</span></div>
       <div><b>${s.banned}</b><span>Заблокировано</span></div>
     </div>
+    ${feedHtml(s.feed)}
     ${funnelHtml(s.funnel)}
     ${deletionsHtml(s.deletions)}
     <h3 style="margin-top:32px">Популярные интересы</h3>
@@ -226,7 +240,7 @@ async function loadUsers() {
       <td>${dt(u.created_at)}</td>
       <td>${esc(u.registration_ip || "—")}</td>
       <td>${tags(u.goals)}</td>
-      <td>${u.reg_step && u.reg_step !== "done" ? `<span class="tag warn">Остановился: ${esc(u.reg_step_label)}</span>` : u.reg_step === "done" ? '<span class="tag ok">Регистрация ✓</span>' : ""}${u.is_banned ? '<span class="tag warn">Заблокирован</span>' : ""}${u.photo_verified ? '<span class="tag ok">Фото ✓</span>' : '<span class="tag warn">Фото не проверено</span>'}${u.online ? '<span class="tag ok">В сети</span>' : ""}</td>
+      <td>${u.reg_step && u.reg_step !== "done" ? `<span class="tag warn">Остановился: ${esc(u.reg_step_label)}</span>` : u.reg_step === "done" ? '<span class="tag ok">Регистрация ✓</span>' : ""}${u.feed_problem && u.reg_step === "done" ? `<span class="tag warn">Не в ленте: ${esc(u.feed_problem)}</span>` : u.reg_step === "done" && !u.feed_problem ? '<span class="tag ok">В ленте</span>' : ""}${u.is_banned ? '<span class="tag warn">Заблокирован</span>' : ""}${u.photo_verified ? '<span class="tag ok">Фото ✓</span>' : '<span class="tag warn">Фото не проверено</span>'}${u.online ? '<span class="tag ok">В сети</span>' : ""}</td>
     </tr>`).join("")}</tbody></table>
     <div class="pager"><button data-p="-1" ${usersState.page <= 1 ? "disabled" : ""}>Назад</button>
       <span>Страница ${usersState.page} из ${pages} · всего ${res.total}</span>

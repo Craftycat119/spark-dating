@@ -443,3 +443,25 @@ def test_admin_users_split_adults_and_teens():
     assert "Взрослый" in adults and "Подросток" not in adults
     everyone = boss.get("/api/admin/users").json()
     assert everyone["total"] >= 3  # без фильтра — все люди, включая админа без анкеты
+
+
+
+def test_everyone_compatible_sees_each_other():
+    # 4 взрослых рядом (Нячанг): каждый видит всех, кто подходит по полу и кого ищет; подростки — только подростков
+    people = {
+        "m_f": make_user("v1@x.io", name="Парень", gender="male", looking_for="female", lat=12.24, lon=109.19),
+        "f_m": make_user("v2@x.io", name="Девушка", gender="female", looking_for="male", lat=12.25, lon=109.18),
+        "f_any": make_user("v3@x.io", name="Девушка2", gender="female", looking_for="any", lat=12.20, lon=109.20),
+        "m_any": make_user("v4@x.io", name="Парень2", gender="male", looking_for="any", lat=16.05, lon=108.20),  # Дананг, ~450 км
+        "teen": make_user("v5@x.io", name="Подросток", gender="female", looking_for="any", age=15, goals=("Дружба",), lat=12.24, lon=109.19),
+        "teen2": make_user("v6@x.io", name="Подросток2", gender="male", looking_for="any", age=16, goals=("Дружба",), lat=12.24, lon=109.19),
+    }
+    seen = {k: {c["name"] for c in c_.get("/api/feed?limit=30").json()["cards"]} for k, c_ in people.items()}
+    assert seen["m_f"] == {"Девушка", "Девушка2"}
+    assert seen["f_m"] == {"Парень", "Парень2"}
+    assert seen["f_any"] == {"Парень", "Парень2"}  # девушка ищет всех, но «Девушка» ищет только парней
+    assert seen["m_any"] == {"Девушка", "Девушка2"}  # «Парень» ищет только девушек
+    assert seen["teen"] == {"Подросток2"} and seen["teen2"] == {"Подросток"}
+    boss = make_user("boss@example.com", name="Андрей")
+    feed = boss.get("/api/admin/stats").json()["feed"]
+    assert feed["visible"]["adult"] >= 4 and feed["visible"]["teen"] == 2

@@ -48,6 +48,33 @@ def visible_users():
     )
 
 
+def feed_problem(u: User) -> str | None:
+    """Почему анкету не видно в ленте (None — видно). Те же условия, что visible_users и feed_index."""
+    from ..interests import MIN_INTERESTS
+
+    if u.is_banned:
+        return "Заблокирована"
+    if u.is_bot or u.is_demo:
+        return "Демо-версия"
+    if not u.name:
+        return "Нет имени"
+    if not u.birth_date:
+        return "Нет даты рождения"
+    if not u.gender:
+        return "Не указан пол"
+    if not u.photo_path:
+        return "Нет фото"
+    if not u.photo_verified:
+        return "Фото не проверено камерой"
+    if u.lat is None:
+        return "Нет геопозиции"
+    if len(u.interests) < MIN_INTERESTS:
+        return "Меньше 3 интересов"
+    if not u.goals:
+        return "Не выбрано, что ищет"
+    return None
+
+
 def audience(q, user: User):
     """Демо-гости видят только ботов; реальные пользователи не видят ни ботов, ни гостей."""
     if user.is_demo:

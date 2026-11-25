@@ -28,6 +28,12 @@ def _iso(dt):
     return dt.isoformat() + "Z" if dt else None
 
 
+def _feed_problem(u: User) -> str | None:
+    from .feed import feed_problem
+
+    return None if u.is_admin and not u.photo_path else feed_problem(u)
+
+
 def user_row(u: User) -> dict:
     return {
         "id": u.id,
@@ -53,6 +59,7 @@ def user_row(u: User) -> dict:
         "goals": u.goals,
         "created_at": _iso(u.created_at),
         "last_seen_at": _iso(u.last_seen_at),
+        "feed_problem": _feed_problem(u),
         "reg_step": (step := step_of(u)) if not (u.is_admin or u.is_bot or u.is_demo) else None,
         "reg_step_label": LABELS.get(step) if not (u.is_admin or u.is_bot or u.is_demo) else None,
         "online": manager.is_online(u.id),
@@ -101,7 +108,26 @@ def stats(_: User = Depends(admin_user), db: Session = Depends(get_db)):
         "audience": _audience(db),
         "deletions": _deletions(db),
         "funnel": _funnel(db),
+        "feed": _feed_visibility(db),
     }
+
+
+def _feed_visibility(db: Session) -> dict:
+    """Кого видно в ленте и почему остальных — нет. Только настоящие люди, без администрации без анкеты."""
+    from .feed import feed_problem
+
+    people = db.scalars(select(User).where(User.is_bot.is_(False), User.is_demo.is_(False))).all()
+    reasons: dict[str, int] = {}
+    visible = {"adult": 0, "teen": 0}
+    for u in people:
+        if u.is_admin and not u.photo_path:
+            continue
+        why = feed_problem(u)
+        if why:
+            reasons[why] = reasons.get(why, 0) + 1
+        elif u.age_group in visible:
+            visible[u.age_group] += 1
+    return {"visible": visible, "hidden": dict(sorted(reasons.items(), key=lambda kv: -kv[1]))}
 
 
 def _funnel(db: Session) -> dict:
