@@ -5,6 +5,7 @@ export const icons = {
   heart: i("heart", true),
   heartLine: i("heart"),
   pushPin: i("push-pin"),
+  calendar: i("calendar-blank"),
   copy: i("copy"),
   pencil: i("pencil-simple"),
   reply: i("arrow-bend-up-left"),

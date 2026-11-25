@@ -1006,3 +1006,14 @@ html.in-tg .tg-drop { top: 32px; }
 /* счётчик интересов в опросе: сколько выбрано из нужного минимума */
 .survey-counter { margin: 0; font-size: 14px; color: var(--muted); }
 .survey-counter.ok { color: var(--ok, #2fae5f); }
+
+/* дата рождения: ввод цифрами + кнопка календаря (нативный выбор даты лежит прозрачным поверх иконки) */
+.field > label { font-size: 14px; color: var(--muted); }
+.panel .field > label { color: var(--ink-muted); }
+.date-wrap { position: relative; display: block; }
+.date-wrap > .input { width: 100%; padding-right: 60px; letter-spacing: .5px; }
+.date-pick { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 46px; height: 46px; border-radius: 14px;
+  display: grid; place-items: center; font-size: 24px; color: var(--orange, #f2621f); overflow: hidden; }
+.date-pick input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; margin: 0; }
+.date-pick input::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }
+.date-pick input:disabled { cursor: default; }

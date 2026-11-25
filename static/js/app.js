@@ -830,6 +830,18 @@ function bindChoice(root, name, onPick) {
   }));
 }
 
+/** «2001-03-07» → «07.03.2001» */
+const isoToRu = (iso) => (iso || "").split("-").reverse().join(".");
+/** «07.03.2001» → «2001-03-07», или "" если такой даты нет (31.02, 15.13 и т. п.) */
+function ruToIso(text) {
+  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(text || "");
+  if (!m) return "";
+  const [, d, mo, y] = m.map(Number);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return "";
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+
 function ageOf(birth) {
   if (!birth) return null;
   const b = new Date(birth), now = new Date();
@@ -1003,7 +1015,13 @@ function stepAbout() {
     <form class="stack">
       <h1>Знакомимся</h1>
       <label class="field"><span>Имя</span><input class="input" name="name" maxlength="64" value="${esc(me.name)}" autocomplete="given-name" required></label>
-      <label class="field"><span>Дата рождения</span><input class="input" name="birth" type="date" value="${me.birth_date ?? ""}" ${me.birth_date ? "disabled" : ""} required max="${new Date().toISOString().slice(0, 10)}"></label>
+      <div class="field"><label for="birth-text">Дата рождения</label>
+        <span class="date-wrap">
+          <input class="input" id="birth-text" name="birth_text" inputmode="numeric" autocomplete="bday" placeholder="ДД.ММ.ГГГГ" maxlength="10"
+            value="${me.birth_date ? isoToRu(me.birth_date) : ""}" ${me.birth_date ? "disabled" : ""}>
+          <span class="date-pick" aria-hidden="${me.birth_date ? "true" : "false"}">${icons.calendar}
+            <input name="birth" type="date" aria-label="Выбрать в календаре" value="${me.birth_date ?? ""}" ${me.birth_date ? "disabled" : ""} max="${new Date().toISOString().slice(0, 10)}" min="1920-01-01"></span>
+        </span></div>
       <p class="hint">COFI доступен с 14 лет. До 18 лет доступна только лента «Дружба». Дату нельзя будет изменить самостоятельно.</p>
       <p class="legal-note small">COFI работает в режиме бесплатного некоммерческого тестирования.</p>
       <div class="consent">
@@ -1015,7 +1033,19 @@ function stepAbout() {
       <button class="btn block">Дальше</button>
     </form>`, { nav: false });
   const birthInput = $("input[name=birth]", root);
-  birthInput.addEventListener("input", () => ($("[data-age-text]", root).textContent = ageConsentText(birthInput.value)));
+  const birthText = $("input[name=birth_text]", root);
+  const showAge = () => ($("[data-age-text]", root).textContent = ageConsentText(birthInput.value));
+  // из календаря → в поле с цифрами
+  birthInput.addEventListener("input", () => { birthText.value = birthInput.value ? isoToRu(birthInput.value) : ""; showAge(); });
+  birthInput.addEventListener("change", () => { birthText.value = birthInput.value ? isoToRu(birthInput.value) : ""; showAge(); });
+  // ввод вручную: точки ставятся сами, полная дата сразу попадает в календарь
+  birthText.addEventListener("input", () => {
+    const digits = birthText.value.replace(/\D/g, "").slice(0, 8);
+    birthText.value = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4)].filter(Boolean).join(".");
+    birthInput.value = ruToIso(birthText.value) || "";
+    $(".error-text", root).hidden = true;
+    showAge();
+  });
   bindBack(root, STEP_BACK.about);
   $("form", root).onsubmit = async (e) => {
     e.preventDefault();
@@ -1023,7 +1053,14 @@ function stepAbout() {
     const err = $(".error-text", root);
     const fail = (m) => { err.textContent = m; err.hidden = false; };
     if (!f.name.value.trim()) return fail("Укажите имя");
-    if (!f.birth.value) return fail("Укажите дату рождения");
+    if (!state.me.birth_date) {
+      const typed = f.birth_text.value.trim();
+      if (!typed) return fail("Укажите дату рождения");
+      const iso = ruToIso(typed);
+      if (!iso) return fail(typed.length < 10 ? "Введите дату полностью: ДД.ММ.ГГГГ, например 07.03.2001" : "Такой даты нет — проверьте день и месяц");
+      if (iso > new Date().toISOString().slice(0, 10) || iso < "1920-01-01") return fail("Проверьте год рождения");
+      f.birth.value = iso;
+    }
     const age = ageOf(f.birth.value);
     if (age < 14) return fail("COFI доступен с 14 лет");
     if (!f.confirm_age.checked) return fail(age >= 18 ? "Подтвердите, что вам есть 18 лет" : "Нужно согласие родителя или законного представителя");
