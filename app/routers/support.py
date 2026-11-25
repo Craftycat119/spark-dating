@@ -8,7 +8,8 @@ from __future__ import annotations
 import secrets
 from collections import Counter
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -34,11 +35,11 @@ ADS_GREETING = (
 )
 # Сначала бот здоровается и просит описать суть, а «принято» пишет только после сообщения пользователя
 GREETINGS = {
-    "help": "Здравствуйте! Это поддержка COFI. Опишите, пожалуйста, ваш вопрос: что случилось и на каком экране.",
-    "complaint": "Здравствуйте! Расскажите, на кого или на что вы хотите пожаловаться и что произошло. Если это анкета, укажите имя.",
+    "help": "Здравствуйте! Это поддержка COFI. Опишите, пожалуйста, ваш вопрос: что случилось и на каком экране. Можно приложить скриншот — кнопка с картинкой слева от поля.",
+    "complaint": "Здравствуйте! Расскажите, на кого или на что вы хотите пожаловаться и что произошло. Если это анкета, укажите имя. Скриншот поможет разобраться быстрее — кнопка с картинкой слева от поля.",
     "suggestion": "Здравствуйте! Спасибо, что помогаете сделать COFI лучше. Напишите вашу идею или предложение.",
 }
-REPORT_GREETING = "Здравствуйте! Вы жалуетесь на анкету «{name}». Расскажите, пожалуйста, что произошло."
+REPORT_GREETING = "Здравствуйте! Вы жалуетесь на анкету «{name}». Расскажите, пожалуйста, что произошло. Можно приложить скриншот переписки."
 SUPPORT_GREETING = "Спасибо! Обращение №{id} принято. Оператор ответит прямо здесь, обычно в течение часа."
 HANDOFF = ("Передал ваш вопрос менеджеру. Ответ придёт в этот чат, а если оставите контакт, продублируем туда. "
            "Почта для рекламодателей: craftycat119@mail.ru")
@@ -86,7 +87,12 @@ def _thread_out(t: SupportThread, db: Session, with_messages: bool = True) -> di
 
 
 def msg_out(m: SupportMessage) -> dict:
-    return {"id": m.id, "thread_id": m.thread_id, "author": m.author, "text": m.text, "created_at": m.created_at.isoformat() + "Z"}
+    return {"id": m.id, "thread_id": m.thread_id, "author": m.author, "text": m.text, "created_at": m.created_at.isoformat() + "Z",
+            "image_url": f"/api/support/threads/{m.thread_id}/images/{m.image_name}" if m.image_name else None}
+
+
+def images_dir(thread_id: int):
+    return settings.media_dir / "support" / str(thread_id)
 
 
 def _who(request: Request, db: Session) -> tuple[User | None, str | None]:
@@ -108,8 +114,8 @@ ACTIVE = ("open", "in_work", "answered")  # переписка продолжа�
 DONE = ("closed", "noreply")
 
 
-def _add(db: Session, t: SupportThread, author: str, text: str) -> SupportMessage:
-    m = SupportMessage(thread_id=t.id, author=author, text=text)
+def _add(db: Session, t: SupportThread, author: str, text: str, image_name: str | None = None) -> SupportMessage:
+    m = SupportMessage(thread_id=t.id, author=author, text=text, image_name=image_name)
     db.add(m)
     t.updated_at = utcnow()
     if author == "user" and t.status != "in_work":
@@ -129,7 +135,7 @@ def _add(db: Session, t: SupportThread, author: str, text: str) -> SupportMessag
         for admin_id in db.scalars(select(User.id).where(User.is_admin.is_(True))):
             if manager.is_online(admin_id):
                 notify(admin_id, {**payload, "admin": True})
-        push.notify_admins(db, t, text)
+        push.notify_admins(db, t, text or "📎 Прислал(а) скриншот — посмотрите в админ-панели")
     return m
 
 
@@ -197,6 +203,54 @@ def my_threads(request: Request, db: Session = Depends(get_db)):
 def get_thread(thread_id: int, request: Request, db: Session = Depends(get_db)):
     user, guest_hash = _who(request, db)
     return _thread_out(_owned(db, thread_id, user, guest_hash), db)
+
+
+MAX_SCREENSHOT_MB = 15
+_IMAGE_NAME = __import__("re").compile(r"[0-9a-f]{32}\.jpg")
+
+
+@router.post("/threads/{thread_id}/images")
+def post_image(thread_id: int, request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Скриншот к обращению: пересохраняем в JPEG без метаданных (в том числе координат), не больше 2000 px."""
+    from ..storage import read_limited
+
+    by_ip(request, "support-img", 30, 600)
+    user, guest_hash = _who(request, db)
+    t = _owned(db, thread_id, user, guest_hash)
+    return msg_out(add_screenshot(db, t, read_limited(file, MAX_SCREENSHOT_MB)))
+
+
+def add_screenshot(db: Session, t: SupportThread, raw: bytes) -> SupportMessage:
+    """Сохранить картинку в обращение (с сайта или из Telegram) и показать её оператору."""
+    import io
+    import uuid
+
+    from PIL import Image, ImageOps, UnidentifiedImageError
+
+    try:
+        pic = ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert("RGB")
+    except (UnidentifiedImageError, OSError) as exc:
+        raise HTTPException(400, "Это не картинка. Пришлите скриншот или фото") from exc
+    pic.thumbnail((2000, 2000))
+    name = f"{uuid.uuid4().hex}.jpg"
+    folder = images_dir(t.id)
+    folder.mkdir(parents=True, exist_ok=True)
+    pic.save(folder / name, "JPEG", quality=85)
+    return _add(db, t, "user", "", image_name=name)
+
+
+@router.get("/threads/{thread_id}/images/{name}")
+def get_image(thread_id: int, name: str, request: Request, db: Session = Depends(get_db)):
+    """Скриншот видят только автор обращения и администрация."""
+    if not _IMAGE_NAME.fullmatch(name):
+        raise HTTPException(404)
+    user, guest_hash = _who(request, db)
+    if not (user and user.is_admin):
+        _owned(db, thread_id, user, guest_hash)
+    path = images_dir(thread_id) / name
+    if not path.exists():
+        raise HTTPException(404)
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
 
 
 class MessageIn(BaseModel):

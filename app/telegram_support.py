@@ -28,9 +28,10 @@ def from_user(msg: dict) -> tuple[list[tuple[str, dict]], bool]:
     text = (msg.get("text") or msg.get("caption") or "").strip()
     chat_id = msg["chat"]["id"]
     frm = msg.get("from") or {}
-    if not text:
-        if any(k in msg for k in ("photo", "document", "video", "voice", "sticker")):
-            return [("sendMessage", {"chat_id": chat_id, "text": "Пока принимаем только текст — опишите вопрос словами, пожалуйста."})], True
+    photo_id = _photo_file_id(msg)
+    if not text and not photo_id:
+        if any(k in msg for k in ("photo", "document", "video", "voice", "sticker", "video_note", "audio")):
+            return [("sendMessage", {"chat_id": chat_id, "text": "Принимаем текст и скриншоты. Голосовые и видео пока не открываются — опишите вопрос словами или пришлите скриншот."})], True
         return [], False
     with SessionLocal() as db:
         user = db.scalar(select(User).where(User.telegram_id == frm.get("id"))) if frm.get("id") else None
@@ -44,9 +45,52 @@ def from_user(msg: dict) -> tuple[list[tuple[str, dict]], bool]:
             db.add(t)
             db.commit()
             db.refresh(t)
-        handle_user_message(db, t, text[:4000], greet=False)
+        if photo_id:
+            raw = _download(photo_id)
+            if raw is None:
+                return [("sendMessage", {"chat_id": chat_id, "text": "Не получилось принять картинку. Пришлите её ещё раз или опишите словами."})], True
+            from .routers.support import add_screenshot
+
+            try:
+                add_screenshot(db, t, raw)
+            except Exception:  # noqa: BLE001 — битый файл: не роняем бота
+                log.warning("Скриншот из Telegram не сохранился (чат %s)", chat_id)
+        if text:
+            handle_user_message(db, t, text[:4000], greet=False)
         tid = t.id
     return ([("sendMessage", {"chat_id": chat_id, "text": ACCEPTED.format(id=tid)})] if new else []), True
+
+
+MAX_PHOTO = 15 * 1024 * 1024
+
+
+def _photo_file_id(msg: dict) -> str | None:
+    """Фото (самый крупный вариант) или картинка, отправленная файлом."""
+    if msg.get("photo"):
+        return max(msg["photo"], key=lambda p: p.get("file_size") or p.get("width", 0) * p.get("height", 0))["file_id"]
+    doc = msg.get("document") or {}
+    if (doc.get("mime_type") or "").startswith("image/"):
+        return doc.get("file_id")
+    return None
+
+
+def _download(file_id: str) -> bytes | None:
+    """Скачать файл из Telegram (через посредника, если он настроен)."""
+    import urllib.request
+
+    from .telegram_bot import api
+
+    try:
+        info = api("getFile", {"file_id": file_id}).get("result") or {}
+        if not info.get("file_path") or (info.get("file_size") or 0) > MAX_PHOTO:
+            return None
+        url = f"{settings.telegram_api_url}/file/bot{settings.telegram_bot_token}/{info['file_path']}"
+        with urllib.request.urlopen(url, timeout=30) as r:
+            data = r.read(MAX_PHOTO + 1)
+        return data if len(data) <= MAX_PHOTO else None
+    except Exception as ex:  # noqa: BLE001
+        log.warning("Не удалось скачать картинку из Telegram: %s", ex)
+        return None
 
 
 def _support_chat_ids() -> set[str]:

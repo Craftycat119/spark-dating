@@ -410,3 +410,23 @@ def test_voice_served_with_audio_type():
     (folder / "v.m4a").write_bytes(b"\x00\x00\x00\x18ftypM4A ")
     r = a.get(f"/media/chat/{conv}/v.m4a")
     assert r.status_code == 200 and r.headers["content-type"] == "audio/mp4"
+
+
+
+def test_support_screenshots():
+    from conftest import jpeg_bytes, new_client
+
+    boss = make_user("boss@example.com", name="Андрей")
+    u = make_user("shot@x.io", name="Ксения")
+    other = make_user("shot2@x.io", name="Чужой")
+    tid = u.post("/api/support/threads", json={"topic": "support", "category": "complaint"}).json()["id"]
+    m = u.post(f"/api/support/threads/{tid}/images", files={"file": ("s.png", jpeg_bytes(), "image/png")}).json()
+    assert m["image_url"].startswith(f"/api/support/threads/{tid}/images/") and m["author"] == "user"
+    assert u.get(m["image_url"]).headers["content-type"] == "image/jpeg"
+    assert boss.get(m["image_url"]).status_code == 200  # администрация видит
+    assert other.get(m["image_url"]).status_code == 404  # чужой — нет
+    assert new_client().get(m["image_url"]).status_code == 404
+    assert u.post(f"/api/support/threads/{tid}/images", files={"file": ("x.txt", b"hello", "text/plain")}).status_code == 400
+    msgs = boss.get(f"/api/admin/support/{tid}").json()["messages"]
+    assert any(x["image_url"] for x in msgs)
+    assert u.get(f"/api/support/threads/{tid}/images/..%2F..%2Fspark.db").status_code == 404

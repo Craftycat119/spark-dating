@@ -313,6 +313,11 @@ def delete_user_completely(db: Session, user: User, by: str | None = None) -> No
     for post in db.scalars(select(AnimalPost).where(AnimalPost.author_id == user.id)):
         for path in post.photos:
             storage.delete_file(path)
+    from ..models import SupportThread
+    from .support import images_dir
+
+    for tid in db.scalars(select(SupportThread.id).where(SupportThread.user_id == user.id)):
+        shutil.rmtree(images_dir(tid), ignore_errors=True)
     storage.delete_file(user.photo_path)
     storage.delete_file(user.selfie_path)
     for p in user.photos:

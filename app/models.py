@@ -309,6 +309,7 @@ class SupportMessage(Base):
     thread_id: Mapped[int] = mapped_column(ForeignKey("support_threads.id", ondelete="CASCADE"), index=True)
     author: Mapped[str] = mapped_column(String(8))  # user | staff | bot
     text: Mapped[str] = mapped_column(Text)
+    image_name: Mapped[str | None] = mapped_column(String(64), nullable=True)  # скриншот к обращению
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

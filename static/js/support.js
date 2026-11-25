@@ -63,6 +63,8 @@ export async function renderGuestSupport({ screen, go }) {
       <form class="stack" novalidate>
         <label class="field"><span>Что случилось</span>
           <textarea class="input" name="text" rows="5" maxlength="4000" required placeholder="Например: не приходит код на почту"></textarea></label>
+        <label class="field"><span>Скриншоты (необязательно)</span>
+          <input class="input" type="file" name="shots" accept="image/*" multiple></label>
         <label class="field"><span>Куда ответить</span>
           <input class="input" name="contact" maxlength="128" required placeholder="Почта или @telegram" autocomplete="email"></label>
         <p class="error-text" hidden></p>
@@ -79,10 +81,22 @@ export async function renderGuestSupport({ screen, go }) {
     if (contact.length < 3) return fail("Укажите почту или Telegram — туда придёт ответ");
     try {
       const t = await api.post("/api/support/threads", { topic: "support", category: "help", text, contact });
+      await uploadShots(t.id, [...form.shots.files].slice(0, 10));
       toast("Сообщение отправлено");
       renderThread({ screen, threadId: t.id, back: "#/" });
     } catch (ex) { fail(ex.message); }
   };
+}
+
+/** Загрузить скриншоты в обращение по одному (ошибка одного не мешает остальным). */
+async function uploadShots(threadId, files) {
+  let ok = 0;
+  for (const file of files) {
+    const fd = new FormData();
+    fd.append("file", file);
+    try { await api.post(`/api/support/threads/${threadId}/images`, fd); ok++; } catch (ex) { toast(ex.message, { error: true }); }
+  }
+  return ok;
 }
 
 export async function renderThread({ screen, threadId, back = "#/support", ads = false }) {
@@ -98,7 +112,8 @@ export async function renderThread({ screen, threadId, back = "#/support", ads =
       </header>
       <div class="messages" tabindex="0"></div>
       ${ads ? `<div class="quick">${ADS_QUICK.map((q) => `<button class="chip" data-q="${q}">${q}</button>`).join("")}</div>` : ""}
-      <form class="composer"><textarea rows="1" placeholder="Сообщение" aria-label="Сообщение" maxlength="4000"></textarea>
+      <form class="composer">${ads ? "" : `<button type="button" class="icon-btn attach" data-shot aria-label="Прикрепить скриншот">${icons.image}</button>
+        <input type="file" accept="image/*" multiple hidden data-shot-input>`}<textarea rows="1" placeholder="${ads ? "Сообщение" : "Сообщение или скриншот"}" aria-label="Сообщение" maxlength="4000"></textarea>
         <button class="icon-btn send" aria-label="Отправить">${icons.send}</button></form>
     </div>`, { nav: false });
   const list = $(".messages", root);
@@ -109,7 +124,8 @@ export async function renderThread({ screen, threadId, back = "#/support", ads =
     seen.add(m.id);
     const mine = m.author === "user";
     list.append(h(`<div class="msg ${mine ? "mine" : ""}">${mine ? "" : `<div class="who-label">${label[m.author]}</div>`}
-      <div class="bubble text" ${mine || m.author === "staff" ? 'translate="no"' : ""}>${esc(m.text)}<span class="time">${fmtTime(m.created_at)}</span></div></div>`));
+      ${m.image_url ? `<a class="bubble shot" href="${esc(m.image_url)}" target="_blank" rel="noopener"><img src="${esc(m.image_url)}" alt="Скриншот" loading="lazy"><span class="time">${fmtTime(m.created_at)}</span></a>`
+        : `<div class="bubble text" ${mine || m.author === "staff" ? 'translate="no"' : ""}>${esc(m.text)}<span class="time">${fmtTime(m.created_at)}</span></div>`}</div>`));
     list.scrollTop = list.scrollHeight;
   };
   t.messages.forEach(add);
@@ -131,6 +147,16 @@ export async function renderThread({ screen, threadId, back = "#/support", ads =
     if (e.key === "Enter" && !e.shiftKey && !matchMedia("(pointer: coarse)").matches) { e.preventDefault(); form.requestSubmit(); }
   });
   $$("[data-q]", root).forEach((b) => (b.onclick = () => sendText(b.dataset.q)));
+  // скриншоты: понятнее, в чём жалоба или ошибка
+  const shotInput = $("[data-shot-input]", root);
+  $("[data-shot]", root)?.addEventListener("click", () => shotInput.click());
+  shotInput?.addEventListener("change", async () => {
+    const files = [...shotInput.files].slice(0, 10);
+    shotInput.value = "";
+    if (files.length) toast(files.length > 1 ? `Отправляем скриншоты: ${files.length}` : "Отправляем скриншот…");
+    await uploadShots(t.id, files);
+    await refresh();
+  });
   // ответы оператора: через WebSocket для вошедших, опросом для рекламодателей без аккаунта
   const off = on("support", (d) => d.thread_id === t.id && add(d.message));
   const timer = setInterval(() => (root.isConnected ? refresh() : (clearInterval(timer), off())), 6000);

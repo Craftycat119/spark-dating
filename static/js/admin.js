@@ -486,7 +486,7 @@ async function loadThreads() {
       <span class="tag ${(ST[t.status] || ["", ""])[1]}">${(ST[t.status] || [t.status])[0]}</span>
       <span style="flex:1"><b>${t.user ? esc(t.user.name || t.user.email || "#" + t.user.id) : "Гость" + (t.contact ? `, ${esc(t.contact)}` : "")}</b> №${t.id}
       ${t.user && (t.user.telegram_username || t.user.email) ? `<span class="muted small"> · ${esc(t.user.telegram_username ? "@" + t.user.telegram_username : t.user.email)}</span>` : ""}<br>
-      <span class="muted">${t.last ? esc(((t.last.author === "user" ? "" : t.last.author === "staff" ? "Вы: " : "Бот: ") + t.last.text).slice(0, 90)) : ""}</span></span>
+      <span class="muted">${t.last ? esc(((t.last.author === "user" ? "" : t.last.author === "staff" ? "Вы: " : "Бот: ") + (t.last.image_url ? "📎 Скриншот" : t.last.text)).slice(0, 90)) : ""}</span></span>
       <span class="muted">${dt(t.updated_at)}</span></div>`).join("") || '<p class="muted">Обращений нет.</p>';
   $$(".conv-row", box).forEach((r) => (r.onclick = () => openThread(Number(r.dataset.id))));
 }
@@ -512,7 +512,9 @@ async function openThread(id) {
       ${contactLinks(t)}
       ${t.about_user_id ? `<span>Жалоба на <a href="#users" data-user="${t.about_user_id}">анкету #${t.about_user_id}</a></span>` : ""}</div>
     <div class="transcript">${t.messages.map((m) => `<div class="msg ${m.author === "staff" ? "mine" : ""}">
-      <div class="who">${esc(who[m.author])} · ${dt(m.created_at)}</div><div class="bubble">${esc(m.text)}</div></div>`).join("")}</div>
+      <div class="who">${esc(who[m.author])} · ${dt(m.created_at)}</div>${m.image_url
+        ? `<a href="${esc(m.image_url)}" target="_blank" rel="noopener" class="bubble shot"><img src="${esc(m.image_url)}" alt="Скриншот"></a>`
+        : `<div class="bubble">${esc(m.text)}</div>`}</div>`).join("")}</div>
     <form class="stack" style="margin-top:16px" data-reply>
       <textarea class="input" name="text" rows="3" placeholder="Ответ пользователю" required></textarea>
       <div class="row"><button class="btn">Ответить</button></div>

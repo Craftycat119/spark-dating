@@ -336,3 +336,30 @@ def test_broadcast_silent_for_muted_unless_loud(monkeypatch):
     sends = {p["chat_id"]: p for m, p in bot.calls if m == "sendMessage"}
     assert not any(p.get("disable_notification") for p in sends.values())  # со звуком у всех
     assert boss.get("/api/admin/broadcasts").json()[0]["loud"]
+
+
+
+def test_screenshot_sent_to_bot_goes_to_support_thread(monkeypatch):
+    from conftest import jpeg_bytes
+
+    from app import telegram_support
+
+    monkeypatch.setattr(settings, "telegram_bot_token", "x")
+    monkeypatch.setattr("app.push._in_background", lambda fn, *a: None)
+    monkeypatch.setattr(telegram_support, "_download", lambda fid: jpeg_bytes() if fid == "big" else None)
+    upd = _private("", chat_id=909, username="shotter")
+    upd["message"].pop("text")
+    upd["message"]["photo"] = [{"file_id": "small", "width": 90, "height": 90}, {"file_id": "big", "width": 1280, "height": 1280}]
+    upd["message"]["caption"] = "Вот ошибка"
+    calls = telegram_bot.handle_update(upd)
+    assert calls and "Обращение №" in calls[0][1]["text"]
+    boss = make_user("boss@example.com", name="Андрей")
+    t = next(x for x in boss.get("/api/admin/support").json() if "shotter" in (x.get("contact") or ""))
+    msgs = boss.get(f"/api/admin/support/{t['id']}").json()["messages"]
+    assert any(m["image_url"] for m in msgs) and any(m["text"] == "Вот ошибка" for m in msgs)
+    assert boss.get(next(m["image_url"] for m in msgs if m["image_url"])).headers["content-type"] == "image/jpeg"
+    # голосовое — вежливо просим текст или скриншот
+    v = _private("", chat_id=910)
+    v["message"].pop("text")
+    v["message"]["voice"] = {"file_id": "v"}
+    assert "скриншот" in telegram_bot.handle_update(v)[0][1]["text"]

@@ -145,3 +145,6 @@ dl.kv dd { margin: 0; word-break: break-word; }
 .status-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 14px; }
 .status-row .chip { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--text); cursor: pointer; font: inherit; font-size: 13px; }
 .status-row .chip.on { background: var(--orange, #f2621f); border-color: transparent; color: #1a0f0b; font-weight: 600; }
+
+.transcript .bubble.shot { display: block; padding: 4px; max-width: 320px; }
+.transcript .bubble.shot img { display: block; width: 100%; border-radius: 10px; }
