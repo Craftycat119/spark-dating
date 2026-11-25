@@ -1087,6 +1087,7 @@ function renderSurvey({ editing = false, fromEnd = false } = {}) {
         ${q.hint ? `<p class="muted">${esc(q.hint)}</p>` : ""}
         ${q.key !== "goals" ? `<p class="hint">Если ваших интересов здесь нет, напишите их в описании анкеты</p>` : ""}
         <div class="chips">${q.options.map((o, k) => `<button type="button" class="chip" style="--i:${k}" aria-pressed="${set.has(o)}">${esc(o)}</button>`).join("")}</div>
+        ${q.key !== "goals" ? `<p class="survey-counter" data-counter></p>` : ""}
         <p class="error-text" hidden></p>
         <div class="row" style="margin-top:8px">
           ${i > 0 ? `<button class="btn ghost" data-back>Назад</button>` : editing ? `<a class="btn ghost" href="#/settings">Отмена</a>` : ""}
@@ -1094,21 +1095,35 @@ function renderSurvey({ editing = false, fromEnd = false } = {}) {
         </div>
         ${!last && q.key !== "goals" ? `<button class="link" data-skip style="align-self:center">Пропустить вопрос</button>` : ""}
       </div>`, { nav: false });
+    const err = $(".error-text", root);
+    const fail = (m) => { err.textContent = m; err.hidden = false; err.scrollIntoView({ block: "center", behavior: "smooth" }); };
+    // Сколько интересов выбрано во всех вопросах вместе: для подбора пар нужно минимум min_interests
+    const counter = $("[data-counter]", root);
+    const need = state.config.min_interests;
+    const updateCounter = () => {
+      if (!counter) return;
+      const n = answers.interests.size;
+      counter.classList.toggle("ok", n >= need);
+      counter.textContent = n >= need ? `Выбрано интересов: ${n} ✓` : `Выбрано интересов: ${n} из ${need} нужных — во всех вопросах вместе`;
+      if (n >= need) err.hidden = true;
+    };
+    updateCounter();
     $$(".chips .chip", root).forEach((b) => (b.onclick = () => {
       const v = b.textContent;
       set.has(v) ? set.delete(v) : set.add(v);
       b.setAttribute("aria-pressed", String(set.has(v)));
+      updateCounter();
     }));
-    const err = $(".error-text", root);
-    const fail = (m) => { err.textContent = m; err.hidden = false; };
     $("[data-back]", root)?.addEventListener("click", () => { i--; draw(); });
     bindBack(root, () => (i > 0 ? (i--, draw()) : STEP_BACK.survey()));
     $("[data-skip]", root)?.addEventListener("click", () => { i++; draw(); });
     $("[data-next]", root).onclick = async () => {
       if (q.key === "goals" && !answers.goals.size) return fail("Выберите хотя бы один вариант");
       if (!last) { i++; return draw(); }
-      if (answers.interests.size < state.config.min_interests) {
-        return fail(`Отметьте ещё ${state.config.min_interests - answers.interests.size}, чтобы мы могли подбирать пары`);
+      if (answers.interests.size < need) {
+        const left = need - answers.interests.size;
+        return fail(`Для подбора пар нужно минимум ${need} интереса, сейчас выбрано ${answers.interests.size}. ` +
+          `Отметьте ещё ${left} — здесь или в прошлых вопросах (кнопка «Назад»)`);
       }
       try {
         state.me = await api.put("/api/profile", { goals: [...answers.goals], interests: [...answers.interests] });

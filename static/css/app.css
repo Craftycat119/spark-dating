@@ -1002,3 +1002,7 @@ html.in-tg .tg-drop { top: 32px; }
 .pw-eye:hover { color: var(--ink, var(--text)); }
 
 .media-fallback { display: block; margin-top: 4px; font-size: 13px; color: var(--muted); text-decoration: underline; }
+
+/* счётчик интересов в опросе: сколько выбрано из нужного минимума */
+.survey-counter { margin: 0; font-size: 14px; color: var(--muted); }
+.survey-counter.ok { color: var(--ok, #2fae5f); }
