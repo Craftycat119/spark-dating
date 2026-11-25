@@ -503,7 +503,11 @@ function contactLinks(t) {
 }
 
 async function openThread(id) {
-  const t = await api.get(`/api/admin/support/${id}`);
+  let t;
+  try { t = await api.get(`/api/admin/support/${id}`); } catch (ex) {
+    // обращения нет — чаще всего человек удалил аккаунт, и обращение удалилось вместе с ним
+    return toast(ex.status === 404 ? `Обращения №${id} больше нет — скорее всего, человек удалил аккаунт` : ex.message, { error: true });
+  }
   const who = { user: t.user ? t.user.name || "Пользователь" : "Гость", bot: "Бот", staff: "Вы" };
   drawer.hidden = false;
   drawer.innerHTML = `<button class="icon-btn close" aria-label="Закрыть">${icons.x}</button>

@@ -311,6 +311,6 @@ def notify_admins(db, thread, text: str) -> None:
     title = SUPPORT_TITLES.get(thread.category, "🆘 Обращение")
     message = f"{title} #{thread.id} от {who}{about}\n\n{text[:1500]}"
     for chat in chats:
-        _in_background(_send, chat, message, [admin_button("support")])
+        _in_background(_send, chat, message, [admin_button(f"support/{thread.id}")])  # сразу это обращение
 
 
