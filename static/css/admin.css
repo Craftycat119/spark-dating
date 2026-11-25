@@ -29,7 +29,8 @@ table.grid th { text-align: left; font-weight: 600; color: var(--muted); padding
 table.grid td { padding: 10px; border-bottom: 1px solid color-mix(in oklab, var(--line) 50%, transparent); vertical-align: middle; }
 table.grid tbody tr { cursor: pointer; }
 table.grid tbody tr:hover { background: var(--surface); }
-table.grid img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+table.grid img { width: 40px; height: 40px; min-width: 40px; max-width: none; flex: none; display: block; border-radius: 50%; object-fit: cover; background: var(--surface); }
+table.grid td:first-child { width: 40px; }
 .tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; margin-right: 4px; }
 .tag { background: var(--surface-2); color: var(--text); margin-bottom: 3px; }
 .tag.hot { background: var(--orange); color: var(--on-orange); }

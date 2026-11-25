@@ -430,3 +430,16 @@ def test_support_screenshots():
     msgs = boss.get(f"/api/admin/support/{tid}").json()["messages"]
     assert any(x["image_url"] for x in msgs)
     assert u.get(f"/api/support/threads/{tid}/images/..%2F..%2Fspark.db").status_code == 404
+
+
+
+def test_admin_users_split_adults_and_teens():
+    boss = make_user("boss@example.com", name="Андрей")
+    make_user("ad1@x.io", name="Взрослый", age=25)
+    make_user("tn1@x.io", name="Подросток", age=15, goals=("Дружба",))
+    r = boss.get("/api/admin/users?age=teen").json()
+    assert [u["name"] for u in r["items"]] == ["Подросток"] and r["ages"]["teen"] == 1
+    adults = [u["name"] for u in boss.get("/api/admin/users?age=adult").json()["items"]]
+    assert "Взрослый" in adults and "Подросток" not in adults
+    everyone = boss.get("/api/admin/users").json()
+    assert everyone["total"] >= 3  # без фильтра — все люди, включая админа без анкеты

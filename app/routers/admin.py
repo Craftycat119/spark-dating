@@ -163,8 +163,29 @@ def _audience(db: Session) -> dict:
     return out
 
 
+def _years_ago(n: int):
+    from datetime import date
+
+    today = date.today()
+    try:
+        return today.replace(year=today.year - n)
+    except ValueError:  # 29 февраля
+        return today.replace(year=today.year - n, day=28)
+
+
+def _age_cond(age: str):
+    """adult — 18+, teen — 14–17 (по дате рождения). Без даты рождения — ни туда, ни туда."""
+    if age == "adult":
+        return User.birth_date <= _years_ago(18)
+    if age == "teen":
+        return (User.birth_date > _years_ago(18)) & (User.birth_date <= _years_ago(14))
+    if age == "none":
+        return User.birth_date.is_(None)
+    return None
+
+
 @router.get("/users")
-def users(q: str = "", interest: str = "", kind: str = "people", step: str = "", page: int = 1, per_page: int = 30,
+def users(q: str = "", interest: str = "", kind: str = "people", step: str = "", age: str = "", page: int = 1, per_page: int = 30,
           _: User = Depends(admin_user), db: Session = Depends(get_db)):
     """kind: people — настоящие люди, bots — боты демо-версии (общие для всех гостей), guests — демо-гости."""
     kinds = {
@@ -173,7 +194,12 @@ def users(q: str = "", interest: str = "", kind: str = "people", step: str = "",
         "guests": (User.is_demo.is_(True),),
     }
     counts = {k: db.scalar(select(func.count(User.id)).where(*conds)) or 0 for k, conds in kinds.items()}
-    query = select(User).where(*kinds.get(kind, kinds["people"]))
+    base = kinds.get(kind, kinds["people"])
+    # взрослые и подростки — отдельно (считаем среди выбранного вида: обычно «Люди»)
+    ages = {k: db.scalar(select(func.count(User.id)).where(*base, _age_cond(k))) or 0 for k in ("adult", "teen", "none")}
+    query = select(User).where(*base)
+    if (cond := _age_cond(age)) is not None:
+        query = query.where(cond)
     if q:
         like = f"%{q.strip().lower()}%"
         conds = [func.lower(User.name).like(like), func.lower(User.email).like(like), func.lower(User.telegram_username).like(like)]
@@ -191,7 +217,7 @@ def users(q: str = "", interest: str = "", kind: str = "people", step: str = "",
     else:
         total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
         rows = db.scalars(query.order_by(User.id.desc()).offset((max(page, 1) - 1) * per_page).limit(per_page)).unique().all()
-    return {"total": total, "page": page, "per_page": per_page, "counts": counts, "items": [user_row(u) for u in rows]}
+    return {"total": total, "page": page, "per_page": per_page, "counts": counts, "ages": ages, "items": [user_row(u) for u in rows]}
 
 
 def _get_user(db: Session, user_id: int) -> User:

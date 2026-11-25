@@ -6,7 +6,7 @@ import { $, $$, confirmDialog, esc, toast } from "./ui.js";
 
 const view = $("#view");
 const drawer = $("#drawer");
-const usersState = { q: "", interest: "", kind: "people", step: "", page: 1 };
+const usersState = { q: "", interest: "", kind: "people", step: "", age: "", page: 1 };
 const STEP_LABELS = { email: "Подтверждение почты", about: "Имя, дата рождения, согласия", identity: "Пол и кого ищет", extras: "Рост, вес, знак",
   survey: "Интересы", photo: "Фото", scan: "Проверка лица", location: "Геопозиция", done: "Регистрация завершена" };
 let catalog = [];
@@ -133,6 +133,12 @@ async function users() {
       <button data-kind="guests">Демо-гости <span></span></button>
     </div>
     <p class="muted small kind-hint"></p>
+    <div class="user-kinds age-tabs" role="tablist" aria-label="Возраст">
+      <button data-age="">Все</button>
+      <button data-age="adult">Взрослые 18+ <span></span></button>
+      <button data-age="teen">Подростки 14–17 <span></span></button>
+      <button data-age="none">Без даты рождения <span></span></button>
+    </div>
     <div class="toolbar">
       <input class="input" type="search" placeholder="Имя, почта, @telegram или ID" value="${esc(usersState.q)}">
       <select class="input" data-step-filter><option value="">Любой шаг регистрации</option>${Object.entries(STEP_LABELS).map(([k, l]) =>
@@ -168,6 +174,7 @@ async function users() {
   let t;
   search.oninput = () => { clearTimeout(t); t = setTimeout(() => { usersState.q = search.value; usersState.page = 1; loadUsers(); }, 300); };
   $$("[data-kind]", view).forEach((b) => (b.onclick = () => { usersState.kind = b.dataset.kind; usersState.page = 1; loadUsers(); }));
+  $$("[data-age]", view).forEach((b) => (b.onclick = () => { usersState.age = b.dataset.age; usersState.page = 1; loadUsers(); }));
   $("[data-interest]", view).onchange = (e) => { usersState.interest = e.target.value; usersState.page = 1; loadUsers(); };
   $("[data-step-filter]", view).onchange = (e) => { usersState.step = e.target.value; usersState.page = 1; loadUsers(); };
   loadUsers();
@@ -182,12 +189,22 @@ function watchUsers() {
 }
 document.addEventListener("visibilitychange", () => !document.hidden && $("#table") && loadUsers());
 
+let lastUsersSig = "";
 async function loadUsers() {
   watchUsers();
-  const p = new URLSearchParams({ q: usersState.q, interest: usersState.interest, kind: usersState.kind, step: usersState.step, page: usersState.page, per_page: 30 });
+  const p = new URLSearchParams({ q: usersState.q, interest: usersState.interest, kind: usersState.kind, step: usersState.step, age: usersState.age, page: usersState.page, per_page: 30 });
   const res = await api.get(`/api/admin/users?${p}`);
   const box = $("#table");
   if (!box) return;
+  // автообновление раз в 20 с: если ничего не изменилось — не перерисовываем (фото не мигают)
+  const sig = JSON.stringify([p.toString(), res]);
+  if (sig === lastUsersSig && box.querySelector("table")) return;
+  lastUsersSig = sig;
+  $$("[data-age]").forEach((b) => {
+    b.classList.toggle("on", b.dataset.age === usersState.age);
+    const s = $("span", b);
+    if (s) s.textContent = res.ages?.[b.dataset.age] ?? "";
+  });
   $$("[data-kind]").forEach((b) => {
     b.classList.toggle("on", b.dataset.kind === usersState.kind);
     $("span", b).textContent = res.counts?.[b.dataset.kind] ?? "";
@@ -233,7 +250,8 @@ document.addEventListener("error", (e) => {
 
 function pic(url, empty, small = false) {
   if (!url) return small ? `<span class="pic-empty small">${icons.user}</span>` : `<div class="pic-empty">${icons.user}<span>${esc(empty)}</span></div>`;
-  return `<img src="${esc(url)}" alt="" loading="lazy" data-fallback="${small ? "small" : "big"}">`;
+  // маленькие фото в таблице — без lazy: их немного, а с lazy при смене фильтра они пропадали и мигали
+  return `<img src="${esc(url)}" alt="" ${small ? "" : 'loading="lazy"'} decoding="async" data-fallback="${small ? "small" : "big"}">`;
 }
 
 function closeDrawer() { drawer.hidden = true; drawer.innerHTML = ""; }
