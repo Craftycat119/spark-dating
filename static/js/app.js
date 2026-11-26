@@ -15,7 +15,7 @@ import { LEGAL_DOCS, renderTerms } from "./terms.js";
 import { renderAds, renderGuestSupport, renderSupportHub, renderThread, reportUser } from "./support.js";
 import { currentHash, navigate, onRoute } from "./router.js";
 import { getThemePref, resolvedTheme, setTheme } from "./theme.js";
-import { getLang, setLang, t } from "./i18n.js";
+import { cityLabel, getLang, setLang, t } from "./i18n.js";
 import { $, $$, confirmDialog, esc, fmtDay, fmtDur, fmtShort, fmtTime, h, toast, wordmark } from "./ui.js";
 
 const app = document.getElementById("app");
@@ -274,7 +274,7 @@ async function autoLocate({ force = false } = {}) {
     const r = await api.post("/api/profile/location", pos);
     const before = me.city_name;
     Object.assign(state.me, { lat: pos.lat, lon: pos.lon, city_name: r.city || null, location_updated_at: new Date().toISOString() });
-    if (force || (r.city && r.city !== before)) toast(r.city ? `Местоположение обновлено: ${r.city}` : "Местоположение обновлено");
+    if (force || (r.city && r.city !== before)) toast(r.city ? `Местоположение обновлено: ${cityLabel(r.city)}` : "Местоположение обновлено");
     if (currentHash().startsWith("#/feed") || currentHash() === "#/" || currentHash() === "") rerender();
   } catch { /* не страшно — попробуем в следующий раз */ }
 }
@@ -1349,7 +1349,7 @@ const kmText = (km) => (km == null ? "" : km < 1 ? "меньше 1 км от в�
 async function renderFeed() {
   const root = screen(`
     <div class="topbar"><span class="row" style="gap:8px"><span class="logo">cofi<span>°</span></span>${state.me.is_demo ? '<span class="demo-pill">демо</span>' : ""}</span>
-      <span class="row" style="gap:10px">${state.me.city_name ? `<button class="my-place" data-relocate title="Обновить геопозицию">${icons.pin} ${esc(state.me.city_name)}</button>` : ""}<span class="counter"></span></span></div>
+      <span class="row" style="gap:10px">${state.me.city_name ? `<button class="my-place" data-relocate title="Обновить геопозицию">${icons.pin} ${esc(cityLabel(state.me.city_name))}</button>` : ""}<span class="counter"></span></span></div>
     ${feedTabs("people", state.me)}
     <div class="deck" aria-live="polite"><div class="skeleton" style="position:relative;height:420px"></div></div>
     <p class="swipe-hint" hidden>Свайп по нитке вниз: нравится, вверх: дальше. Нажмите на фото, чтобы открыть анкету</p>
@@ -1433,7 +1433,7 @@ async function renderFeed() {
           ${c.photos_count ? `<span class="more">+${c.photos_count} фото</span>` : ""}
         </button>
         <div class="pname" translate="no">${esc(c.name)}<span>, ${c.age}</span></div>
-        <div class="meta">${[c.city ? esc(c.city) : "", kmText(c.distance_km), c.verified ? "фото подтверждено" : ""].filter(Boolean).join(" · ")}</div>
+        <div class="meta">${[c.city ? esc(cityLabel(c.city)) : "", kmText(c.distance_km), c.verified ? "фото подтверждено" : ""].filter(Boolean).join(" · ")}</div>
         ${c.liked_before ? `<span class="liked-before">${icons.heart} Вы уже лайкали — ждём ответа</span>` : ""}
         ${c.bio ? `<p class="pbio" translate="no">${esc(c.bio)}</p>` : ""}
       </article>
@@ -1576,7 +1576,7 @@ async function openProfile(userId, { onDecide = null, preview = false, onCancelL
     ${preview ? `<div class="preview-pill">${icons.user} Так вашу анкету видят другие</div>` : ""}
     <div class="profile-body">
       <div class="pname" translate="no">${esc(p.name)}<span>, ${p.age}</span></div>
-      <div class="meta muted small" style="margin-top:6px">${[p.city ? `${icons.pin} ${esc(p.city)}` : "", kmText(p.distance_km), p.verified ? "фото подтверждено" : "", p.online ? "в сети" : ""].filter(Boolean).join(" · ")}</div>
+      <div class="meta muted small" style="margin-top:6px">${[p.city ? `${icons.pin} ${esc(cityLabel(p.city))}` : "", kmText(p.distance_km), p.verified ? "фото подтверждено" : "", p.online ? "в сети" : ""].filter(Boolean).join(" · ")}</div>
       ${aboutLine(p) ? `<p class="about-line">${aboutLine(p)}</p>` : ""}
       <div class="match-strip">
         <div><b>${preview ? "?" : `${p.match}%`}</b><span>${preview ? "совпадение у каждого своё" : "совпадение"}</span></div>
@@ -1744,7 +1744,7 @@ async function renderLikes() {
   const row = (p, kind) => `
     <button class="like-item" data-kind="${kind}" data-id="${p.id}" data-conv="${p.conversation_id || ""}">
       <img class="avatar" src="${esc(p.photo_url || "")}" alt="">
-      <span class="body"><b translate="no">${esc(p.name)}, ${p.age}</b><span class="muted small">${[p.city ? esc(p.city) : "", p.verified ? "фото подтверждено" : ""].filter(Boolean).join(" · ")}</span></span>
+      <span class="body"><b translate="no">${esc(p.name)}, ${p.age}</b><span class="muted small">${[p.city ? esc(cityLabel(p.city)) : "", p.verified ? "фото подтверждено" : ""].filter(Boolean).join(" · ")}</span></span>
       <span class="act">${kind === "mutual" ? icons.chat : kind === "received" ? icons.heart : ""}</span>
     </button>`;
   const section = (kind, title, hint, list, empty) => `
@@ -2351,7 +2351,7 @@ function renderSettings() {
       </div>
       <label class="field"><span>Искать в радиусе <b id="dist-val">${fmtKm(me.max_distance_km)}</b> км</span>
         <input type="range" name="dist" min="0" max="${RADIUS_STEPS.length - 1}" step="1" value="${radiusIndex(me.max_distance_km)}"></label>
-      <p class="hint" id="my-city">${me.city_name ? `${icons.pin} Ваш город: <b>${esc(me.city_name)}</b> — определён по геопозиции` : "Город определится по геопозиции"}</p>
+      <p class="hint" id="my-city">${me.city_name ? `${icons.pin} Ваш город: <b>${esc(cityLabel(me.city_name))}</b> — определён по геопозиции` : "Город определится по геопозиции"}</p>
       <label class="switch"><input type="checkbox" name="showcity" ${me.show_city ? "checked" : ""}>
         <span class="label">Показывать город в анкете<small>Другие увидят только название города, точное место — никогда</small></span></label>
       <button type="button" class="btn ghost" id="relocate">${icons.pin} Обновить геопозицию</button>
@@ -2485,8 +2485,8 @@ function renderSettings() {
     try {
       const r = await api.post("/api/profile/location", await getPosition());
       state.me.city_name = r.city || null;
-      $("#my-city", root).innerHTML = r.city ? `${icons.pin} Ваш город: <b>${esc(r.city)}</b> — определён по геопозиции` : "Город по этой геопозиции не определился";
-      toast(r.city ? `Геопозиция обновлена: ${r.city}` : "Геопозиция обновлена");
+      $("#my-city", root).innerHTML = r.city ? `${icons.pin} Ваш город: <b>${esc(cityLabel(r.city))}</b> — определён по геопозиции` : "Город по этой геопозиции не определился";
+      toast(r.city ? `Геопозиция обновлена: ${cityLabel(r.city)}` : "Геопозиция обновлена");
     } catch (ex) { toast(ex.message, { error: true }); }
   };
 

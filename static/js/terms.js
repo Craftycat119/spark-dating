@@ -3,6 +3,7 @@
 // Поменяли текст по существу — поднимите TERMS_VERSION в app/legal.py: все пользователи снова подтвердят согласие.
 import { icons } from "./icons.js";
 import { $, h } from "./ui.js";
+import { getLang } from "./i18n.js";
 
 const OPERATOR = {
   name: "Герсе Андрей Станиславович",
@@ -211,7 +212,11 @@ export const LEGAL_DOCS = ORDER.map((k) => ({ key: k, title: DOCS[k].title }));
 const articleHtml = (key) => {
   const doc = DOCS[key] || DOCS.terms;
   const many = doc.sections.length > 1;
-  return `
+  // документы — на русском: юридически действует русская редакция
+  const note = getLang() === "en"
+    ? `<p class="legal-lang-note">These documents are published in Russian, and the Russian version is legally binding. You can use your browser's translate feature to read them.</p>`
+    : "";
+  return `${note}
   <article class="terms" translate="no">
     <h1>${doc.title}</h1>
     <p class="muted">Сервис COFI · Редакция от ${UPDATED}</p>

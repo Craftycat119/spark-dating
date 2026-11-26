@@ -1023,3 +1023,5 @@ html.in-tg .tg-drop { top: 32px; }
 .bubble.shot { display: block; padding: 4px; max-width: 240px; position: relative; text-decoration: none; }
 .bubble.shot img { display: block; width: 100%; max-height: 320px; object-fit: cover; border-radius: 14px; }
 .bubble.shot .time { position: absolute; right: 10px; bottom: 8px; padding: 1px 6px; border-radius: 8px; background: rgba(0, 0, 0, .45); color: #fff; }
+
+.legal-lang-note { margin: 0 0 14px; padding: 12px 14px; border-radius: 14px; background: var(--surface); color: var(--muted); font-size: 14px; }

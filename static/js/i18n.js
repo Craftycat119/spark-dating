@@ -1,7 +1,7 @@
 // Языки интерфейса. Тексты пишутся по-русски, а в английском режиме страница переводится
 // на лету: MutationObserver подменяет текстовые узлы и атрибуты по словарю (i18n-en.js).
 // Пользовательский контент (сообщения, имена, описания) помечен translate="no" и не трогается.
-import { EN, PATTERNS } from "./i18n-en.js";
+import { EN, PATTERNS, cityEn } from "./i18n-en.js";
 
 const KEY = "lang";
 const ATTRS = ["placeholder", "aria-label", "title", "alt"];
@@ -25,6 +25,11 @@ export function setLang(value) {
   lang = value === "en" ? "en" : "ru";
   try { localStorage.setItem(KEY, lang); } catch { /* не страшно */ }
   apply();
+}
+
+/** Название города на языке интерфейса: в английской версии — латиницей (Нячанг → Nha Trang). */
+export function cityLabel(name) {
+  return lang === "en" && name ? cityEn(name) : name;
 }
 
 /** Перевод строки (для кода, которому нужен текст до вставки в DOM). */
