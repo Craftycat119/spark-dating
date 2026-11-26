@@ -108,7 +108,7 @@ def from_group(msg: dict) -> list[tuple[str, dict]]:
         return []
     if str(msg["chat"]["id"]) not in _support_chat_ids():
         return []  # отвечать от имени поддержки можно только из её групп
-    m = THREAD_REF.search(reply_to.get("text") or "")
+    m = THREAD_REF.search(reply_to.get("text") or reply_to.get("caption") or "")  # ответ на текст или на скриншот
     if not m:
         return []
     with SessionLocal() as db:

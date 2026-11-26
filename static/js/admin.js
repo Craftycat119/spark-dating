@@ -549,7 +549,7 @@ async function openThread(id) {
       ${t.about_user_id ? `<span>Жалоба на <a href="#users" data-user="${t.about_user_id}">анкету #${t.about_user_id}</a></span>` : ""}</div>
     <div class="transcript">${t.messages.map((m) => `<div class="msg ${m.author === "staff" ? "mine" : ""}">
       <div class="who">${esc(who[m.author])} · ${dt(m.created_at)}</div>${m.image_url
-        ? `<a href="${esc(m.image_url)}" target="_blank" rel="noopener" class="bubble shot"><img src="${esc(m.image_url)}" alt="Скриншот"></a>`
+        ? `<a href="${esc(m.image_url)}" target="_blank" rel="noopener" class="bubble shot"><img src="${esc(m.image_url)}" alt="Скриншот"></a><a class="shot-link" href="${esc(m.image_url)}" target="_blank" rel="noopener">Открыть скриншот в полном размере</a>`
         : `<div class="bubble">${esc(m.text)}</div>`}</div>`).join("")}</div>
     <form class="stack" style="margin-top:16px" data-reply>
       <textarea class="input" name="text" rows="3" placeholder="Ответ пользователю" required></textarea>

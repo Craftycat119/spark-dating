@@ -135,7 +135,10 @@ def _add(db: Session, t: SupportThread, author: str, text: str, image_name: str 
         for admin_id in db.scalars(select(User.id).where(User.is_admin.is_(True))):
             if manager.is_online(admin_id):
                 notify(admin_id, {**payload, "admin": True})
-        push.notify_admins(db, t, text or "📎 Прислал(а) скриншот — посмотрите в админ-панели")
+        if image_name:  # скриншот — картинкой в Telegram, а не «посмотрите в админ-панели»
+            push.notify_admins_photo(db, t, str(images_dir(t.id) / image_name))
+        else:
+            push.notify_admins(db, t, text)
     return m
 
 

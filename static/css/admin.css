@@ -148,4 +148,5 @@ dl.kv dd { margin: 0; word-break: break-word; }
 .status-row .chip.on { background: var(--orange, #f2621f); border-color: transparent; color: #1a0f0b; font-weight: 600; }
 
 .transcript .bubble.shot { display: block; padding: 4px; max-width: 320px; }
-.transcript .bubble.shot img { display: block; width: 100%; border-radius: 10px; }
+.transcript .bubble.shot img { display: block; width: auto; height: auto; max-width: min(280px, 100%); max-height: 480px; object-fit: contain; border-radius: 10px; background: var(--bg); min-width: 120px; min-height: 60px; }
+.transcript .shot-link { display: inline-block; margin-top: 4px; font-size: 12px; color: var(--muted); }

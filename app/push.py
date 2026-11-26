@@ -13,6 +13,7 @@ import logging
 import threading
 import time
 import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from urllib.parse import urlencode
 
@@ -314,3 +315,56 @@ def notify_admins(db, thread, text: str) -> None:
         _in_background(_send, chat, message, [admin_button(f"support/{thread.id}")])  # сразу это обращение
 
 
+
+
+def _send_photo(chat_id, path: str, caption: str, buttons: list[dict | None] | None = None) -> None:
+    """Картинку — файлом (multipart): ссылка на неё закрыта входом, Telegram её бы не скачал."""
+    import json as _json
+    import uuid as _uuid
+
+    row = [b for b in (buttons or []) if b]
+    fields = {"chat_id": str(chat_id), "caption": caption[:1000]}
+    if row:
+        fields["reply_markup"] = _json.dumps({"inline_keyboard": [row]})
+    boundary = _uuid.uuid4().hex
+    body = bytearray()
+    for k, v in fields.items():
+        body += f"--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n".encode()
+    with open(path, "rb") as fh:
+        data = fh.read()
+    if len(data) > 900_000:  # посредник (nginx) по умолчанию не пропускает больше 1 МБ — ужимаем, Telegram всё равно сожмёт
+        import io
+
+        from PIL import Image
+
+        pic = Image.open(io.BytesIO(data)).convert("RGB")
+        pic.thumbnail((1280, 1280))
+        buf = io.BytesIO()
+        pic.save(buf, "JPEG", quality=80)
+        data = buf.getvalue()
+    body += (f"--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"screenshot.jpg\"\r\n"
+             "Content-Type: image/jpeg\r\n\r\n").encode() + data + f"\r\n--{boundary}--\r\n".encode()
+    req = urllib.request.Request(f"{settings.telegram_api_url}/bot{settings.telegram_bot_token}/sendPhoto", data=bytes(body),
+                                 headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            r.read()
+        log.info("Telegram: скриншот отправлен (%s)", chat_id)
+    except urllib.error.HTTPError as ex:
+        log.warning("Telegram: скриншот не отправлен (%s): %s", chat_id, ex.read().decode("utf-8", "replace")[:300])
+    except Exception as ex:  # noqa: BLE001 — сеть: не роняем обращение
+        log.warning("Telegram: скриншот не отправлен (%s): %s", chat_id, ex)
+
+
+def notify_admins_photo(db, thread, path: str) -> None:
+    """Скриншот из обращения — сразу картинкой в группу поддержки (или администраторам).
+    Ответить человеку можно ответом (reply) на эту картинку — как на обычное уведомление."""
+    if not enabled():
+        return
+    chats = thread_chats(db, thread)
+    if not chats:
+        return
+    title = SUPPORT_TITLES.get(thread.category, "🆘 Обращение")
+    caption = f"{title} #{thread.id} от {_who(thread)}\n\n📎 Скриншот"
+    for chat in chats:
+        _in_background(_send_photo, chat, path, caption, [admin_button(f"support/{thread.id}")])

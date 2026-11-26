@@ -363,3 +363,29 @@ def test_screenshot_sent_to_bot_goes_to_support_thread(monkeypatch):
     v["message"].pop("text")
     v["message"]["voice"] = {"file_id": "v"}
     assert "скриншот" in telegram_bot.handle_update(v)[0][1]["text"]
+
+
+
+def test_screenshot_goes_to_telegram_as_photo(monkeypatch):
+    from conftest import jpeg_bytes
+
+    from app import push
+
+    monkeypatch.setattr(settings, "telegram_bot_token", "x")
+    monkeypatch.setattr(settings, "telegram_support_chat_id", "-1001")
+    photos, texts = [], []
+    monkeypatch.setattr(push, "_in_background", lambda fn, *a: (photos if fn is push._send_photo else texts).append(a))
+    u = make_user("shotg@x.io", name="Ксения")
+    tid = u.post("/api/support/threads", json={"topic": "support", "category": "complaint", "text": "Жалоба на анкету"}).json()["id"]
+    texts.clear()
+    u.post(f"/api/support/threads/{tid}/images", files={"file": ("s.jpg", jpeg_bytes(), "image/jpeg")})
+    assert len(photos) == 1 and not texts  # картинкой, без текста «посмотрите в админ-панели»
+    chat, path, caption, _buttons = photos[0]
+    assert str(chat) == "-1001" and f"#{tid}" in caption and path.endswith(".jpg")
+    # ответ в группе на скриншот (reply на фото с подписью) уходит человеку
+    from app import telegram_bot
+    sent = []
+    monkeypatch.setattr("app.push._in_background", lambda fn, *a: sent.append(a))
+    reply = {"message": {"message_id": 9, "chat": {"id": -1001, "type": "supergroup"}, "from": {"id": 1, "is_bot": False},
+                         "text": "Разберёмся", "reply_to_message": {"from": {"is_bot": True}, "caption": caption}}}
+    assert "Ответ отправлен" in telegram_bot.handle_update(reply)[0][1]["text"]
