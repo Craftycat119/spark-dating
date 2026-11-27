@@ -1,4 +1,4 @@
-import { api, ApiError, connectSocket, disconnectSocket, on, send } from "./api.js";
+import { ApiError, EMBEDDED, api, connectSocket, disconnectSocket, on, send } from "./api.js";
 import { initCalls, joinPendingCall, startCall } from "./call.js";
 import { icons } from "./icons.js";
 import { recordCircle, VoiceRecorder } from "./recorder.js";
@@ -1269,7 +1269,7 @@ function stepGallery() {
       <div class="stack">
         <h1>Добавьте ещё фото</h1>
         <p class="muted">Анкеты с несколькими фото замечают чаще. Покажите хобби, поездки, друзей — можно добавить GIF или короткое видео до 15 секунд.</p>
-        <div class="gallery-edit">${me.photos.map((p) => `<div class="ph-cell">${galleryThumb(p.url)}<button class="del" data-del="${p.id}" aria-label="Удалить">${icons.x}</button></div>`).join("")}${
+        <div class="gallery-edit">${me.photos.map((p) => `<div class="ph-cell" data-view="${esc(p.url)}" role="button" tabindex="0">${galleryThumb(p.url)}<button class="del" data-del="${p.id}" aria-label="Удалить">${icons.x}</button></div>`).join("")}${
           me.photos.length < 6 ? `<button class="ph-cell add" data-add aria-label="Добавить фото или видео">${icons.plus}<small>Фото, GIF<br>или видео</small></button>` : ""}</div>
         <input type="file" accept="image/*,video/*" multiple hidden>
         <p class="hint">До 6 штук. Их видно в подробной анкете, главное фото остаётся проверенным.</p>
@@ -1289,6 +1289,8 @@ function stepGallery() {
     $("[data-next]", root).onclick = () => nextStep();
     $("[data-skip]", root).onclick = () => nextStep();
     startClips(root);
+    bindGalleryView(root);
+    mountGalleryQueue(root, draw);
     window.scrollTo(0, 0);
   };
   draw();
@@ -2300,10 +2302,28 @@ const posterOf = (url) => url.replace(/\.(mp4|webm|mov)(?=$|[?#])/i, ".poster.jp
  *  У клипа есть первый кадр картинкой: если телефон не запускает видео сам (Telegram на iPhone), видно кадр, а не пустоту. */
 function galleryMedia(url, alt = "", eager = false) {
   return isClip(url)
-    ? `<video src="${esc(url)}#t=0.1" poster="${esc(posterOf(url))}" muted loop autoplay playsinline preload="metadata" aria-label="${esc(alt)}"></video>`
+    ? `<video src="${esc(url)}#t=0.1" poster="${esc(posterOf(url))}" muted loop autoplay playsinline preload="auto" aria-label="${esc(alt)}"></video>`
     : `<img src="${esc(url)}" alt="${esc(alt)}" loading="${eager ? "eager" : "lazy"}">`;
 }
 /** Миниатюра в сетке «Ещё фото»: у клипа — первый кадр и значок ▶ (видео в маленькой ячейке не нужно гонять). */
+/** Фото или видео из «Ещё фото» на весь экран: нажатие на ячейку (и на значок ▶) открывает просмотр. */
+function openMediaViewer(url) {
+  const el = h(`<div class="overlay media-viewer" role="dialog" aria-label="Просмотр">
+    <button class="icon-btn close" aria-label="Закрыть">${icons.x}</button>
+    ${isClip(url) ? `<video src="${esc(url)}" poster="${esc(posterOf(url))}" autoplay loop playsinline muted preload="auto"></video>` : `<img src="${esc(url)}" alt="">`}</div>`);
+  const close = () => { el.remove(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e) => e.key === "Escape" && close();
+  el.onclick = (e) => { if (e.target === el || e.target.closest(".close")) close(); };
+  document.addEventListener("keydown", onKey);
+  document.body.append(el);
+  startClips(el);
+}
+/** Ячейки «Ещё фото»: нажатие (кроме крестика) открывает фото или видео на весь экран. */
+function bindGalleryView(root) {
+  $$(".gallery-edit .ph-cell[data-view]", root).forEach((c) => (c.onclick = (e) => {
+    if (!e.target.closest(".del")) openMediaViewer(c.dataset.view);
+  }));
+}
 function galleryThumb(url) {
   return isClip(url)
     ? `<img src="${esc(posterOf(url))}" alt=""><span class="clip-badge">${icons.play}</span>`
@@ -2354,43 +2374,174 @@ async function checkGalleryFile(file) {
   return {};
 }
 
-/** Загрузить выбранные файлы в «Ещё фото», показывая каждую загрузку прямо в сетке. */
-async function uploadGallery(root, files, onDone) {
+// Очередь «Ещё фото»: файлы уходят кусками по 1 МБ. Пропала связь — загрузка на паузе (нажмите на ячейку или
+// дождитесь связи — продолжится сама с того же места). Очередь живёт, пока открыто приложение: перерисовка экрана её не теряет.
+const GALLERY_CHUNK = 1024 * 1024;
+const galleryQueue = [];
+let galleryRoot = null, galleryAfter = null, galleryRunning = false;
+
+function gallerySend(method, url, body, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, url);
+    xhr.withCredentials = true;
+    xhr.responseType = "json";
+    xhr.timeout = 120000;
+    if (EMBEDDED) xhr.setRequestHeader("X-COFI-Embedded", "1");
+    if (body && !(body instanceof Blob)) xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.upload.onprogress = (e) => onProgress?.(e.loaded);
+    xhr.onerror = xhr.ontimeout = () => reject(new ApiError(0, "Нет соединения с сервером"));
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) return resolve(xhr.response);
+      reject(new ApiError(xhr.status, xhr.response?.detail ?? (xhr.status === 413 ? "Файл слишком большой" : "Ошибка сервера")));
+    };
+    xhr.send(body instanceof Blob ? body : body ? JSON.stringify(body) : null);
+  });
+}
+
+function paintUpload(it) {
+  if (!it.el) return;
+  const pct = it.file.size ? Math.min(99, Math.floor((it.shown / it.file.size) * 100)) : 0;
+  it.el.classList.toggle("processing", it.state === "processing");
+  it.el.classList.toggle("paused", it.state === "paused");
+  $(".bar", it.el).style.strokeDasharray = `${it.state === "processing" ? 30 : pct} 100`;
+  $(".up-pct", it.el).textContent = it.state === "paused" ? "" : it.state === "processing" ? "" : `${pct}%`;
+  $(".up-play", it.el).hidden = it.state !== "paused";
+  $(".up-text", it.el).textContent = it.state === "paused" ? `Пауза · ${pct}%\nНажмите, чтобы продолжить`
+    : it.state === "processing" ? (it.clip ? "Обрабатываем видео…" : "Сохраняем…")
+      : it.state === "waiting" ? "В очереди" : it.clip ? "Загружаем видео" : "Загружаем фото";
+}
+
+function uploadCell(it) {
+  const el = h(`<div class="ph-cell uploading" role="button" tabindex="0">${it.clip ? "" : `<img src="${it.preview}" alt="">`}
+    <div class="up-veil"><svg class="up-ring" viewBox="0 0 36 36"><circle cx="18" cy="18" r="15.5"/><circle class="bar" cx="18" cy="18" r="15.5" pathLength="100"/></svg>
+    <b class="up-pct"></b><span class="up-play" hidden>${icons.play}</span><small class="up-text"></small></div>
+    <button class="del" aria-label="Отменить загрузку">${icons.x}</button></div>`);
+  el.onclick = (e) => {
+    if (e.target.closest(".del")) return cancelUpload(it);
+    if (it.state === "paused") { it.state = "waiting"; paintUpload(it); pumpGallery(); }
+  };
+  it.el = el;
+  paintUpload(it);
+  return el;
+}
+
+/** Вставить ячейки очереди в сетку (после перерисовки экрана — снова). */
+function mountGalleryQueue(root, after) {
+  galleryRoot = root;
+  galleryAfter = after;
   const grid = $(".gallery-edit", root);
+  if (!grid) return;
   const add = $("[data-add]", root);
-  const room = GALLERY_MAX - state.me.photos.length;
-  if (files.length > room) toast(`Можно добавить ещё ${room} — остальные не поместятся`);
-  files = files.slice(0, Math.max(0, room));
-  if (!files.length) return;
-  if (add) add.hidden = true; // пока идёт загрузка, новые не выбираем
+  for (const it of galleryQueue) {
+    const el = uploadCell(it);
+    if (add) add.before(el); else grid.append(el);
+  }
+  if (add) add.hidden = state.me.photos.length + galleryQueue.length >= GALLERY_MAX;
+}
+
+function cancelUpload(it) {
+  const i = galleryQueue.indexOf(it);
+  if (i < 0) return;
+  galleryQueue.splice(i, 1);
+  it.cancelled = true;
+  if (it.uid) api.del(`/api/profile/uploads/${it.uid}`).catch(() => {});
+  if (it.preview) URL.revokeObjectURL(it.preview);
+  it.el?.remove();
+  const add = galleryRoot && $("[data-add]", galleryRoot);
+  if (add) add.hidden = state.me.photos.length + galleryQueue.length >= GALLERY_MAX;
+}
+
+async function sendGalleryItem(it) {
+  const base = "/api/profile/uploads";
+  if (it.uid) {
+    try { it.sent = (await gallerySend("GET", `${base}/${it.uid}`)).received; } catch (ex) {
+      if (ex.status !== 404) throw ex;
+      it.uid = null; // на сервере загрузка устарела — начинаем заново
+    }
+  }
+  if (!it.uid) {
+    const r = await gallerySend("POST", base, { size: it.file.size, filename: it.file.name, content_type: it.file.type });
+    it.uid = r.id;
+    it.sent = 0;
+  }
+  while (it.sent < it.file.size) {
+    if (it.cancelled) return null;
+    const from = it.sent;
+    try {
+      const r = await gallerySend("PUT", `${base}/${it.uid}?offset=${from}`, it.file.slice(from, from + GALLERY_CHUNK), (loaded) => {
+        it.shown = from + loaded;
+        paintUpload(it);
+      });
+      it.sent = it.shown = r.received;
+    } catch (ex) {
+      if (ex.status === 409 && ex.detail?.received != null) { it.sent = it.shown = ex.detail.received; continue; }
+      throw ex;
+    }
+  }
+  it.state = "processing";
+  paintUpload(it);
+  return gallerySend("POST", `${base}/${it.uid}/finish`);
+}
+
+async function pumpGallery() {
+  if (galleryRunning) return;
+  galleryRunning = true;
   let changed = false;
-  for (const file of files) {
+  try {
+    for (;;) {
+      const it = galleryQueue.find((x) => x.state === "waiting");
+      if (!it) break;
+      it.state = "running";
+      paintUpload(it);
+      try {
+        const me = await sendGalleryItem(it);
+        if (!me) continue; // отменили
+        state.me = me;
+        changed = true;
+        cancelUpload(it);
+      } catch (ex) {
+        if (it.cancelled) continue;
+        if (ex.status === 0 || ex.status >= 502) { // нет связи или сервер недоступен — пауза, кусок не потерян
+          it.state = "paused";
+          paintUpload(it);
+          continue;
+        }
+        cancelUpload(it);
+        toast(typeof ex.message === "string" ? ex.message : "Не получилось загрузить файл", { error: true });
+      }
+    }
+  } finally {
+    galleryRunning = false;
+  }
+  if (changed && galleryRoot?.isConnected) galleryAfter?.();
+}
+
+// связь вернулась — паузы, поставленные из-за обрыва, продолжают сами
+addEventListener("online", () => {
+  galleryQueue.filter((x) => x.state === "paused").forEach((x) => { x.state = "waiting"; paintUpload(x); });
+  pumpGallery();
+});
+
+/** Выбранные файлы → проверка → очередь загрузки в «Ещё фото». */
+async function uploadGallery(root, files, onDone) {
+  const room = GALLERY_MAX - state.me.photos.length - galleryQueue.length;
+  if (files.length > room) toast(room > 0 ? `Можно добавить ещё ${room} — остальные не поместятся` : "Уже 6 — больше не поместится");
+  for (const file of files.slice(0, Math.max(0, room))) {
     const check = await checkGalleryFile(file);
     if (check.error) { toast(check.error, { error: true }); continue; }
     if (check.note) toast(check.note);
     const clip = isVideoFile(file) || isGifFile(file);
-    const cell = h(`<div class="ph-cell uploading">${clip ? "" : `<img src="${URL.createObjectURL(file)}" alt="">`}
-      <div class="up-veil"><svg class="up-ring" viewBox="0 0 36 36"><circle cx="18" cy="18" r="15.5"/><circle class="bar" cx="18" cy="18" r="15.5" pathLength="100"/></svg>
-      <b class="up-pct">0%</b><small class="up-text">${clip ? "Загружаем видео" : "Загружаем фото"}</small></div></div>`);
-    if (add) add.before(cell); else grid.append(cell);
-    const bar = $(".bar", cell), pct = $(".up-pct", cell), text = $(".up-text", cell);
-    const fd = new FormData();
-    fd.append("file", file);
-    try {
-      state.me = await api.upload("/api/profile/photos", fd, (p) => {
-        const n = Math.min(99, Math.round(p * 100));
-        bar.style.strokeDasharray = `${n} 100`;
-        pct.textContent = `${n}%`;
-        if (p >= 1) { cell.classList.add("processing"); pct.textContent = ""; text.textContent = clip ? "Обрабатываем видео…" : "Сохраняем…"; }
-      });
-      changed = true;
-    } catch (ex) {
-      cell.remove();
-      toast(ex.status === 0 ? "Нет связи — файл не загрузился. Попробуйте ещё раз" : ex.message, { error: true });
-    }
+    const it = { file, clip, preview: clip ? "" : URL.createObjectURL(file), state: "waiting", sent: 0, shown: 0, uid: null };
+    galleryQueue.push(it);
+    galleryRoot = root;
+    galleryAfter = onDone;
+    const grid = $(".gallery-edit", root), add = $("[data-add]", root);
+    const el = uploadCell(it);
+    if (add) add.before(el); else grid.append(el);
+    if (add) add.hidden = state.me.photos.length + galleryQueue.length >= GALLERY_MAX;
   }
-  if (add) add.hidden = false;
-  if (changed) onDone();
+  pumpGallery();
 }
 
 /** iPhone учитывает «без звука» только как свойство, а не атрибут из разметки — без этого клип не стартует сам. */
@@ -2460,7 +2611,7 @@ function renderSettings() {
     <div class="section">
       <h3>Ещё фото</h3>
       <p class="hint" style="margin:-4px 0 12px">До 6 фото, GIF или коротких видео (до 15 секунд): хобби, поездки, друзья. Их видно в подробной анкете.</p>
-      <div class="gallery-edit">${me.photos.map((p) => `<div class="ph-cell">${galleryThumb(p.url)}<button class="del" data-del="${p.id}" aria-label="Удалить фото">${icons.x}</button></div>`).join("")}${
+      <div class="gallery-edit">${me.photos.map((p) => `<div class="ph-cell" data-view="${esc(p.url)}" role="button" tabindex="0">${galleryThumb(p.url)}<button class="del" data-del="${p.id}" aria-label="Удалить фото">${icons.x}</button></div>`).join("")}${
         me.photos.length < 6 ? `<button class="ph-cell add" data-add aria-label="Добавить фото">${icons.plus}</button>` : ""}</div>
       <input type="file" accept="image/*,video/*" multiple hidden id="gallery-input">
     </div>
@@ -2654,6 +2805,8 @@ function renderSettings() {
   };
 
   startClips(root);
+  bindGalleryView(root);
+  mountGalleryQueue(root, renderSettings);
   const galleryInput = $("#gallery-input", root);
   $("[data-add]", root)?.addEventListener("click", () => galleryInput.click());
   galleryInput.onchange = () => {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import shutil
 from datetime import date
@@ -229,8 +230,7 @@ def upload_photo(file: UploadFile = File(...), user: User = Depends(current_user
 def add_photo(file: UploadFile = File(...), user: User = Depends(current_user), db: Session = Depends(get_db)):
     if len(user.photos) >= MAX_GALLERY:
         raise HTTPException(400, f"Можно добавить не больше {MAX_GALLERY} фото")
-    ctype, fname = (file.content_type or "").lower(), (file.filename or "").lower()
-    if ctype.startswith("video/") or ctype == "image/gif" or fname.endswith((".gif", ".mp4", ".mov", ".webm", ".m4v")):
+    if storage.is_clip(file.content_type, file.filename):
         rel = storage.save_gallery_clip(file, storage.CLIP_MAX_MB)  # GIF или короткое видео
     else:
         rel = storage.save_image(storage.read_limited(file, settings.max_image_mb), "gallery")
@@ -238,6 +238,112 @@ def add_photo(file: UploadFile = File(...), user: User = Depends(current_user), 
     db.commit()
     db.refresh(user)
     return own_profile(user)
+
+
+# ---------- «Ещё фото» по частям: при обрыве связи загрузка встаёт на паузу и продолжается с того же места ----------
+
+class GalleryUploadIn(BaseModel):
+    size: int = Field(gt=0)
+    filename: str = Field("", max_length=200)
+    content_type: str = Field("", max_length=100)
+
+
+def _gallery_upload(uid: str, user: User):
+    from .chat import _uploads_dir
+
+    if not uid.isalnum() or len(uid) != 32:
+        raise HTTPException(404, "Загрузка не найдена")
+    try:
+        meta = json.loads((_uploads_dir() / f"{uid}.json").read_text())
+    except (OSError, ValueError):
+        raise HTTPException(404, "Загрузка не найдена или устарела, отправьте файл заново") from None
+    if meta.get("user_id") != user.id or meta.get("scope") != "gallery":
+        raise HTTPException(404, "Загрузка не найдена")
+    return meta, _uploads_dir() / f"{uid}.part"
+
+
+@router.post("/uploads")
+def gallery_upload_start(data: GalleryUploadIn, user: User = Depends(current_user)):
+    import secrets
+
+    from .chat import _cleanup_uploads, _uploads_dir
+
+    if len(user.photos) >= MAX_GALLERY:
+        raise HTTPException(400, f"Можно добавить не больше {MAX_GALLERY} фото")
+    limit = storage.CLIP_MAX_MB if storage.is_clip(data.content_type, data.filename) else settings.max_image_mb
+    if data.size > limit * 1024 * 1024:
+        raise HTTPException(413, f"Файл больше {limit} МБ")
+    _cleanup_uploads()
+    uid = secrets.token_hex(16)
+    meta = {"user_id": user.id, "scope": "gallery", "size": data.size, "filename": data.filename, "content_type": data.content_type}
+    (_uploads_dir() / f"{uid}.json").write_text(json.dumps(meta))
+    (_uploads_dir() / f"{uid}.part").touch()
+    return {"id": uid, "received": 0, "size": data.size}
+
+
+@router.get("/uploads/{uid}")
+def gallery_upload_status(uid: str, user: User = Depends(current_user)):
+    from .chat import _received
+
+    meta, part = _gallery_upload(uid, user)
+    return {"id": uid, "received": _received(part), "size": meta["size"]}
+
+
+@router.put("/uploads/{uid}")
+async def gallery_upload_chunk(uid: str, offset: int, request: Request, user: User = Depends(current_user)):
+    from ..ratelimit import hit
+    from .chat import CHUNK_MAX, _received
+
+    meta, part = _gallery_upload(uid, user)
+    hit(f"chunk:{user.id}", 3000, 600)
+    received = _received(part)
+    if offset != received:  # кусок уже дошёл (повтор после обрыва) — клиент продолжит с received
+        raise HTTPException(409, {"message": "Смещение не совпадает", "received": received})
+    body = bytearray()
+    async for piece in request.stream():
+        body += piece
+        if len(body) > CHUNK_MAX:
+            raise HTTPException(413, "Слишком большой кусок")
+    if received + len(body) > meta["size"]:
+        raise HTTPException(413, "Файл больше заявленного")
+    with part.open("ab") as f:
+        f.write(body)
+    return {"received": received + len(body)}
+
+
+@router.post("/uploads/{uid}/finish")
+def gallery_upload_finish(uid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .chat import _received, _uploads_dir
+
+    meta, part = _gallery_upload(uid, user)
+    if _received(part) != meta["size"]:
+        raise HTTPException(409, {"message": "Файл загружен не полностью", "received": _received(part)})
+    if len(user.photos) >= MAX_GALLERY:
+        raise HTTPException(400, f"Можно добавить не больше {MAX_GALLERY} фото")
+    try:
+        if storage.is_clip(meta["content_type"], meta["filename"]):
+            src, _ = storage._target("gallery", ".src")
+            part.replace(src)
+            rel = storage.clip_from_file(src)
+        else:
+            rel = storage.save_image(part.read_bytes(), "gallery")
+    finally:
+        part.unlink(missing_ok=True)
+        (_uploads_dir() / f"{uid}.json").unlink(missing_ok=True)
+    user.photos.append(UserPhoto(path=rel))
+    db.commit()
+    db.refresh(user)
+    return own_profile(user)
+
+
+@router.delete("/uploads/{uid}")
+def gallery_upload_cancel(uid: str, user: User = Depends(current_user)):
+    from .chat import _uploads_dir
+
+    _gallery_upload(uid, user)
+    (_uploads_dir() / f"{uid}.part").unlink(missing_ok=True)
+    (_uploads_dir() / f"{uid}.json").unlink(missing_ok=True)
+    return {"status": "ok"}
 
 
 @router.delete("/photos/{photo_id}")

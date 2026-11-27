@@ -1062,3 +1062,17 @@ html.in-tg .tg-drop { top: 32px; }
 .dual-range input[type=range]::-moz-range-thumb { pointer-events: auto; width: 28px; height: 28px; border-radius: 50%; background: #fff; border: 0;
   box-shadow: 0 2px 8px rgba(0,0,0,.45); cursor: grab; }
 .dr-scale { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+/* пауза загрузки: нажмите — продолжится */
+.gallery-edit .uploading { cursor: default; }
+.gallery-edit .uploading.paused { cursor: pointer; }
+.gallery-edit .uploading.paused .up-ring .bar { stroke: #c9b9ad; }
+.up-play { grid-area: 1 / 1; font-size: 18px; color: #fff; }
+.gallery-edit .uploading .up-text { white-space: pre-line; }
+.gallery-edit .uploading .del { z-index: 2; }
+
+/* просмотр фото/видео из «Ещё фото» на весь экран */
+.gallery-edit .ph-cell[data-view] { cursor: pointer; }
+.media-viewer { background: rgba(0, 0, 0, .92); display: grid; place-items: center; padding: 16px; z-index: 80; }
+.media-viewer video, .media-viewer img { max-width: 100%; max-height: calc(100dvh - 96px); border-radius: 18px; object-fit: contain; background: #000; }
+.media-viewer .close { position: absolute; top: calc(12px + env(safe-area-inset-top)); right: 12px; background: rgba(255, 255, 255, .12); color: #fff; }

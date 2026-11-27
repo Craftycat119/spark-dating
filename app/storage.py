@@ -272,7 +272,7 @@ def _fps(info: dict) -> float:
     return 0.0
 
 
-def _h264_args(max_side: int, crf: int, preset: str, fps: float = 0.0, audio: bool = True) -> list[str]:
+def _h264_args(max_side: int, crf: int, preset: str, fps: float = 0.0, audio: bool = True, maxrate: str | None = None) -> list[str]:
     """Параметры ffmpeg для совместимого H.264. Ширина и высота — чётные (иначе x264 падает), без увеличения."""
     vf = f"scale=w='trunc(min({max_side},iw)/2)*2':h='trunc(min({max_side},ih)/2)*2':force_original_aspect_ratio=decrease:out_range=tv"
     vf += ",scale=trunc(iw/2)*2:trunc(ih/2)*2"  # после уменьшения стороны снова чётные
@@ -282,6 +282,8 @@ def _h264_args(max_side: int, crf: int, preset: str, fps: float = 0.0, audio: bo
     args = ["-map", "0:v:0", "-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-profile:v", "main",
             "-level", "4.0" if max_side > 1280 else "3.1", "-pix_fmt", "yuv420p", "-vf", vf,
             "-color_range", "tv", "-movflags", "+faststart", "-map_metadata", "-1"]
+    if maxrate:  # потолок битрейта: ролик в анкете начинает играть быстро даже по мобильной сети
+        args += ["-maxrate", maxrate, "-bufsize", f"{int(maxrate.rstrip('k')) * 2}k"]
     if audio:
         args = ["-map", "0:a:0?", *args, "-c:a", "aac", "-b:a", "128k", "-ac", "2", "-ar", "44100"]
     else:
@@ -353,18 +355,18 @@ CLIP_SOURCE_MAX_SECONDS = 60  # длиннее минуты не принима�
 CLIP_MAX_MB = 100
 
 
+def is_clip(content_type: str | None, filename: str | None) -> bool:
+    """GIF или видео (в анкету идут роликом), а не обычное фото."""
+    ctype, name = (content_type or "").lower(), (filename or "").lower()
+    return ctype.startswith("video/") or ctype == "image/gif" or name.endswith((".gif", ".mp4", ".mov", ".webm", ".m4v", ".3gp"))
+
+
 def save_gallery_clip(upload: UploadFile, max_mb: int) -> str:
     """GIF или короткое видео для анкеты → MP4 (H.264, без звука, до 720 px, до 15 с), играет по кругу.
     Перекодирование убирает метаданные (в том числе координаты съёмки) и делает ролик лёгким."""
-    import shutil as _shutil
-    import subprocess as _sp
-
-    ffmpeg = _shutil.which("ffmpeg")
-    if not ffmpeg:
+    if not shutil.which("ffmpeg"):
         raise HTTPException(415, "Видео и GIF сейчас не принимаются, добавьте фото")
-    name = (upload.filename or "").lower()
-    is_gif = (upload.content_type or "").startswith("image/gif") or name.endswith(".gif")
-    src_path, _ = _target("gallery", ".gif" if is_gif else ".src")
+    src_path, _ = _target("gallery", ".src")
     limit, size = max_mb * 1024 * 1024, 0
     try:
         with src_path.open("wb") as out:
@@ -373,8 +375,23 @@ def save_gallery_clip(upload: UploadFile, max_mb: int) -> str:
                 if size > limit:
                     raise HTTPException(413, f"Файл больше {max_mb} МБ")
                 out.write(chunk)
-        if not size:
-            raise HTTPException(400, "Пустой файл")
+    except BaseException:
+        src_path.unlink(missing_ok=True)
+        raise
+    if not size:
+        src_path.unlink(missing_ok=True)
+        raise HTTPException(400, "Пустой файл")
+    return clip_from_file(src_path)
+
+
+def clip_from_file(src_path: Path) -> str:
+    """Готовый файл на диске (загружен целиком или собран из частей) → ролик для анкеты. Исходник удаляется."""
+    import subprocess as _sp
+
+    ffmpeg = shutil.which("ffmpeg")
+    try:
+        if not ffmpeg:
+            raise HTTPException(415, "Видео и GIF сейчас не принимаются, добавьте фото")
         info = _probe(src_path)
         duration = float((info.get("format") or {}).get("duration") or 0)
         if info and not _stream(info, "video"):
@@ -384,7 +401,7 @@ def save_gallery_clip(upload: UploadFile, max_mb: int) -> str:
                                      f"(в анкету попадут первые {CLIP_SECONDS} секунд) и выберите снова")
         dst, rel = _target("gallery", ".mp4")
         cmd = [ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(src_path), "-t", str(CLIP_SECONDS),
-               *_h264_args(720, crf=22, preset="medium", fps=_fps(_probe(src_path)), audio=False), str(dst)]
+               *_h264_args(720, crf=23, preset="medium", fps=_fps(info), audio=False, maxrate="1500k"), str(dst)]
         try:
             _sp.run(cmd, check=True, timeout=180, capture_output=True)
         except (_sp.SubprocessError, OSError) as exc:

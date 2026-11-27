@@ -3,7 +3,7 @@
 // * Недокачанные файлы лежат на телефоне (IndexedDB). При следующем открытии чата они видны на паузе:
 //   нажатие на плитку — продолжить, ещё нажатие — пауза.
 // * Строка «Загрузка 2 из 5 · 40%» над полем ввода, крестик справа отменяет всё.
-import { ApiError, api } from "./api.js";
+import { ApiError, EMBEDDED, api } from "./api.js";
 import { icons } from "./icons.js";
 import { $, h, toast } from "./ui.js";
 
@@ -128,6 +128,7 @@ export function createUploader({ box, status, convId, onSent }) {
       xhr.open(method, url);
       xhr.withCredentials = true;
       xhr.responseType = "json";
+      if (EMBEDDED) xhr.setRequestHeader("X-COFI-Embedded", "1"); // Telegram на компьютере: иначе сервер «не узнаёт» вход
       if (body && !(body instanceof Blob)) xhr.setRequestHeader("Content-Type", "application/json");
       xhr.upload.onprogress = (e) => onProgress?.(e.loaded);
       xhr.onabort = () => reject(new ApiError(-1, "aborted"));

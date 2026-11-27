@@ -597,3 +597,23 @@ def test_gallery_clip_limits_and_poster(tmp_path):
     assert u.get(url.replace(".mp4", ".poster.jpg")).status_code == 200
     bad = u.post("/api/profile/photos", files={"file": ("x.mp4", b"\x00" * 2000, "video/mp4")})
     assert bad.status_code == 415
+
+
+
+def test_gallery_resumable_upload_survives_a_drop():
+    from conftest import jpeg_bytes
+
+    u = make_user("resume@x.io", name="Пауза")
+    data = jpeg_bytes()
+    uid = u.post("/api/profile/uploads", json={"size": len(data), "filename": "a.jpg", "content_type": "image/jpeg"}).json()["id"]
+    half = len(data) // 2
+    assert u.put(f"/api/profile/uploads/{uid}?offset=0", content=data[:half]).json()["received"] == half
+    # «обрыв связи»: клиент спрашивает, сколько дошло, и продолжает с того же места
+    assert u.get(f"/api/profile/uploads/{uid}").json()["received"] == half
+    r = u.put(f"/api/profile/uploads/{uid}?offset=0", content=data[:half])  # повтор старого куска
+    assert r.status_code == 409 and r.json()["detail"]["received"] == half
+    u.put(f"/api/profile/uploads/{uid}?offset={half}", content=data[half:])
+    me = u.post(f"/api/profile/uploads/{uid}/finish").json()
+    assert len(me["photos"]) == 1
+    other = make_user("resume2@x.io", name="Чужой")
+    assert other.get(f"/api/profile/uploads/{uid}").status_code == 404  # чужую загрузку не видно

@@ -16,6 +16,10 @@ const w = (x) => EN[x] ?? CITY_EN[x] ?? x;
 
 export const EN = {
   // ---- добавлено: опрос, ошибки, подсказки ----
+  "Просмотр": "Viewer",
+  "В очереди": "Queued",
+  "Не получилось загрузить файл": "Couldn't upload the file",
+  "Уже 6 — больше не поместится": "Already 6 — no more room",
   "Загружаем видео": "Uploading video",
   "Загружаем фото": "Uploading photo",
   "Обрабатываем видео…": "Processing video…",
@@ -666,6 +670,7 @@ export const EN = {
 };
 
 export const PATTERNS = [
+  [/^Пауза · (\d+)%\nНажмите, чтобы продолжить$/, "Paused · $1%\nTap to resume"],
   [/^(Видео|GIF) весит ([\d.]+) МБ, а можно до (\d+) МБ\. Обрежьте его в галерее телефона или снимите покороче$/, (_, w, a, b) => `${w === "GIF" ? "The GIF" : "The video"} is ${a} MB; the limit is ${b} MB. Trim it in your phone's gallery or record a shorter one`],
   [/^Видео длится (\d+) с — это дольше минуты\. Обрежьте его в галерее телефона до (\d+) секунд и выберите снова$/, "The video is $1 s — longer than a minute. Trim it to $2 seconds in your phone's gallery and choose it again"],
   [/^Видео длится (\d+) с — в анкету попадут первые (\d+) секунд$/, "The video is $1 s — the first $2 seconds will be used"],
