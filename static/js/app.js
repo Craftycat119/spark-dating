@@ -1113,6 +1113,9 @@ function renderSurvey({ editing = false, fromEnd = false } = {}) {
     let q = survey[i];
     if (q.key === "goals" && state.me.age_group === "teen") {
       q = { ...q, options: state.config.teen_goals, hint: "До 18 лет COFI только для дружбы" };
+    } else if (state.me.age_group === "teen") {
+      const adultOnly = new Set(state.config.adult_only_interests || []); // «Вино и дегустации», «Бар с друзьями»…
+      q = { ...q, options: q.options.filter((o) => !adultOnly.has(o)) };
     }
     const set = q.key === "goals" ? answers.goals : answers.interests;
     const last = i === survey.length - 1;

@@ -18,7 +18,7 @@ from ..database import get_db
 from ..deps import client_ip, current_user
 from ..ages import MIN_AGE, TEEN_GOALS, years_between
 from ..legal import TERMS_VERSION
-from ..interests import GENDERS, GOALS, INTERESTS, LOOKING_FOR, MIN_INTERESTS, ORIENTATIONS, ORIENTATIONS_BY_GENDER, TEEN_GENDERS, ZODIAC, clean
+from ..interests import ADULT_ONLY_INTERESTS, GENDERS, GOALS, INTERESTS, LOOKING_FOR, MIN_INTERESTS, ORIENTATIONS, ORIENTATIONS_BY_GENDER, TEEN_GENDERS, ZODIAC, clean
 from ..models import AnimalPost, Conversation, Message, User, UserPhoto, utcnow
 from ..ratelimit import hit
 from ..serializers import own_profile
@@ -161,7 +161,8 @@ def apply_profile(db: Session, user: User, data: ProfileIn, ip: str | None = Non
             raise HTTPException(422, "Укажите, кого ищете")
         user.looking_for = data.looking_for
     if data.interests is not None:
-        interests = clean(data.interests, INTERESTS)
+        allowed = INTERESTS - ADULT_ONLY_INTERESTS if user.age_group == "teen" else INTERESTS
+        interests = clean(data.interests, allowed)
         if len(interests) < MIN_INTERESTS:
             raise HTTPException(422, f"Выберите хотя бы {MIN_INTERESTS} интереса")
         user.interests = interests

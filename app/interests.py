@@ -89,6 +89,9 @@ SURVEY: list[dict] = [
     },
 ]
 
+# Только для взрослых: в ленте «Дружба» (14–17 лет) эти варианты не показываются и не сохраняются
+ADULT_ONLY_INTERESTS = {"Вино и дегустации", "Бар с друзьями", "Вечеринки", "Дети в будущем"}
+
 GOALS = set(SURVEY[0]["options"])
 INTERESTS = {opt for q in SURVEY[1:] for opt in q["options"]}
 MIN_INTERESTS = 3

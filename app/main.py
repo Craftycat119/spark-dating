@@ -18,7 +18,7 @@ from . import assets, captcha, face_verify, telegram_bot
 from .config import BASE_DIR, settings
 from .ages import MIN_AGE, TEEN_GOALS
 from .legal import TERMS_VERSION
-from .interests import GENDERS, LOOKING_FOR, MIN_INTERESTS, ORIENTATIONS, ORIENTATIONS_BY_GENDER, SURVEY, TEEN_GENDERS, ZODIAC
+from .interests import ADULT_ONLY_INTERESTS, GENDERS, LOOKING_FOR, MIN_INTERESTS, ORIENTATIONS, ORIENTATIONS_BY_GENDER, SURVEY, TEEN_GENDERS, ZODIAC
 from .database import get_db, init_db
 from .deps import current_user
 from .models import Conversation, User
@@ -30,6 +30,19 @@ from .storage import resolve
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 log = logging.getLogger("spark")
 STATIC_DIR = BASE_DIR / "static"
+
+
+def _drop_adult_interests_for_teens(db: Session) -> None:
+    from .models import User as _U
+
+    changed = 0
+    for u in db.scalars(select(_U).where(_U.is_bot.is_(False), _U.birth_date.is_not(None))):
+        if u.age_group == "teen" and ADULT_ONLY_INTERESTS & set(u.interests):
+            u.interests = [i for i in u.interests if i not in ADULT_ONLY_INTERESTS]
+            changed += 1
+    if changed:
+        db.commit()
+        log.info("Подросткам убраны интересы «только для взрослых»: %s", changed)
 
 
 @asynccontextmanager
@@ -70,6 +83,10 @@ async def lifespan(_app: FastAPI):
                 db.commit()
         except Exception:  # noqa: BLE001
             log.exception("Не удалось определить города анкет")
+        try:  # интересы «только для взрослых», выбранные подростками до появления ограничения
+            _drop_adult_interests_for_teens(db)
+        except Exception:  # noqa: BLE001
+            log.exception("Не удалось убрать подросткам интересы «только для взрослых»")
         try:  # готовые объявления «Питомцы» из app/seed/pets
             seed_pets(db)
         except Exception:  # noqa: BLE001 — объявления не должны мешать запуску
@@ -130,6 +147,7 @@ def public_config():
         "app_name": settings.app_name,
         "survey": SURVEY,
         "teen_goals": TEEN_GOALS,
+        "adult_only_interests": sorted(ADULT_ONLY_INTERESTS),
         "min_age": MIN_AGE,
         "terms_version": TERMS_VERSION,
         "captcha": captcha.public_config(),

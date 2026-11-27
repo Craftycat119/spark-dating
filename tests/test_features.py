@@ -617,3 +617,16 @@ def test_gallery_resumable_upload_survives_a_drop():
     assert len(me["photos"]) == 1
     other = make_user("resume2@x.io", name="Чужой")
     assert other.get(f"/api/profile/uploads/{uid}").status_code == 404  # чужую загрузку не видно
+
+
+
+def test_teens_cannot_pick_adult_only_interests():
+    from app.interests import ADULT_ONLY_INTERESTS
+
+    teen = make_user("teenint@x.io", name="Подросток", age=15, goals=("Дружба",))
+    r = teen.put("/api/profile", json={"interests": ["Вино и дегустации", "Бар с друзьями", "Футбол", "Кофе", "Шахматы"]})
+    assert r.status_code == 200 and not ADULT_ONLY_INTERESTS & set(r.json()["interests"])
+    assert teen.put("/api/profile", json={"interests": ["Вино и дегустации", "Бар с друзьями", "Футбол"]}).status_code == 422  # остался 1
+    adult = make_user("adultint@x.io", name="Взрослый")
+    assert "Вино и дегустации" in adult.put("/api/profile", json={"interests": ["Вино и дегустации", "Кофе", "Бег"]}).json()["interests"]
+    assert "Вино и дегустации" in teen.get("/api/config").json()["adult_only_interests"]
