@@ -235,3 +235,42 @@ def resolve(rel: str) -> Path | None:
     if root not in path.parents or not path.is_file():
         return None
     return path
+
+
+CLIP_SECONDS = 15  # короткое видео в анкете: не длиннее 15 секунд
+
+
+def save_gallery_clip(upload: UploadFile, max_mb: int) -> str:
+    """GIF или короткое видео для анкеты → MP4 (H.264, без звука, до 720 px, до 15 с), играет по кругу.
+    Перекодирование убирает метаданные (в том числе координаты съёмки) и делает ролик лёгким."""
+    import shutil as _shutil
+    import subprocess as _sp
+
+    ffmpeg = _shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise HTTPException(415, "Видео и GIF сейчас не принимаются, добавьте фото")
+    name = (upload.filename or "").lower()
+    is_gif = (upload.content_type or "").startswith("image/gif") or name.endswith(".gif")
+    src_path, _ = _target("gallery", ".gif" if is_gif else ".src")
+    limit, size = max_mb * 1024 * 1024, 0
+    try:
+        with src_path.open("wb") as out:
+            while chunk := upload.file.read(1024 * 1024):
+                size += len(chunk)
+                if size > limit:
+                    raise HTTPException(413, f"Файл больше {max_mb} МБ")
+                out.write(chunk)
+        if not size:
+            raise HTTPException(400, "Пустой файл")
+        dst, rel = _target("gallery", ".mp4")
+        cmd = [ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(src_path), "-t", str(CLIP_SECONDS), "-an",
+               "-vf", "scale='min(720,iw)':-2:flags=lanczos,fps=30,format=yuv420p", "-c:v", "libx264", "-preset", "veryfast",
+               "-crf", "26", "-profile:v", "main", "-movflags", "+faststart", "-map_metadata", "-1", str(dst)]
+        try:
+            _sp.run(cmd, check=True, timeout=180, capture_output=True)
+        except (_sp.SubprocessError, OSError) as exc:
+            dst.unlink(missing_ok=True)
+            raise HTTPException(415, "Не получилось обработать видео. Попробуйте другой файл") from exc
+        return rel
+    finally:
+        src_path.unlink(missing_ok=True)

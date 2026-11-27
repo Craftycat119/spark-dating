@@ -16,6 +16,24 @@ const w = (x) => EN[x] ?? CITY_EN[x] ?? x;
 
 export const EN = {
   // ---- добавлено: опрос, ошибки, подсказки ----
+  "Добавьте ещё фото": "Add more photos",
+  "Анкеты с несколькими фото замечают чаще. Покажите хобби, поездки, друзей — можно добавить GIF или короткое видео до 15 секунд.": "Profiles with several photos get noticed more. Show your hobbies, trips and friends — you can add a GIF or a short video up to 15 seconds.",
+  "До 6 штук. Их видно в подробной анкете, главное фото остаётся проверенным.": "Up to 6. They show in your full profile; your main photo stays verified.",
+  "Продолжить": "Continue",
+  "Пропустить": "Skip",
+  "Готово, больше не добавлять": "Done, that's enough",
+  "Фото, GIF": "Photo, GIF",
+  "или видео": "or video",
+  "Добавить фото или видео": "Add a photo or video",
+  "До 6 фото, GIF или коротких видео (до 15 секунд): хобби, поездки, друзья. Их видно в подробной анкете.": "Up to 6 photos, GIFs or short videos (up to 15 seconds): hobbies, trips, friends. They show in your full profile.",
+  "Возраст: от": "Age: from",
+  "Возраст от": "Age from",
+  "Возраст до": "Age to",
+  "от": "from",
+  "до": "to",
+  "Возраст «от» должен быть не больше, чем «до»": "“From” age can't be greater than “to” age",
+  "Видео и GIF сейчас не принимаются, добавьте фото": "Videos and GIFs aren't accepted right now, please add a photo",
+  "Не получилось обработать видео. Попробуйте другой файл": "Couldn't process the video. Try another file",
   "и": "and",
   ", ознакомлен(а) с": ", and have read the",
   "интереса": "interests",
@@ -642,6 +660,7 @@ export const EN = {
 };
 
 export const PATTERNS = [
+  [/^Возраст: от (\d+) до (\d+\+?)$/, "Age: from $1 to $2"],
   // добавлено: фразы с числами и именами
   [/^Вам (\d+) (?:год|года|лет)\? Дату рождения потом нельзя будет изменить самостоятельно$/, "Are you $1? You won't be able to change your birth date yourself later"],
   [/^Вход по почте (.+)$/, "Signed in with email $1"],

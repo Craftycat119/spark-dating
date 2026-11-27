@@ -1242,7 +1242,8 @@ function stepScan() {
     const res = await runScanner($("#scan-area", root), { consent: true });
     if (res.ok) {
       toast("Фото подтверждено");
-      return nextStep();
+      await reloadMe();
+      return state.me.photos.length < 6 ? stepGallery() : nextStep();
     }
     err.textContent = res.reason || "Проверка не пройдена";
     err.hidden = false;
@@ -1259,6 +1260,46 @@ function stepScan() {
       nextStep();
     } catch (ex) { toast(ex.message, { error: true }); }
   };
+}
+
+/** После проверки лица: ещё фото, GIF или короткое видео в анкету. Можно пропустить. */
+function stepGallery() {
+  const draw = () => {
+    const me = state.me;
+    const root = screen(`<div class="steps" aria-hidden="true">${STEP_ORDER.map((s) => `<i class="${s !== "location" ? "done" : ""}"></i>`).join("")}</div>
+      <div class="stack">
+        <h1>Добавьте ещё фото</h1>
+        <p class="muted">Анкеты с несколькими фото замечают чаще. Покажите хобби, поездки, друзей — можно добавить GIF или короткое видео до 15 секунд.</p>
+        <div class="gallery-edit">${me.photos.map((p) => `<div class="ph-cell">${galleryMedia(p.url)}<button class="del" data-del="${p.id}" aria-label="Удалить">${icons.x}</button></div>`).join("")}${
+          me.photos.length < 6 ? `<button class="ph-cell add" data-add aria-label="Добавить фото или видео">${icons.plus}<small>Фото, GIF<br>или видео</small></button>` : ""}</div>
+        <input type="file" accept="image/*,video/*" multiple hidden>
+        <p class="hint">До 6 штук. Их видно в подробной анкете, главное фото остаётся проверенным.</p>
+        <button class="btn block" data-next ${me.photos.length ? "" : "hidden"}>Продолжить</button>
+        <button class="link" data-skip style="align-self:center">${me.photos.length ? "Готово, больше не добавлять" : "Пропустить"}</button>
+      </div>`, { nav: false });
+    const input = $("input[type=file]", root);
+    $("[data-add]", root)?.addEventListener("click", () => input.click());
+    input.onchange = async () => {
+      const files = [...input.files].slice(0, 6 - state.me.photos.length);
+      input.value = "";
+      const add = $("[data-add]", root);
+      if (add) add.innerHTML = `<div class="spinner"></div>`;
+      for (const f of files) {
+        const fd = new FormData();
+        fd.append("file", f);
+        try { state.me = await api.post("/api/profile/photos", fd); } catch (ex) { toast(ex.message, { error: true }); break; }
+      }
+      draw();
+    };
+    $$("[data-del]", root).forEach((b) => (b.onclick = async () => {
+      try { state.me = await api.del(`/api/profile/photos/${b.dataset.del}`); draw(); } catch (ex) { toast(ex.message, { error: true }); }
+    }));
+    $("[data-next]", root).onclick = () => nextStep();
+    $("[data-skip]", root).onclick = () => nextStep();
+    startClips(root);
+    window.scrollTo(0, 0);
+  };
+  draw();
 }
 
 /**
@@ -1569,7 +1610,7 @@ async function openProfile(userId, { onDecide = null, preview = false, onCancelL
   const goalsSet = new Set(p.common);
   const el = h(`<section class="profile-view" role="dialog" aria-label="Анкета: ${esc(p.name)}">
     <div class="gallery">
-      <div class="track">${p.photos.map((u, i) => `<img src="${esc(u)}" alt="Фото ${i + 1}" loading="${i ? "lazy" : "eager"}">`).join("")}</div>
+      <div class="track">${p.photos.map((u, i) => galleryMedia(u, `Фото ${i + 1}`, !i)).join("")}</div>
       ${p.photos.length > 1 ? `<div class="dots">${p.photos.map((_, i) => `<i class="${i ? "" : "on"}"></i>`).join("")}</div>` : ""}
     </div>
     <button class="icon-btn close" aria-label="Закрыть">${icons.back}</button>
@@ -1643,6 +1684,7 @@ async function openProfile(userId, { onDecide = null, preview = false, onCancelL
   $(".close", el).onclick = close;
   document.addEventListener("keydown", esc_);
   document.body.append(el);
+  startClips(el);
   $(".close", el).focus();
 }
 
@@ -2260,6 +2302,19 @@ function mediaFailed(el, media, kind, ex) {
   el.querySelector(".bubble, .circle-msg")?.after(h(`<a class="media-fallback" href="${esc(src)}" target="_blank" rel="noopener">Не воспроизводится? Открыть файл</a>`));
 }
 
+const isClip = (url) => /\.(mp4|webm|mov)(\?|#|$)/i.test(url || "");
+/** Фото или клип (GIF/короткое видео уже перекодированы в mp4) для галереи анкеты. */
+function galleryMedia(url, alt = "", eager = false) {
+  return isClip(url)
+    ? `<video src="${esc(url)}" muted loop autoplay playsinline preload="metadata" aria-label="${esc(alt)}"></video>`
+    : `<img src="${esc(url)}" alt="${esc(alt)}" loading="${eager ? "eager" : "lazy"}">`;
+}
+
+/** iPhone учитывает «без звука» только как свойство, а не атрибут из разметки — без этого клип не стартует сам. */
+function startClips(root) {
+  root.querySelectorAll("video[autoplay]").forEach((v) => { v.muted = true; v.playsInline = true; v.play().catch(() => {}); });
+}
+
 function circleEl(m, mine, time) {
   const C = 2 * Math.PI * 48;
   const el = h(`<div class="msg circle ${mine ? "mine" : ""}">
@@ -2297,6 +2352,7 @@ function circleEl(m, mine, time) {
 const RADIUS_STEPS = [1, 2, 3, 5, 10, 15, 20, 30, 50, 75, 100, 150, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000, 7000];
 const radiusIndex = (km) => RADIUS_STEPS.reduce((best, v, i) => (Math.abs(v - km) < Math.abs(RADIUS_STEPS[best] - km) ? i : best), 0);
 const fmtKm = (km) => Number(km).toLocaleString("ru-RU");
+const ageHi = (n) => (Number(n) >= 65 ? "65+" : String(n));
 
 function renderSettings() {
   const me = state.me;
@@ -2320,10 +2376,10 @@ function renderSettings() {
 
     <div class="section">
       <h3>Ещё фото</h3>
-      <p class="hint" style="margin:-4px 0 12px">До 6 фото: хобби, поездки, друзья. Их видно в подробной анкете.</p>
-      <div class="gallery-edit">${me.photos.map((p) => `<div class="ph-cell"><img src="${esc(p.url)}" alt=""><button class="del" data-del="${p.id}" aria-label="Удалить фото">${icons.x}</button></div>`).join("")}${
+      <p class="hint" style="margin:-4px 0 12px">До 6 фото, GIF или коротких видео (до 15 секунд): хобби, поездки, друзья. Их видно в подробной анкете.</p>
+      <div class="gallery-edit">${me.photos.map((p) => `<div class="ph-cell">${galleryMedia(p.url)}<button class="del" data-del="${p.id}" aria-label="Удалить фото">${icons.x}</button></div>`).join("")}${
         me.photos.length < 6 ? `<button class="ph-cell add" data-add aria-label="Добавить фото">${icons.plus}</button>` : ""}</div>
-      <input type="file" accept="image/*" multiple hidden id="gallery-input">
+      <input type="file" accept="image/*,video/*" multiple hidden id="gallery-input">
     </div>
 
     <div class="section">
@@ -2349,6 +2405,9 @@ function renderSettings() {
         <label class="field"><span>Знак</span><select class="input" name="zodiac"><option value="">—</option>${Object.entries(state.config.zodiac || {}).map(([k, l]) =>
           `<option value="${k}" ${k === me.zodiac ? "selected" : ""}>${ZODIAC_SIGNS[k] || ""} ${esc(l)}</option>`).join("")}</select></label>
       </div>
+      ${me.age_group === "adult" ? `<div class="field age-range"><span>Возраст: от <b id="age-lo">${me.age_min}</b> до <b id="age-hi">${ageHi(me.age_max)}</b></span>
+        <label class="range-row"><small>от</small><input type="range" name="agemin" min="18" max="65" step="1" value="${me.age_min}" aria-label="Возраст от"></label>
+        <label class="range-row"><small>до</small><input type="range" name="agemax" min="18" max="65" step="1" value="${me.age_max}" aria-label="Возраст до"></label></div>` : ""}
       <label class="field"><span>Искать в радиусе <b id="dist-val">${fmtKm(me.max_distance_km)}</b> км</span>
         <input type="range" name="dist" min="0" max="${RADIUS_STEPS.length - 1}" step="1" value="${radiusIndex(me.max_distance_km)}"></label>
       <p class="hint" id="my-city">${me.city_name ? `${icons.pin} Ваш город: <b>${esc(cityLabel(me.city_name))}</b> — определён по геопозиции` : "Город определится по геопозиции"}</p>
@@ -2444,12 +2503,24 @@ function renderSettings() {
   }));
   const form = $("#profile-form", root);
   form.dist.oninput = () => ($("#dist-val", root).textContent = fmtKm(RADIUS_STEPS[form.dist.value]));
+  if (form.agemin) {
+    // ползунки не заходят друг за друга: «от» не больше «до»
+    const syncAge = (moved) => {
+      let lo = Number(form.agemin.value), hi = Number(form.agemax.value);
+      if (lo > hi) { if (moved === "lo") hi = lo; else lo = hi; form.agemin.value = lo; form.agemax.value = hi; }
+      $("#age-lo", root).textContent = lo;
+      $("#age-hi", root).textContent = ageHi(hi);
+    };
+    form.agemin.oninput = () => syncAge("lo");
+    form.agemax.oninput = () => syncAge("hi");
+  }
   form.onsubmit = async (e) => {
     e.preventDefault();
     const data = {
       name: form.name.value,
       bio: form.bio.value,
       max_distance_km: RADIUS_STEPS[Number(form.dist.value)],
+      ...(form.agemin ? { age_min: Number(form.agemin.value), age_max: Number(form.agemax.value) } : {}),
       show_city: form.showcity.checked,
       ...pick,
     };
@@ -2490,6 +2561,7 @@ function renderSettings() {
     } catch (ex) { toast(ex.message, { error: true }); }
   };
 
+  startClips(root);
   const galleryInput = $("#gallery-input", root);
   $("[data-add]", root)?.addEventListener("click", () => galleryInput.click());
   galleryInput.onchange = async () => {

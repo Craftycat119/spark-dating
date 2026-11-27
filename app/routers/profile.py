@@ -27,6 +27,7 @@ log = logging.getLogger("spark.profile")
 
 BIO_MAX = 500
 MAX_GALLERY = 6
+AGE_FROM, AGE_TO = 18, 65  # возрастной диапазон в ленте знакомств; 65 = «65 и старше»
 
 
 class ProfileIn(BaseModel):
@@ -47,6 +48,8 @@ class ProfileIn(BaseModel):
     goals: list[str] | None = None
     tg_notifications: bool | None = None
     max_distance_km: int | None = None
+    age_min: int | None = None
+    age_max: int | None = None
     language: str | None = None
     accept_terms: bool | None = None  # отметил «Принимаю Пользовательское соглашение»
     consent_pd: bool | None = None  # отдельное согласие на обработку персональных данных
@@ -172,6 +175,13 @@ def apply_profile(db: Session, user: User, data: ProfileIn, ip: str | None = Non
         user.tg_notifications = data.tg_notifications
     if data.max_distance_km is not None:
         user.max_distance_km = max(1, min(data.max_distance_km, settings.max_distance_km))
+    if data.age_min is not None or data.age_max is not None:
+        lo = data.age_min if data.age_min is not None else user.age_min or AGE_FROM
+        hi = data.age_max if data.age_max is not None else user.age_max or AGE_TO
+        lo, hi = max(AGE_FROM, min(lo, AGE_TO)), max(AGE_FROM, min(hi, AGE_TO))
+        if lo > hi:
+            raise HTTPException(422, "Возраст «от» должен быть не больше, чем «до»")
+        user.age_min, user.age_max = lo, hi
 
     db.commit()
     feed_index.invalidate()  # лента увидит изменения сразу
@@ -219,7 +229,11 @@ def upload_photo(file: UploadFile = File(...), user: User = Depends(current_user
 def add_photo(file: UploadFile = File(...), user: User = Depends(current_user), db: Session = Depends(get_db)):
     if len(user.photos) >= MAX_GALLERY:
         raise HTTPException(400, f"Можно добавить не больше {MAX_GALLERY} фото")
-    rel = storage.save_image(storage.read_limited(file, settings.max_image_mb), "gallery")
+    ctype, fname = (file.content_type or "").lower(), (file.filename or "").lower()
+    if ctype.startswith("video/") or ctype == "image/gif" or fname.endswith((".gif", ".mp4", ".mov", ".webm", ".m4v")):
+        rel = storage.save_gallery_clip(file, 60)  # GIF или короткое видео
+    else:
+        rel = storage.save_image(storage.read_limited(file, settings.max_image_mb), "gallery")
     user.photos.append(UserPhoto(path=rel))
     db.commit()
     db.refresh(user)

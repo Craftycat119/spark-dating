@@ -465,3 +465,56 @@ def test_everyone_compatible_sees_each_other():
     boss = make_user("boss@example.com", name="Андрей")
     feed = boss.get("/api/admin/stats").json()["feed"]
     assert feed["visible"]["adult"] >= 4 and feed["visible"]["teen"] == 2
+
+
+
+def test_age_range_filters_dating_feed():
+    me = make_user("ar0@x.io", name="Я", gender="male", looking_for="female", age=30)
+    for i, age in enumerate((19, 25, 35, 50, 70)):
+        make_user(f"ar{i + 1}@x.io", name=f"Ей{age}", gender="female", looking_for="male", age=age)
+    names = lambda: {c["name"] for c in me.get("/api/feed?limit=30").json()["cards"]}
+    assert names() == {"Ей19", "Ей25", "Ей35", "Ей50", "Ей70"}  # по умолчанию 18–65+: все
+    assert me.put("/api/profile", json={"age_min": 24, "age_max": 40}).json()["age_min"] == 24
+    assert names() == {"Ей25", "Ей35"}
+    me.put("/api/profile", json={"age_min": 45, "age_max": 65})  # 65 = «65 и старше»
+    assert names() == {"Ей50", "Ей70"}
+    assert me.put("/api/profile", json={"age_min": 40, "age_max": 30}).status_code == 422
+    r = me.put("/api/profile", json={"age_min": 5, "age_max": 99}).json()
+    assert (r["age_min"], r["age_max"]) == (18, 65)  # за пределами — к границам
+
+
+def test_teen_feed_ignores_age_range():
+    t1 = make_user("tr1@x.io", name="Подр1", age=15, goals=("Дружба",), looking_for="any")
+    make_user("tr2@x.io", name="Подр2", age=16, goals=("Дружба",), looking_for="any")
+    assert {c["name"] for c in t1.get("/api/feed").json()["cards"]} == {"Подр2"}
+
+
+def test_gallery_accepts_gif_and_short_video(tmp_path):
+    import shutil
+    import subprocess
+
+    import pytest
+    from PIL import Image
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("нет ffmpeg")
+    u = make_user("gal@x.io", name="Галерея")
+    frames = [Image.new("RGB", (120, 90), c) for c in ((200, 0, 0), (0, 200, 0), (0, 0, 200))]
+    gif = tmp_path / "a.gif"
+    frames[0].save(gif, save_all=True, append_images=frames[1:], duration=200, loop=0)
+    r = u.post("/api/profile/photos", files={"file": ("a.gif", gif.read_bytes(), "image/gif")})
+    assert r.status_code == 200 and r.json()["photos"][-1]["url"].endswith(".mp4")
+    vid = tmp_path / "v.mp4"
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=25", "-t", "20",
+                    "-pix_fmt", "yuv420p", str(vid)], check=True)
+    r = u.post("/api/profile/photos", files={"file": ("v.mp4", vid.read_bytes(), "video/mp4")})
+    assert r.status_code == 200
+    from app.config import settings
+
+    url = r.json()["photos"][-1]["url"]
+    path = settings.media_dir / url.split("/media/", 1)[1]
+    dur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+                               capture_output=True, text=True).stdout)
+    assert dur <= 15.5  # обрезано до 15 секунд
+    bad = u.post("/api/profile/photos", files={"file": ("x.mp4", b"not a video", "video/mp4")})
+    assert bad.status_code == 415

@@ -86,6 +86,9 @@ class User(Base):
     lon: Mapped[float | None] = mapped_column(Float)
     location_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
     max_distance_km: Mapped[int] = mapped_column(Integer, default=7000)  # по умолчанию максимум; меняется только в профиле
+    # возраст тех, кого показывать в ленте знакомств (18+); 65 — это «65 и старше»
+    age_min: Mapped[int] = mapped_column(Integer, default=18)
+    age_max: Mapped[int] = mapped_column(Integer, default=65)
 
     # Данные о регистрации (для админки)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

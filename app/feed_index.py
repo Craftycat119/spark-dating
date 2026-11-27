@@ -31,6 +31,7 @@ class Candidate:
     goals: frozenset
     is_bot: bool
     is_demo: bool
+    age: int | None = None
 
 
 _items: list[Candidate] = []
@@ -63,8 +64,9 @@ def candidates(db) -> list[Candidate]:
             interests, goals = json.loads(interests_json or "[]"), json.loads(goals_json or "[]")
             if len(interests) < MIN_INTERESTS or not goals:
                 continue  # опрос не пройден — в ленте не показываем
-            items.append(Candidate(uid, group_for(years_between(birth)), gender, looking, snap(lat), snap(lon),
-                                   interests, frozenset(goals), bool(is_bot), bool(is_demo)))
+            age = years_between(birth)
+            items.append(Candidate(uid, group_for(age), gender, looking, snap(lat), snap(lon),
+                                   interests, frozenset(goals), bool(is_bot), bool(is_demo), age))
         _items, _built = items, time.monotonic()
         return _items
 

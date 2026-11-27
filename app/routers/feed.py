@@ -96,6 +96,9 @@ def get_feed(limit: int = 10, user: User = Depends(current_user), db: Session = 
     # всё о себе считаем один раз, а не для каждой из тысяч анкет
     me_id, me_demo, me_group, me_gender, me_looking = user.id, bool(user.is_demo), user.age_group, user.gender, user.looking_for
     me_slat, me_slon = snap(user.lat), snap(user.lon)
+    # возраст «от и до» — только во взрослой ленте; 65 = «65 и старше»
+    age_lo = (user.age_min or 18) if me_group == "adult" else 0
+    age_hi = (user.age_max or 65) if me_group == "adult" and (user.age_max or 65) < 65 else 200
     max_dlat = radius / 111.0 + GRID
     scored = []
     for c in feed_index.candidates(db):
@@ -106,6 +109,8 @@ def get_feed(limit: int = 10, user: User = Depends(current_user), db: Session = 
         if abs(c.slat - me_slat) > max_dlat:
             continue  # заведомо дальше радиуса — без точного расчёта
         if not compatible(me_gender, me_looking, c.gender, c.looking):
+            continue
+        if c.age is not None and not (age_lo <= c.age <= age_hi):
             continue
         d = max(1, round(haversine_km(me_slat, me_slon, c.slat, c.slon)))
         if d > radius:

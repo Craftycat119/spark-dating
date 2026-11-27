@@ -63,6 +63,8 @@ def own_profile(user: User) -> dict:
         "photo_verified": user.photo_verified,
         "has_location": user.lat is not None,
         "max_distance_km": user.max_distance_km,
+        "age_min": user.age_min or 18,
+        "age_max": user.age_max or 65,
         "city_name": user.city,
         "lat": user.lat,
         "lon": user.lon,
