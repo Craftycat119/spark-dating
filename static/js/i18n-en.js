@@ -16,6 +16,10 @@ const w = (x) => EN[x] ?? CITY_EN[x] ?? x;
 
 export const EN = {
   // ---- добавлено: опрос, ошибки, подсказки ----
+  "Удалить это видео из анкеты? Вернуть его будет нельзя": "Delete this video from your profile? You can't undo this",
+  "Удалить это фото из анкеты? Вернуть его будет нельзя": "Delete this photo from your profile? You can't undo this",
+  "Отменить загрузку видео?": "Cancel the video upload?",
+  "Отменить загрузку фото?": "Cancel the photo upload?",
   "Просмотр": "Viewer",
   "В очереди": "Queued",
   "Не получилось загрузить файл": "Couldn't upload the file",

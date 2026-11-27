@@ -1283,7 +1283,9 @@ function stepGallery() {
       input.value = "";
       uploadGallery(root, files, draw);
     };
-    $$("[data-del]", root).forEach((b) => (b.onclick = async () => {
+    $$("[data-del]", root).forEach((b) => (b.onclick = async (e) => {
+      e.stopPropagation();
+      if (!(await confirmGalleryDelete(b))) return;
       try { state.me = await api.del(`/api/profile/photos/${b.dataset.del}`); draw(); } catch (ex) { toast(ex.message, { error: true }); }
     }));
     $("[data-next]", root).onclick = () => nextStep();
@@ -2318,6 +2320,12 @@ function openMediaViewer(url) {
   document.body.append(el);
   startClips(el);
 }
+/** Крестик в «Ещё фото» — только после подтверждения: случайное нажатие не должно удалять видео. */
+function confirmGalleryDelete(btn) {
+  const url = btn.closest(".ph-cell")?.dataset.view || "";
+  return confirmDialog(isClip(url) ? "Удалить это видео из анкеты? Вернуть его будет нельзя" : "Удалить это фото из анкеты? Вернуть его будет нельзя", "Удалить");
+}
+
 /** Ячейки «Ещё фото»: нажатие (кроме крестика) открывает фото или видео на весь экран. */
 function bindGalleryView(root) {
   $$(".gallery-edit .ph-cell[data-view]", root).forEach((c) => (c.onclick = (e) => {
@@ -2418,7 +2426,9 @@ function uploadCell(it) {
     <b class="up-pct"></b><span class="up-play" hidden>${icons.play}</span><small class="up-text"></small></div>
     <button class="del" aria-label="Отменить загрузку">${icons.x}</button></div>`);
   el.onclick = (e) => {
-    if (e.target.closest(".del")) return cancelUpload(it);
+    if (e.target.closest(".del")) {
+      return confirmDialog(it.clip ? "Отменить загрузку видео?" : "Отменить загрузку фото?", "Отменить загрузку").then((ok) => ok && cancelUpload(it));
+    }
     if (it.state === "paused") { it.state = "waiting"; paintUpload(it); pumpGallery(); }
   };
   it.el = el;
@@ -2814,7 +2824,9 @@ function renderSettings() {
     galleryInput.value = "";
     uploadGallery(root, files, renderSettings);
   };
-  $$("[data-del]", root).forEach((b) => (b.onclick = async () => {
+  $$("[data-del]", root).forEach((b) => (b.onclick = async (e) => {
+    e.stopPropagation();
+    if (!(await confirmGalleryDelete(b))) return;
     try { state.me = await api.del(`/api/profile/photos/${b.dataset.del}`); renderSettings(); } catch (ex) { toast(ex.message, { error: true }); }
   }));
 
