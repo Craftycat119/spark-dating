@@ -96,7 +96,8 @@ export function openAttachSheet({ onPick, pickGallery, pickVideo }) {
     const k = Math.min(FULL, Math.max(0.15, (startH + startY - e.clientY) / vh()));
     panel.style.height = `${Math.round(k * vh())}px`;
   });
-  const release = () => {
+  // не «release»: так называется выключение камеры из media.js, одноимённая функция здесь его перекрывала
+  const endDrag = () => {
     if (!dragging) return;
     dragging = false;
     const k = panel.getBoundingClientRect().height / vh();
@@ -104,7 +105,7 @@ export function openAttachSheet({ onPick, pickGallery, pickVideo }) {
     height = k > (HALF + FULL) / 2 - 0.05 ? FULL : HALF;
     setH(height);
   };
-  grab.addEventListener("pointerup", release);
-  grab.addEventListener("pointercancel", release);
+  grab.addEventListener("pointerup", endDrag);
+  grab.addEventListener("pointercancel", endDrag);
   return close;
 }

@@ -380,7 +380,6 @@ def test_cancel_mutual_like_even_with_messages():
 
 
 def test_support_statuses_flow():
-    from conftest import new_client
 
     boss = make_user("boss@example.com", name="Андрей")
     u = make_user("sup@x.io", name="Ксения")
@@ -518,3 +517,52 @@ def test_gallery_accepts_gif_and_short_video(tmp_path):
     assert dur <= 15.5  # обрезано до 15 секунд
     bad = u.post("/api/profile/photos", files={"file": ("x.mp4", b"not a video", "video/mp4")})
     assert bad.status_code == 415
+
+
+
+def test_videos_become_compatible_everywhere(tmp_path):
+    import shutil
+    import subprocess
+
+    import pytest
+
+    from app import storage
+    from app.config import settings
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("нет ffmpeg")
+    enc = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True).stdout
+    folder = settings.media_dir / "chat" / "9"
+    folder.mkdir(parents=True, exist_ok=True)
+
+    def make(name, *args):
+        p = folder / name
+        subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=60", "-f", "lavfi",
+                        "-i", "sine=frequency=440", "-t", "2", *args, str(p)], check=True)
+        return f"chat/9/{name}"
+
+    def info(rel):
+        i = storage._probe(settings.media_dir / rel)
+        v = storage._stream(i, "video")
+        return v["codec_name"], v["pix_fmt"], round(storage._fps(i)), storage._stream(i, "audio").get("codec_name")
+
+    # 60 кадров/с → 30, H.264 yuv420p, AAC
+    rel = storage.to_playable(make("a.mp4", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac"), "video")
+    assert info(rel) == ("h264", "yuv420p", 30, "aac")
+    # HEVC 10 бит (как HDR с iPhone) → H.264 8 бит
+    if "libx265" in enc:
+        rel = storage.to_playable(make("b.mov", "-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-c:a", "aac", "-tag:v", "hvc1"), "video")
+        assert rel.endswith(".mp4") and info(rel)[:2] == ("h264", "yuv420p")
+    # нормальное лёгкое видео не трогаем (только индекс в начало)
+    ok = make("c.mp4", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", "30", "-c:a", "aac", "-b:v", "500k")
+    before = (settings.media_dir / ok).stat().st_size
+    assert storage.to_playable(ok, "video") == ok and abs((settings.media_dir / ok).stat().st_size - before) < before * 0.05
+    # GIF с нечётной шириной не ломает перекодирование
+    from PIL import Image
+
+    frames = [Image.new("RGB", (121, 77), c) for c in ((200, 0, 0), (0, 200, 0))]
+    gif = tmp_path / "odd.gif"
+    frames[0].save(gif, save_all=True, append_images=frames[1:], duration=200, loop=0)
+    u = make_user("oddgif@x.io", name="Гиф")
+    r = u.post("/api/profile/photos", files={"file": ("odd.gif", gif.read_bytes(), "image/gif")})
+    assert r.status_code == 200, r.text

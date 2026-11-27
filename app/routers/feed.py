@@ -4,7 +4,7 @@ import json
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import delete, func, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -201,7 +201,7 @@ def restart(user: User = Depends(current_user), db: Session = Depends(get_db)):
     return {"restored": n}
 
 
-def _notify_match(db: Session, conv: Conversation, background: BackgroundTasks) -> None:
+def _notify_match(db: Session, conv: Conversation) -> None:
     for me, other in ((conv.user_a, conv.user_b), (conv.user_b, conv.user_a)):
         _, common = match_score(me.interests, me.goals, other.interests, other.goals)
         payload = {
@@ -263,7 +263,7 @@ def swipe(data: SwipeIn, background: BackgroundTasks, user: User = Depends(curre
         is_new = False
     db.refresh(conv)
     if is_new:
-        _notify_match(db, conv, background)
+        _notify_match(db, conv)
         if target.is_bot:
             background.add_task(demo.bot_reply, conv.id, target.id, True)
     score, common = match_score(user.interests, user.goals, target.interests, target.goals)

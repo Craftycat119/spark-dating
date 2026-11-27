@@ -198,7 +198,6 @@ function setupTgTab() {
 }
 
 function openTgMenu() {
-  const wa = tgApp();
   if ($(".tg-menu")) return;
   // меню выпадает из правого верхнего угла — прямо под кнопкой ⋯ Telegram, откуда его вызвали
   const el = h(`<div class="tg-menu" role="dialog" aria-label="Меню COFI">

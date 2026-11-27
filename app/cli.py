@@ -162,7 +162,7 @@ def main() -> None:
     sub.add_parser("download-models")
     sub.add_parser("seed-pets", help="добавить готовые объявления о питомцах из app/seed/pets")
     sub.add_parser("outlook-login", help="подключить личную почту Outlook.com для отправки кодов")
-    sub.add_parser("convert-media", help="перекодировать старые кружки, видео и голосовые в mp4/m4a для iPhone")
+    sub.add_parser("convert-media", help="перекодировать старые кружки, видео и голосовые, чтобы играли на iPhone и старых Android")
     t = sub.add_parser("test-email", help="отправить пробное письмо")
     t.add_argument("to")
     args = parser.parse_args()
@@ -191,14 +191,17 @@ def main() -> None:
                 if m.kind == "circle":
                     if m.media_path.endswith(".mp4") and storage.circle_ok(m.media_path):
                         continue  # уже в общем виде (H.264, 480×480, yuv420p)
-                elif m.media_path.endswith(".m4a" if m.kind == "voice" else ".mp4"):
-                    continue
-                new = storage.to_playable(m.media_path, m.kind)
-                if new != m.media_path:
+                elif m.kind == "voice":
+                    if m.media_path.endswith(".m4a"):
+                        continue
+                elif storage.video_ok(m.media_path):
+                    continue  # H.264 8 бит, до 1080p и 30 к/с — играет и на старых Android
+                old = m.media_path
+                new = storage.to_playable(old, m.kind)
+                if new != old:
                     m.media_path = new
                     db.commit()
-                if new != m.media_path or m.kind == "circle":
-                    done += 1
+                done += 1
             print(f"Перекодировано файлов: {done}")
             posters = 0
             for m in db.scalars(select(Message).where(Message.kind == "video", Message.media_path.is_not(None))):

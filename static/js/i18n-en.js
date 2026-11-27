@@ -20,7 +20,6 @@ export const EN = {
   "Анкеты с несколькими фото замечают чаще. Покажите хобби, поездки, друзей — можно добавить GIF или короткое видео до 15 секунд.": "Profiles with several photos get noticed more. Show your hobbies, trips and friends — you can add a GIF or a short video up to 15 seconds.",
   "До 6 штук. Их видно в подробной анкете, главное фото остаётся проверенным.": "Up to 6. They show in your full profile; your main photo stays verified.",
   "Продолжить": "Continue",
-  "Пропустить": "Skip",
   "Готово, больше не добавлять": "Done, that's enough",
   "Фото, GIF": "Photo, GIF",
   "или видео": "or video",

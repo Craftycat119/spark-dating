@@ -328,7 +328,7 @@ def robots():
 
 
 @app.api_route("/{path:path}", methods=["GET", "HEAD"])
-def spa(path: str, request: Request):
+def spa(path: str):
     if path.startswith(("api/", "media/", "ws")):
         raise HTTPException(404)
     # несуществующий файл (sitemap.xml, .env, wp-login.php…) — честный 404, а не главная страница

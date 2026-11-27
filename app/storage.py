@@ -119,9 +119,8 @@ def to_playable(rel: str, kind: str) -> str:
     target_ext = ".m4a" if kind == "voice" else ".mp4"
     if kind == "circle":
         return _normalize_circle(ffmpeg, rel) if ffmpeg and src.exists() else rel
-    if ffmpeg and src.exists() and kind == "video" and src.suffix in (".mp4", ".mov"):
-        _faststart(ffmpeg, src)
-        return rel
+    if ffmpeg and src.exists() and kind == "video" and src.suffix in (".mp4", ".mov", ".m4v", ".3gp"):
+        return _compatible_video(ffmpeg, rel)
     # mp4/mov с телефонов iPhone и так играет; перекодируем только webm/ogg
     if not ffmpeg or not src.exists() or src.suffix not in (".webm", ".ogg"):
         return rel
@@ -130,9 +129,7 @@ def to_playable(rel: str, kind: str) -> str:
     if kind == "voice":
         codec = ["-vn", "-c:a", "aac", "-b:a", "96k"]
     else:
-        codec = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-pix_fmt", "yuv420p", "-profile:v", "main",
-                 "-vf", "scale=w='trunc(min(1280,iw)/2)*2':h=-2:out_range=tv,format=yuv420p", "-color_range", "tv",
-                 "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart"]
+        codec = _h264_args(1920, crf=23, preset="faster", fps=_fps(_probe(src)))
     try:
         subprocess.run([ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(src), *codec, str(dst)],
                        check=True, timeout=180, capture_output=True)
@@ -237,6 +234,120 @@ def resolve(rel: str) -> Path | None:
     return path
 
 
+# ---------- Видео, которое играет везде (в том числе на старых Android) ----------
+# Самый совместимый вариант: H.264 Main, 8 бит (yuv420p), не больше 1080p и 30 кадров/с, звук AAC, индекс в начале файла.
+# Чего не любят старые телефоны: HEVC (H.265) с iPhone, 10-битное HDR-видео, 4K, 60 кадров/с, звук Opus.
+COMPAT_MAX_SIDE = 1920
+HEAVY_BITRATE = 5_000_000  # выше — пережимаем «на глаз без потерь» (CRF 22), если файл станет заметно меньше
+
+
+def _probe(path: Path) -> dict:
+    """Что внутри видео: кодеки, размер, частота кадров, битрейт. Пусто — ffprobe нет или файл битый."""
+    probe = shutil.which("ffprobe")
+    if not probe:
+        return {}
+    try:
+        out = subprocess.run([probe, "-v", "error", "-print_format", "json", "-show_streams", "-show_format", str(path)],
+                             capture_output=True, text=True, timeout=60).stdout
+        import json as _json
+
+        return _json.loads(out or "{}")
+    except (subprocess.SubprocessError, OSError, ValueError):
+        return {}
+
+
+def _stream(info: dict, kind: str) -> dict:
+    return next((s for s in info.get("streams", []) if s.get("codec_type") == kind), {})
+
+
+def _fps(info: dict) -> float:
+    v = _stream(info, "video")
+    for key in ("avg_frame_rate", "r_frame_rate"):
+        num, _, den = (v.get(key) or "0/1").partition("/")
+        try:
+            if float(den or 1) and float(num) / float(den or 1) > 0:
+                return float(num) / float(den or 1)
+        except ValueError:
+            continue
+    return 0.0
+
+
+def _h264_args(max_side: int, crf: int, preset: str, fps: float = 0.0, audio: bool = True) -> list[str]:
+    """Параметры ffmpeg для совместимого H.264. Ширина и высота — чётные (иначе x264 падает), без увеличения."""
+    vf = f"scale=w='trunc(min({max_side},iw)/2)*2':h='trunc(min({max_side},ih)/2)*2':force_original_aspect_ratio=decrease:out_range=tv"
+    vf += ",scale=trunc(iw/2)*2:trunc(ih/2)*2"  # после уменьшения стороны снова чётные
+    if fps > 30.5:
+        vf += ",fps=30"
+    vf += ",format=yuv420p"
+    args = ["-map", "0:v:0", "-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-profile:v", "main",
+            "-level", "4.0" if max_side > 1280 else "3.1", "-pix_fmt", "yuv420p", "-vf", vf,
+            "-color_range", "tv", "-movflags", "+faststart", "-map_metadata", "-1"]
+    if audio:
+        args = ["-map", "0:a:0?", *args, "-c:a", "aac", "-b:a", "128k", "-ac", "2", "-ar", "44100"]
+    else:
+        args.append("-an")
+    return args
+
+
+def _video_problem(info: dict) -> str | None:
+    """Почему ролик может не играть на части телефонов (None — играет везде)."""
+    v, a = _stream(info, "video"), _stream(info, "audio")
+    if not v:
+        return "нет видео"
+    if v.get("codec_name") != "h264":
+        return f"кодек {v.get('codec_name')}"
+    if v.get("pix_fmt") not in ("yuv420p", "yuvj420p"):
+        return f"цвет {v.get('pix_fmt')}"  # 10-битное HDR и т. п.
+    if max(int(v.get("width") or 0), int(v.get("height") or 0)) > COMPAT_MAX_SIDE:
+        return "больше 1080p"
+    if _fps(info) > 30.5:
+        return "больше 30 кадров/с"
+    if a and a.get("codec_name") not in ("aac", "mp3"):
+        return f"звук {a.get('codec_name')}"
+    return None
+
+
+def video_ok(rel: str) -> bool:
+    """Видео уже в формате, который играет везде? (Нет ffprobe или файла — считаем, что да: трогать нечего.)"""
+    path = settings.media_dir / rel
+    if path.suffix == ".webm":
+        return False
+    info = _probe(path) if path.exists() else {}
+    return not info or _video_problem(info) is None
+
+
+def _compatible_video(ffmpeg: str, rel: str) -> str:
+    """Видео с телефона: если формат подходит всем — только переносим индекс в начало (без потери качества);
+    если нет (HEVC, HDR, 4K, 60 к/с) — перекодируем в H.264; слишком «тяжёлое» — пережимаем, если станет заметно меньше."""
+    src = settings.media_dir / rel
+    info = _probe(src)
+    problem = _video_problem(info) if info else None
+    bitrate = int((info.get("format") or {}).get("bit_rate") or 0)
+    if not info or (problem is None and bitrate <= HEAVY_BITRATE):
+        _faststart(ffmpeg, src)
+        return rel
+    new_rel = f"{rel.rsplit('.', 1)[0]}.mp4"
+    dst = settings.media_dir / f"{new_rel}.tmp.mp4"
+    try:
+        subprocess.run([ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(src),
+                        *_h264_args(COMPAT_MAX_SIDE, crf=22, preset="faster", fps=_fps(info)), str(dst)],
+                       check=True, timeout=900, capture_output=True)
+    except (subprocess.SubprocessError, OSError) as exc:
+        log.warning("Видео %s не перекодировалось (%s): %s", rel, problem or "сжатие", (getattr(exc, "stderr", None) or b"")[-300:] or exc)
+        dst.unlink(missing_ok=True)
+        _faststart(ffmpeg, src)
+        return rel
+    if problem is None and dst.stat().st_size > src.stat().st_size * 0.85:
+        dst.unlink(missing_ok=True)  # сжатие почти ничего не дало — оставляем оригинал
+        _faststart(ffmpeg, src)
+        return rel
+    log.info("Видео %s: %s → H.264, %d → %d КБ", rel, problem or "сжато", src.stat().st_size // 1024, dst.stat().st_size // 1024)
+    dst.replace(settings.media_dir / new_rel)
+    if new_rel != rel:
+        src.unlink(missing_ok=True)
+    return new_rel
+
+
 CLIP_SECONDS = 15  # короткое видео в анкете: не длиннее 15 секунд
 
 
@@ -263,9 +374,8 @@ def save_gallery_clip(upload: UploadFile, max_mb: int) -> str:
         if not size:
             raise HTTPException(400, "Пустой файл")
         dst, rel = _target("gallery", ".mp4")
-        cmd = [ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(src_path), "-t", str(CLIP_SECONDS), "-an",
-               "-vf", "scale='min(720,iw)':-2:flags=lanczos,fps=30,format=yuv420p", "-c:v", "libx264", "-preset", "veryfast",
-               "-crf", "26", "-profile:v", "main", "-movflags", "+faststart", "-map_metadata", "-1", str(dst)]
+        cmd = [ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(src_path), "-t", str(CLIP_SECONDS),
+               *_h264_args(720, crf=22, preset="medium", fps=_fps(_probe(src_path)), audio=False), str(dst)]
         try:
             _sp.run(cmd, check=True, timeout=180, capture_output=True)
         except (_sp.SubprocessError, OSError) as exc:

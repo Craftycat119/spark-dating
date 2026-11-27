@@ -1,4 +1,3 @@
-from unittest import mock
 
 from conftest import make_user
 

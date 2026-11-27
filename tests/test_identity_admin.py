@@ -246,7 +246,7 @@ def test_separate_groups_and_pets_contact(monkeypatch):
     assert u.get(f"/api/animals/{pid}").json()["contact_url"] == "https://t.me/luna"
 
 
-def test_stats_day_in_vietnam_time(monkeypatch):
+def test_stats_day_in_vietnam_time():
     from datetime import datetime
 
     from app.deps import local_day
