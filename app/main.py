@@ -37,12 +37,19 @@ def _drop_adult_interests_for_teens(db: Session) -> None:
 
     changed = 0
     for u in db.scalars(select(_U).where(_U.is_bot.is_(False), _U.birth_date.is_not(None))):
-        if u.age_group == "teen" and ADULT_ONLY_INTERESTS & set(u.interests):
+        if u.age_group != "teen":
+            continue
+        fixed = False
+        if ADULT_ONLY_INTERESTS & set(u.interests):
             u.interests = [i for i in u.interests if i not in ADULT_ONLY_INTERESTS]
-            changed += 1
+            fixed = True
+        if any(g not in TEEN_GOALS for g in u.goals):  # например, «Языковой обмен» — для подростков его больше нет
+            u.goals = [g for g in u.goals if g in TEEN_GOALS] or ["Дружба"]
+            fixed = True
+        changed += fixed
     if changed:
         db.commit()
-        log.info("Подросткам убраны интересы «только для взрослых»: %s", changed)
+        log.info("Подросткам убраны интересы и цели «только для взрослых»: %s", changed)
 
 
 @asynccontextmanager

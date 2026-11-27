@@ -630,3 +630,12 @@ def test_teens_cannot_pick_adult_only_interests():
     adult = make_user("adultint@x.io", name="Взрослый")
     assert "Вино и дегустации" in adult.put("/api/profile", json={"interests": ["Вино и дегустации", "Кофе", "Бег"]}).json()["interests"]
     assert "Вино и дегустации" in teen.get("/api/config").json()["adult_only_interests"]
+
+
+
+def test_teens_have_no_language_exchange_goal():
+    teen = make_user("teenlang@x.io", name="Подросток", age=15, goals=("Дружба",))
+    assert "Языковой обмен" not in teen.get("/api/config").json()["teen_goals"]
+    assert teen.put("/api/profile", json={"goals": ["Языковой обмен"]}).status_code == 422
+    adult = make_user("adultlang@x.io", name="Взрослый")
+    assert "Языковой обмен" in adult.put("/api/profile", json={"goals": ["Языковой обмен"]}).json()["goals"]
