@@ -1269,7 +1269,7 @@ function stepGallery() {
       <div class="stack">
         <h1>Добавьте ещё фото</h1>
         <p class="muted">Анкеты с несколькими фото замечают чаще. Покажите хобби, поездки, друзей — можно добавить GIF или короткое видео до 15 секунд.</p>
-        <div class="gallery-edit">${me.photos.map((p) => `<div class="ph-cell">${galleryMedia(p.url)}<button class="del" data-del="${p.id}" aria-label="Удалить">${icons.x}</button></div>`).join("")}${
+        <div class="gallery-edit">${me.photos.map((p) => `<div class="ph-cell">${galleryThumb(p.url)}<button class="del" data-del="${p.id}" aria-label="Удалить">${icons.x}</button></div>`).join("")}${
           me.photos.length < 6 ? `<button class="ph-cell add" data-add aria-label="Добавить фото или видео">${icons.plus}<small>Фото, GIF<br>или видео</small></button>` : ""}</div>
         <input type="file" accept="image/*,video/*" multiple hidden>
         <p class="hint">До 6 штук. Их видно в подробной анкете, главное фото остаётся проверенным.</p>
@@ -1278,17 +1278,10 @@ function stepGallery() {
       </div>`, { nav: false });
     const input = $("input[type=file]", root);
     $("[data-add]", root)?.addEventListener("click", () => input.click());
-    input.onchange = async () => {
-      const files = [...input.files].slice(0, 6 - state.me.photos.length);
+    input.onchange = () => {
+      const files = [...input.files];
       input.value = "";
-      const add = $("[data-add]", root);
-      if (add) add.innerHTML = `<div class="spinner"></div>`;
-      for (const f of files) {
-        const fd = new FormData();
-        fd.append("file", f);
-        try { state.me = await api.post("/api/profile/photos", fd); } catch (ex) { toast(ex.message, { error: true }); break; }
-      }
-      draw();
+      uploadGallery(root, files, draw);
     };
     $$("[data-del]", root).forEach((b) => (b.onclick = async () => {
       try { state.me = await api.del(`/api/profile/photos/${b.dataset.del}`); draw(); } catch (ex) { toast(ex.message, { error: true }); }
@@ -2302,11 +2295,102 @@ function mediaFailed(el, media, kind, ex) {
 }
 
 const isClip = (url) => /\.(mp4|webm|mov)(\?|#|$)/i.test(url || "");
-/** Фото или клип (GIF/короткое видео уже перекодированы в mp4) для галереи анкеты. */
+const posterOf = (url) => url.replace(/\.(mp4|webm|mov)(?=$|[?#])/i, ".poster.jpg");
+/** Фото или клип (GIF/короткое видео уже перекодированы в mp4) для галереи анкеты.
+ *  У клипа есть первый кадр картинкой: если телефон не запускает видео сам (Telegram на iPhone), видно кадр, а не пустоту. */
 function galleryMedia(url, alt = "", eager = false) {
   return isClip(url)
-    ? `<video src="${esc(url)}" muted loop autoplay playsinline preload="metadata" aria-label="${esc(alt)}"></video>`
+    ? `<video src="${esc(url)}#t=0.1" poster="${esc(posterOf(url))}" muted loop autoplay playsinline preload="metadata" aria-label="${esc(alt)}"></video>`
     : `<img src="${esc(url)}" alt="${esc(alt)}" loading="${eager ? "eager" : "lazy"}">`;
+}
+/** Миниатюра в сетке «Ещё фото»: у клипа — первый кадр и значок ▶ (видео в маленькой ячейке не нужно гонять). */
+function galleryThumb(url) {
+  return isClip(url)
+    ? `<img src="${esc(posterOf(url))}" alt=""><span class="clip-badge">${icons.play}</span>`
+    : `<img src="${esc(url)}" alt="" loading="lazy">`;
+}
+
+// ---- загрузка в «Ещё фото»: проверка до отправки, проценты, «обрабатываем видео» ----
+const CLIP_SEC = 15, CLIP_SRC_MAX_SEC = 60, CLIP_MAX_MB = 100, PHOTO_MAX_MB = 10, GALLERY_MAX = 6;
+const isVideoFile = (f) => /^video\//.test(f.type) || /\.(mp4|mov|m4v|webm|3gp)$/i.test(f.name);
+const isGifFile = (f) => f.type === "image/gif" || /\.gif$/i.test(f.name);
+const mb = (bytes) => (bytes / 1048576).toFixed(bytes < 10 * 1048576 ? 1 : 0).replace(".0", "");
+
+/** Длительность видео до загрузки (читаем только заголовок файла). null — телефон не смог прочитать. */
+function videoDuration(file) {
+  return new Promise((resolve) => {
+    const v = document.createElement("video");
+    const url = URL.createObjectURL(file);
+    const done = (d) => { URL.revokeObjectURL(url); resolve(d); };
+    v.preload = "metadata";
+    v.muted = true;
+    v.onloadedmetadata = () => done(Number.isFinite(v.duration) ? v.duration : null);
+    v.onerror = () => done(null);
+    setTimeout(() => done(null), 6000);
+    v.src = url;
+  });
+}
+
+/** Проверка файла до загрузки: понятная подсказка вместо долгой загрузки и отказа сервера. */
+async function checkGalleryFile(file) {
+  if (isVideoFile(file) || isGifFile(file)) {
+    const what = isGifFile(file) ? "GIF" : "Видео";
+    if (file.size > CLIP_MAX_MB * 1048576) {
+      return { error: `${what} весит ${mb(file.size)} МБ, а можно до ${CLIP_MAX_MB} МБ. Обрежьте его в галерее телефона или снимите покороче` };
+    }
+    if (isVideoFile(file)) {
+      const d = await videoDuration(file);
+      if (d && d > CLIP_SRC_MAX_SEC + 0.5) {
+        return { error: `Видео длится ${Math.round(d)} с — это дольше минуты. Обрежьте его в галерее телефона до ${CLIP_SEC} секунд и выберите снова` };
+      }
+      if (d && d > CLIP_SEC + 0.5) return { note: `Видео длится ${Math.round(d)} с — в анкету попадут первые ${CLIP_SEC} секунд` };
+    }
+    return {};
+  }
+  if (!/^image\//.test(file.type) && !/\.(jpe?g|png|heic|heif|webp)$/i.test(file.name)) {
+    return { error: "Этот файл не фото и не видео. Выберите фото, GIF или видео" };
+  }
+  if (file.size > PHOTO_MAX_MB * 1048576) return { error: `Фото весит ${mb(file.size)} МБ, а можно до ${PHOTO_MAX_MB} МБ` };
+  return {};
+}
+
+/** Загрузить выбранные файлы в «Ещё фото», показывая каждую загрузку прямо в сетке. */
+async function uploadGallery(root, files, onDone) {
+  const grid = $(".gallery-edit", root);
+  const add = $("[data-add]", root);
+  const room = GALLERY_MAX - state.me.photos.length;
+  if (files.length > room) toast(`Можно добавить ещё ${room} — остальные не поместятся`);
+  files = files.slice(0, Math.max(0, room));
+  if (!files.length) return;
+  if (add) add.hidden = true; // пока идёт загрузка, новые не выбираем
+  let changed = false;
+  for (const file of files) {
+    const check = await checkGalleryFile(file);
+    if (check.error) { toast(check.error, { error: true }); continue; }
+    if (check.note) toast(check.note);
+    const clip = isVideoFile(file) || isGifFile(file);
+    const cell = h(`<div class="ph-cell uploading">${clip ? "" : `<img src="${URL.createObjectURL(file)}" alt="">`}
+      <div class="up-veil"><svg class="up-ring" viewBox="0 0 36 36"><circle cx="18" cy="18" r="15.5"/><circle class="bar" cx="18" cy="18" r="15.5" pathLength="100"/></svg>
+      <b class="up-pct">0%</b><small class="up-text">${clip ? "Загружаем видео" : "Загружаем фото"}</small></div></div>`);
+    if (add) add.before(cell); else grid.append(cell);
+    const bar = $(".bar", cell), pct = $(".up-pct", cell), text = $(".up-text", cell);
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      state.me = await api.upload("/api/profile/photos", fd, (p) => {
+        const n = Math.min(99, Math.round(p * 100));
+        bar.style.strokeDasharray = `${n} 100`;
+        pct.textContent = `${n}%`;
+        if (p >= 1) { cell.classList.add("processing"); pct.textContent = ""; text.textContent = clip ? "Обрабатываем видео…" : "Сохраняем…"; }
+      });
+      changed = true;
+    } catch (ex) {
+      cell.remove();
+      toast(ex.status === 0 ? "Нет связи — файл не загрузился. Попробуйте ещё раз" : ex.message, { error: true });
+    }
+  }
+  if (add) add.hidden = false;
+  if (changed) onDone();
 }
 
 /** iPhone учитывает «без звука» только как свойство, а не атрибут из разметки — без этого клип не стартует сам. */
@@ -2376,7 +2460,7 @@ function renderSettings() {
     <div class="section">
       <h3>Ещё фото</h3>
       <p class="hint" style="margin:-4px 0 12px">До 6 фото, GIF или коротких видео (до 15 секунд): хобби, поездки, друзья. Их видно в подробной анкете.</p>
-      <div class="gallery-edit">${me.photos.map((p) => `<div class="ph-cell">${galleryMedia(p.url)}<button class="del" data-del="${p.id}" aria-label="Удалить фото">${icons.x}</button></div>`).join("")}${
+      <div class="gallery-edit">${me.photos.map((p) => `<div class="ph-cell">${galleryThumb(p.url)}<button class="del" data-del="${p.id}" aria-label="Удалить фото">${icons.x}</button></div>`).join("")}${
         me.photos.length < 6 ? `<button class="ph-cell add" data-add aria-label="Добавить фото">${icons.plus}</button>` : ""}</div>
       <input type="file" accept="image/*,video/*" multiple hidden id="gallery-input">
     </div>
@@ -2405,8 +2489,10 @@ function renderSettings() {
           `<option value="${k}" ${k === me.zodiac ? "selected" : ""}>${ZODIAC_SIGNS[k] || ""} ${esc(l)}</option>`).join("")}</select></label>
       </div>
       ${me.age_group === "adult" ? `<div class="field age-range"><span>Возраст: от <b id="age-lo">${me.age_min}</b> до <b id="age-hi">${ageHi(me.age_max)}</b></span>
-        <label class="range-row"><small>от</small><input type="range" name="agemin" min="18" max="65" step="1" value="${me.age_min}" aria-label="Возраст от"></label>
-        <label class="range-row"><small>до</small><input type="range" name="agemax" min="18" max="65" step="1" value="${me.age_max}" aria-label="Возраст до"></label></div>` : ""}
+        <div class="dual-range"><div class="dr-track"><i class="dr-fill"></i></div>
+          <input type="range" name="agemin" min="18" max="65" step="1" value="${me.age_min}" aria-label="Возраст от">
+          <input type="range" name="agemax" min="18" max="65" step="1" value="${me.age_max}" aria-label="Возраст до"></div>
+        <div class="dr-scale" aria-hidden="true"><span>18</span><span>65+</span></div></div>` : ""}
       <label class="field"><span>Искать в радиусе <b id="dist-val">${fmtKm(me.max_distance_km)}</b> км</span>
         <input type="range" name="dist" min="0" max="${RADIUS_STEPS.length - 1}" step="1" value="${radiusIndex(me.max_distance_km)}"></label>
       <p class="hint" id="my-city">${me.city_name ? `${icons.pin} Ваш город: <b>${esc(cityLabel(me.city_name))}</b> — определён по геопозиции` : "Город определится по геопозиции"}</p>
@@ -2509,7 +2595,14 @@ function renderSettings() {
       if (lo > hi) { if (moved === "lo") hi = lo; else lo = hi; form.agemin.value = lo; form.agemax.value = hi; }
       $("#age-lo", root).textContent = lo;
       $("#age-hi", root).textContent = ageHi(hi);
+      // закрашенный отрезок между бегунками; если «от» упёрся вправо — он сверху, иначе его не сдвинуть
+      const pct = (v) => ((v - 18) / (65 - 18)) * 100;
+      const fill = $(".dr-fill", root);
+      fill.style.left = `${pct(lo)}%`;
+      fill.style.right = `${100 - pct(hi)}%`;
+      form.agemin.style.zIndex = lo >= 60 ? 3 : 2;
     };
+    syncAge();
     form.agemin.oninput = () => syncAge("lo");
     form.agemax.oninput = () => syncAge("hi");
   }
@@ -2563,13 +2656,10 @@ function renderSettings() {
   startClips(root);
   const galleryInput = $("#gallery-input", root);
   $("[data-add]", root)?.addEventListener("click", () => galleryInput.click());
-  galleryInput.onchange = async () => {
-    for (const f of [...galleryInput.files].slice(0, 6 - state.me.photos.length)) {
-      const fd = new FormData();
-      fd.append("file", f);
-      try { state.me = await api.post("/api/profile/photos", fd); } catch (ex) { toast(ex.message, { error: true }); break; }
-    }
-    renderSettings();
+  galleryInput.onchange = () => {
+    const files = [...galleryInput.files];
+    galleryInput.value = "";
+    uploadGallery(root, files, renderSettings);
   };
   $$("[data-del]", root).forEach((b) => (b.onclick = async () => {
     try { state.me = await api.del(`/api/profile/photos/${b.dataset.del}`); renderSettings(); } catch (ex) { toast(ex.message, { error: true }); }

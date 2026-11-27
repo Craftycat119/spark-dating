@@ -566,3 +566,34 @@ def test_videos_become_compatible_everywhere(tmp_path):
     u = make_user("oddgif@x.io", name="Гиф")
     r = u.post("/api/profile/photos", files={"file": ("odd.gif", gif.read_bytes(), "image/gif")})
     assert r.status_code == 200, r.text
+
+
+
+def test_gallery_clip_limits_and_poster(tmp_path):
+    import shutil
+    import subprocess
+
+    import pytest
+
+    from app.config import settings
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("нет ффмпег")
+    u = make_user("clip2@x.io", name="Клип")
+
+    def video(name, seconds):
+        p = tmp_path / name
+        subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=10", "-t", str(seconds),
+                        "-pix_fmt", "yuv420p", str(p)], check=True)
+        return p.read_bytes()
+
+    r = u.post("/api/profile/photos", files={"file": ("long.mp4", video("long.mp4", 70), "video/mp4")})
+    assert r.status_code == 422 and "60 секунд" in r.json()["detail"]
+    r = u.post("/api/profile/photos", files={"file": ("ok.mp4", video("ok.mp4", 30), "video/mp4")})
+    assert r.status_code == 200
+    url = r.json()["photos"][-1]["url"]
+    clip = settings.media_dir / url.split("/media/", 1)[1]
+    assert clip.with_name(clip.stem + ".poster.jpg").exists()  # превью для профиля
+    assert u.get(url.replace(".mp4", ".poster.jpg")).status_code == 200
+    bad = u.post("/api/profile/photos", files={"file": ("x.mp4", b"\x00" * 2000, "video/mp4")})
+    assert bad.status_code == 415

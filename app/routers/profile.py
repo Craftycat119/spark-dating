@@ -231,7 +231,7 @@ def add_photo(file: UploadFile = File(...), user: User = Depends(current_user), 
         raise HTTPException(400, f"Можно добавить не больше {MAX_GALLERY} фото")
     ctype, fname = (file.content_type or "").lower(), (file.filename or "").lower()
     if ctype.startswith("video/") or ctype == "image/gif" or fname.endswith((".gif", ".mp4", ".mov", ".webm", ".m4v")):
-        rel = storage.save_gallery_clip(file, 60)  # GIF или короткое видео
+        rel = storage.save_gallery_clip(file, storage.CLIP_MAX_MB)  # GIF или короткое видео
     else:
         rel = storage.save_image(storage.read_limited(file, settings.max_image_mb), "gallery")
     user.photos.append(UserPhoto(path=rel))

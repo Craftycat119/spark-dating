@@ -208,6 +208,12 @@ def main() -> None:
                 if not (settings.media_dir / storage.poster_rel(m.media_path)).exists():
                     storage.make_poster(m.media_path)
                     posters += 1
+            from .models import UserPhoto
+
+            for p in db.scalars(select(UserPhoto).where(UserPhoto.path.like("%.mp4"))):
+                if not (settings.media_dir / storage.poster_rel(p.path)).exists():
+                    storage.make_poster(p.path)
+                    posters += 1
             print(f"Превью для видео: {posters}")
     elif args.cmd == "outlook-login":
         from .outlook_oauth import login_interactive

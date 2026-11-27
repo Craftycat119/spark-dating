@@ -348,7 +348,9 @@ def _compatible_video(ffmpeg: str, rel: str) -> str:
     return new_rel
 
 
-CLIP_SECONDS = 15  # короткое видео в анкете: не длиннее 15 секунд
+CLIP_SECONDS = 15  # короткое видео в анкете: не длиннее 15 секунд (длиннее — берём первые 15)
+CLIP_SOURCE_MAX_SECONDS = 60  # длиннее минуты не принимаем: человек ждал бы загрузку ради 15 секунд
+CLIP_MAX_MB = 100
 
 
 def save_gallery_clip(upload: UploadFile, max_mb: int) -> str:
@@ -373,6 +375,13 @@ def save_gallery_clip(upload: UploadFile, max_mb: int) -> str:
                 out.write(chunk)
         if not size:
             raise HTTPException(400, "Пустой файл")
+        info = _probe(src_path)
+        duration = float((info.get("format") or {}).get("duration") or 0)
+        if info and not _stream(info, "video"):
+            raise HTTPException(415, "Это не видео и не GIF. Выберите другой файл")
+        if duration > CLIP_SOURCE_MAX_SECONDS + 0.5:
+            raise HTTPException(422, f"Видео длиннее {CLIP_SOURCE_MAX_SECONDS} секунд. Обрежьте его в галерее телефона "
+                                     f"(в анкету попадут первые {CLIP_SECONDS} секунд) и выберите снова")
         dst, rel = _target("gallery", ".mp4")
         cmd = [ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(src_path), "-t", str(CLIP_SECONDS),
                *_h264_args(720, crf=22, preset="medium", fps=_fps(_probe(src_path)), audio=False), str(dst)]
@@ -381,6 +390,7 @@ def save_gallery_clip(upload: UploadFile, max_mb: int) -> str:
         except (_sp.SubprocessError, OSError) as exc:
             dst.unlink(missing_ok=True)
             raise HTTPException(415, "Не получилось обработать видео. Попробуйте другой файл") from exc
+        make_poster(rel)  # первый кадр картинкой: в профиле видно, что за ролик, даже если телефон не запускает видео сам
         return rel
     finally:
         src_path.unlink(missing_ok=True)

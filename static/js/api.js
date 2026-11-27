@@ -51,6 +51,7 @@ function upload(url, form, onProgress) {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", url);
     xhr.withCredentials = true;
+    if (EMBEDDED) xhr.setRequestHeader("X-COFI-Embedded", "1"); // Telegram на компьютере: без этого вход «теряется»
     xhr.responseType = "json";
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
     xhr.onerror = () => reject(new ApiError(0, "Нет соединения с сервером. Проверьте интернет"));

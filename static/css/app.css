@@ -1032,5 +1032,33 @@ html.in-tg .tg-drop { top: 32px; }
 .gallery-edit .add small { display: block; font-size: 11px; line-height: 1.2; color: var(--muted); text-align: center; margin-top: 4px; }
 .gallery-edit .add { flex-direction: column; }
 /* возраст «от и до» */
-.age-range .range-row { display: grid; grid-template-columns: 24px 1fr; align-items: center; gap: 8px; }
-.age-range .range-row small { color: var(--muted); }
+
+/* «Ещё фото»: значок ▶ у видео и загрузка с процентами */
+.gallery-edit .clip-badge { position: absolute; left: 8px; bottom: 8px; width: 30px; height: 30px; border-radius: 50%;
+  background: rgba(18, 12, 9, .7); color: #fff; display: grid; place-items: center; font-size: 15px; pointer-events: none; }
+.gallery-edit .uploading { display: grid; place-items: center; }
+.gallery-edit .uploading > img { position: absolute; inset: 0; filter: blur(2px) brightness(.6); }
+.gallery-edit .up-veil { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 6px; text-align: center;
+  background: rgba(18, 12, 9, .45); color: #fff; padding: 8px; }
+.up-ring { width: 46px; height: 46px; transform: rotate(-90deg); grid-area: 1 / 1; }
+.up-ring circle { fill: none; stroke: rgba(255, 255, 255, .25); stroke-width: 3.5; }
+.up-ring .bar { stroke: var(--orange); stroke-linecap: round; stroke-dasharray: 0 100; transition: stroke-dasharray .2s; }
+.up-pct { grid-area: 1 / 1; font-size: 12px; }
+.up-text { font-size: 11px; line-height: 1.25; opacity: .9; }
+.processing .up-ring { animation: up-spin 1s linear infinite; }
+.processing .up-ring .bar { stroke-dasharray: 30 100; }
+@keyframes up-spin { to { transform: rotate(270deg); } }
+
+/* возраст «от и до» — один ползунок с двумя бегунками */
+.dual-range { position: relative; height: 36px; margin: 4px 2px 0; }
+.dual-range .dr-track { position: absolute; left: 0; right: 0; top: 50%; height: 6px; margin-top: -3px; border-radius: 3px; background: var(--surface-2, rgba(127,127,127,.25)); }
+.dual-range .dr-fill { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: var(--orange); }
+.dual-range input[type=range] { position: absolute; inset: 0; width: 100%; height: 36px; margin: 0; background: none; pointer-events: none;
+  -webkit-appearance: none; appearance: none; z-index: 2; }
+.dual-range input[type=range]::-webkit-slider-runnable-track { background: none; border: 0; height: 36px; }
+.dual-range input[type=range]::-moz-range-track { background: none; border: 0; }
+.dual-range input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; pointer-events: auto; width: 28px; height: 28px;
+  border-radius: 50%; background: #fff; border: 0; box-shadow: 0 2px 8px rgba(0,0,0,.45); cursor: grab; margin-top: 4px; }
+.dual-range input[type=range]::-moz-range-thumb { pointer-events: auto; width: 28px; height: 28px; border-radius: 50%; background: #fff; border: 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,.45); cursor: grab; }
+.dr-scale { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 2px; }

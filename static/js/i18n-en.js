@@ -16,6 +16,13 @@ const w = (x) => EN[x] ?? CITY_EN[x] ?? x;
 
 export const EN = {
   // ---- добавлено: опрос, ошибки, подсказки ----
+  "Загружаем видео": "Uploading video",
+  "Загружаем фото": "Uploading photo",
+  "Обрабатываем видео…": "Processing video…",
+  "Сохраняем…": "Saving…",
+  "Этот файл не фото и не видео. Выберите фото, GIF или видео": "This file isn't a photo or video. Choose a photo, GIF or video",
+  "Нет связи — файл не загрузился. Попробуйте ещё раз": "No connection — the file didn't upload. Please try again",
+  "Это не видео и не GIF. Выберите другой файл": "This isn't a video or GIF. Choose another file",
   "Добавьте ещё фото": "Add more photos",
   "Анкеты с несколькими фото замечают чаще. Покажите хобби, поездки, друзей — можно добавить GIF или короткое видео до 15 секунд.": "Profiles with several photos get noticed more. Show your hobbies, trips and friends — you can add a GIF or a short video up to 15 seconds.",
   "До 6 штук. Их видно в подробной анкете, главное фото остаётся проверенным.": "Up to 6. They show in your full profile; your main photo stays verified.",
@@ -659,6 +666,12 @@ export const EN = {
 };
 
 export const PATTERNS = [
+  [/^(Видео|GIF) весит ([\d.]+) МБ, а можно до (\d+) МБ\. Обрежьте его в галерее телефона или снимите покороче$/, (_, w, a, b) => `${w === "GIF" ? "The GIF" : "The video"} is ${a} MB; the limit is ${b} MB. Trim it in your phone's gallery or record a shorter one`],
+  [/^Видео длится (\d+) с — это дольше минуты\. Обрежьте его в галерее телефона до (\d+) секунд и выберите снова$/, "The video is $1 s — longer than a minute. Trim it to $2 seconds in your phone's gallery and choose it again"],
+  [/^Видео длится (\d+) с — в анкету попадут первые (\d+) секунд$/, "The video is $1 s — the first $2 seconds will be used"],
+  [/^Фото весит ([\d.]+) МБ, а можно до (\d+) МБ$/, "The photo is $1 MB; the limit is $2 MB"],
+  [/^Можно добавить ещё (\d+) — остальные не поместятся$/, "You can add $1 more — the rest won't fit"],
+  [/^Видео длиннее (\d+) секунд\. Обрежьте его в галерее телефона \(в анкету попадут первые (\d+) секунд\) и выберите снова$/, "The video is longer than $1 seconds. Trim it in your phone's gallery (the first $2 seconds are used) and choose it again"],
   [/^Возраст: от (\d+) до (\d+\+?)$/, "Age: from $1 to $2"],
   // добавлено: фразы с числами и именами
   [/^Вам (\d+) (?:год|года|лет)\? Дату рождения потом нельзя будет изменить самостоятельно$/, "Are you $1? You won't be able to change your birth date yourself later"],
