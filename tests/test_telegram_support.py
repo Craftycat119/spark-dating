@@ -433,3 +433,24 @@ def test_ads_broadcast_skips_teens_by_app_age_and_telegram_birthdate(monkeypatch
     calls.clear()
     boss.post("/api/admin/broadcast", data={"subject": "Новость", "body": "Текст", "everyone": "true"})
     assert 8802 in {p["chat_id"] for m, p in calls if m == "sendMessage"}
+
+
+
+def test_ads_without_advertiser_can_be_sent(monkeypatch):
+    from app import broadcasts, telegram_bot
+    from app.database import SessionLocal
+    from app.models import User
+
+    calls = []
+    monkeypatch.setattr(settings, "telegram_bot_token", "x")
+    monkeypatch.setattr(telegram_bot, "api", lambda m, p=None, timeout=15: calls.append((m, p)) or {"ok": True, "result": {"message_id": 1}})
+    monkeypatch.setattr(broadcasts, "PAUSE", 0)
+    boss = make_user("boss@example.com", name="Андрей")
+    u = make_user("noadv@x.io", name="Взрослый")
+    with SessionLocal() as db:
+        db.get(User, u.user_id).telegram_id = 9911
+        db.commit()
+    r = boss.post("/api/admin/broadcast", data={"subject": "Скидка", "body": "Текст", "kind": "ads"})  # поле рекламодателя пустое
+    assert r.status_code == 200
+    text = next(p["text"] for m, p in calls if m == "sendMessage")
+    assert text.endswith("<i>Реклама</i>")

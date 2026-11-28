@@ -784,9 +784,9 @@ function mail() {
       <div class="field"><span>Тип рассылки</span>
         <div class="bc-kind" role="radiogroup">
           <label class="check"><input type="radio" name="kind" value="news" checked><span><b>Новости COFI</b><br><span class="muted small">Изменения, новые функции, техработы</span></span></label>
-          <label class="check"><input type="radio" name="kind" value="ads"><span><b>Реклама</b><br><span class="muted small">Всем, кто писал боту, кроме подростков: младше 18 по анкете в COFI или по дате рождения в Telegram. Внизу будет пометка «Реклама»</span></span></label>
+          <label class="check"><input type="radio" name="kind" value="ads"><span><b>Реклама</b><br><span class="muted small">Внизу сообщения будет пометка «Реклама»</span></span></label>
         </div></div>
-      <label class="field" data-ad-only hidden><span>Рекламодатель и erid (маркировка)</span>
+      <label class="field" data-ad-only hidden><span>Рекламодатель и erid (необязательно)</span>
         <input class="input" name="advertiser" maxlength="300" placeholder="Например: ООО «Кофейня», ИНН 1234567890, erid: 2Vtzqx…"></label>
       <button class="btn" data-send="everyone">Отправить всем, кто писал боту <span data-count="everyone"></span></button>
       <p class="muted small">Если человек сам выключил звук у чата с ботом в Telegram, сообщение придёт без звука — бот это изменить не может.</p>
@@ -831,7 +831,7 @@ function mail() {
     const n = ads ? counts.ads : counts.everyone;
     const how = loud ? "Со звуком у всех, даже у тех, кто выключил уведомления." : "Кто выключил уведомления — получит беззвучно.";
     const question = ads
-      ? `Отправить рекламу${n != null ? ` (${n})` : ""}? Подросткам (младше 18 по анкете COFI или по дате рождения в Telegram) не уйдёт. ${how}`
+      ? `Отправить рекламу${n != null ? ` (${n})` : ""}? ${how}`
       : `Отправить рассылку всем, кто писал боту${n != null ? ` (${n})` : ""}? ${how}`;
     if (!(await confirmDialog(onlyNew ? "Сохранить пост для новых пользователей? Сейчас он никому не уйдёт." : question, onlyNew ? "Сохранить" : "Отправить"))) return;
     try {
@@ -894,7 +894,7 @@ async function loadBroadcasts() {
       <div class="bc-body">
         <b>${esc(b.subject)}</b> ${st(b)}${b.edited_at ? ' <span class="muted small">изменена</span>' : ""}
         ${b.newcomers ? ' <span class="tag hot">📌 новым пользователям</span>' : b.pin ? ' <span class="tag">📌 закреплена</span>' : ""}
-        <p class="muted small">${dt(b.created_at)}${b.kind === "ads" ? " · реклама, без подростков" : b.everyone ? " · всем, кто писал боту" : " · подписанным"}${b.loud ? " · со звуком всем" : ""}</p>
+        <p class="muted small">${dt(b.created_at)}${b.kind === "ads" ? " · реклама" : b.everyone ? " · всем, кто писал боту" : " · подписанным"}${b.loud ? " · со звуком всем" : ""}</p>
         ${Object.keys(b.reasons || {}).length ? `<p class="muted small">Почему не дошло: ${Object.entries(b.reasons).map(([k, n]) => `${esc(k)} — ${n}`).join(" · ")}</p>` : ""}
         <p class="bc-text">${esc(b.body).slice(0, 300)}${b.body.length > 300 ? "…" : ""}</p>
         ${b.status === "sent" ? `<div class="row" style="gap:8px;flex-wrap:wrap">
