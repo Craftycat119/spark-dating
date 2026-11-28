@@ -1132,3 +1132,8 @@ html { overflow-x: hidden; max-width: 100%; }
 @supports not (overflow: clip) {
   .feed .thread svg.yarn { overflow: hidden; }
 }
+
+/* проверка лица: кнопка запуска камеры (если телефон не дал включить её сам) и запасной показ самого видео */
+.scanner .cam-start { position: absolute; z-index: 3; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.scanner.show-video video { opacity: 1; transform: scaleX(-1); }
+.scanner.show-video canvas.live { display: none; }
