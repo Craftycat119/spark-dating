@@ -1,6 +1,7 @@
 // Аудио- и видеозвонки через WebRTC. Сигналинг идёт через WebSocket сервера.
 import { api, on, send } from "./api.js";
 import { icons } from "./icons.js";
+import { audioMode } from "./media.js";
 import { esc, fmtDur, h, toast } from "./ui.js";
 
 let iceServers = [{ urls: "stun:stun.l.google.com:19302" }];
@@ -144,6 +145,7 @@ class Call {
   }
 
   async getMedia() {
+    audioMode("play-and-record"); // звонок: и микрофон, и звук собеседника
     this.local = await navigator.mediaDevices.getUserMedia({
       // эхоподавление, шумоподавление и автоусиление браузера; моно — меньше эха и трафика
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: { ideal: 1 } },

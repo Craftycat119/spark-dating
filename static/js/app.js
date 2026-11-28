@@ -2,6 +2,7 @@ import { ApiError, EMBEDDED, api, connectSocket, disconnectSocket, on, send } fr
 import { initCalls, joinPendingCall, startCall } from "./call.js";
 import { icons } from "./icons.js";
 import { recordCircle, VoiceRecorder } from "./recorder.js";
+import { audioMode, audioSessionSupported } from "./media.js";
 import { runScanner } from "./scanner.js";
 import { PACKS } from "./stickers.js";
 import { mountThread } from "./threads.js";
@@ -2398,10 +2399,12 @@ function messageEl(m, mine) {
   }
 }
 
-/** iPhone в беззвучном режиме: в Telegram звук голосовых и кружков не слышно. Подсказываем один раз. */
+/** Перед проигрыванием со звуком: на iOS 17+ включаем режим, который беззвучный режим не глушит (как в Telegram).
+ *  На старых iPhone так нельзя — тогда один раз подсказываем про переключатель. */
 const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 function silentModeHint() {
-  if (!IOS) return;
+  audioMode("playback");
+  if (!IOS || audioSessionSupported()) return;
   try {
     if (localStorage.getItem("cofi.silentHint")) return;
     localStorage.setItem("cofi.silentHint", "1");

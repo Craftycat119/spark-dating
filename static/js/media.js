@@ -25,6 +25,28 @@ export async function getCamera(facing = "user") {
   return s;
 }
 
+// ---------- Звук при беззвучном режиме iPhone ----------
+// Как в Telegram: голосовые, кружки и видео слышно, даже если переключатель «беззвучно» включён.
+// iOS 17+ даёт странице выбрать тип звука: «playback» — проигрывание (беззвучный режим его не глушит),
+// «play-and-record» — во время записи. На других телефонах и браузерах свойства нет — ничего не делаем.
+export const audioSessionSupported = () => typeof navigator !== "undefined" && "audioSession" in navigator;
+export function audioMode(type) {
+  try { if (audioSessionSupported() && navigator.audioSession.type !== type) navigator.audioSession.type = type; } catch { /* не поддерживается */ }
+}
+// Любое видео или аудио со звуком на странице — в режиме проигрывания
+document.addEventListener("play", (e) => {
+  const m = e.target;
+  if ((m instanceof HTMLMediaElement) && !m.muted && !alive(live.audio)) audioMode("playback");
+}, true);
+// нажатие на ролик, голосовое или кружок — режим проигрывания ещё до старта звука
+document.addEventListener("pointerdown", (e) => {
+  if (e.target.closest?.("video, audio, .voice, .circle-msg") && !alive(live.audio)) audioMode("playback");
+}, true);
+document.addEventListener("volumechange", (e) => {
+  const m = e.target;
+  if ((m instanceof HTMLMediaElement) && !m.muted && !m.paused && !alive(live.audio)) audioMode("playback");
+}, true);
+
 /** Микрофон для голосовых и кружков.
  *  Эхоподавление выключено: на Android оно переводит телефон в «режим звонка» — запись в Telegram местами
  *  выходит тишиной, а своё голосовое или кружок потом играют еле слышно в разговорный динамик.
@@ -32,6 +54,7 @@ export async function getCamera(facing = "user") {
 export async function getMic() {
   clearTimeout(timers.audio);
   if (alive(live.audio)) return live.audio;
+  audioMode("play-and-record");
   try {
     live.audio = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
@@ -51,6 +74,7 @@ export function release(kind = "video") {
   if (kind === "audio") {
     live.audio?.getTracks().forEach((t) => t.stop());
     live.audio = null;
+    audioMode("playback"); // запись закончена — дальше только слушаем
     return;
   }
   timers[kind] = setTimeout(() => {
