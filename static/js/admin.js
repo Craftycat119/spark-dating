@@ -43,7 +43,7 @@ function route() {
   closeDrawer();
   // раздел по адресу; неизвестный — «Обзор». (Раньше «?? overview()» срабатывал и после разделов,
   // которые ничего не возвращают, — «Рассылка» сразу затиралась «Обзором»)
-  const view = { overview, users, chats, mail, support, animals }[name];
+  const view = { overview, users, chats, mail, support, animals, feedads }[name];
   if (view) view(arg); else overview();
 }
 
@@ -971,3 +971,77 @@ async function loadBroadcasts() {
 }
 
 boot();
+
+
+// ---------- Реклама в ленте: карточка после каждых 5 анкет, только взрослым ----------
+async function feedads() {
+  view.innerHTML = `<h1>Реклама в ленте</h1>
+    <p class="muted">Карточка показывается в ленте знакомств после каждых 5 анкет — только взрослым (18+). В ленту «Дружба» реклама не попадает. Несколько активных кампаний чередуются.</p>
+    <form class="stack" style="max-width:560px" data-ad-form>
+      <label class="field"><span>Заголовок</span><input class="input" name="title" maxlength="120" required placeholder="Например: кофейня «Зерно» — скидка 20%"></label>
+      <label class="field"><span>Текст</span><textarea class="input" name="text" rows="4" maxlength="600"></textarea></label>
+      <label class="field"><span>Картинка</span><input class="input" type="file" name="image" accept="image/*"></label>
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <label class="field" style="flex:2;min-width:220px"><span>Ссылка</span><input class="input" name="link" maxlength="500" placeholder="https://…"></label>
+        <label class="field" style="flex:1;min-width:140px"><span>Текст кнопки</span><input class="input" name="button" maxlength="40" value="Подробнее"></label>
+      </div>
+      <label class="field"><span>Рекламодатель и erid (необязательно)</span><input class="input" name="advertiser" maxlength="300" placeholder="ООО «Зерно», ИНН …, erid: …"></label>
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <label class="field" style="flex:1"><span>Показывать с</span><input class="input" type="date" name="starts"></label>
+        <label class="field" style="flex:1"><span>по (не включая)</span><input class="input" type="date" name="ends"></label>
+      </div>
+      <p class="muted small">Даты необязательны: без них карточка показывается, пока включена.</p>
+      <button class="btn">Добавить рекламу</button>
+    </form>
+    <h2 style="margin-top:36px">Кампании</h2>
+    <div class="ad-list"><p class="muted">Загрузка…</p></div>`;
+  $("[data-ad-form]", view).onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const fd = new FormData();
+    for (const k of ["title", "text", "link", "button", "advertiser", "starts", "ends"]) fd.append(k, f[k].value);
+    if (f.image.files[0]) fd.append("image", f.image.files[0]);
+    try {
+      await api.post("/api/admin/feed-ads", fd);
+      toast("Реклама добавлена в ленту");
+      f.reset();
+      loadFeedAds();
+    } catch (ex) { toast(ex.message, { error: true }); }
+  };
+  loadFeedAds();
+}
+
+async function loadFeedAds() {
+  const box = $(".ad-list", view);
+  if (!box) return;
+  let list;
+  try { list = await api.get("/api/admin/feed-ads"); } catch (ex) { box.innerHTML = `<p class="error-text">${esc(ex.message)}</p>`; return; }
+  if (!list.length) { box.innerHTML = '<p class="muted">Рекламы пока нет.</p>'; return; }
+  const day = (iso) => (iso ? new Date(iso).toLocaleDateString("ru-RU") : "");
+  box.innerHTML = list.map((a) => `<div class="bc-item" data-id="${a.id}">
+      ${a.image_url ? `<img src="${esc(a.image_url)}" alt="">` : ""}
+      <div class="bc-body">
+        <b>${esc(a.title)}</b> ${a.active ? '<span class="tag ok">показывается</span>' : '<span class="tag">выключена</span>'}
+        <p class="muted small">${[a.advertiser ? esc(a.advertiser) : "", a.starts_at || a.ends_at ? `${day(a.starts_at) || "сейчас"} — ${day(a.ends_at) || "без срока"}` : "без срока",
+          a.link ? `<a href="${esc(a.link)}" target="_blank" rel="noopener">${esc(a.link)}</a>` : "без ссылки"].filter(Boolean).join(" · ")}</p>
+        <div class="kpis small-kpis">
+          <div><b>${a.views}</b><span>Показов</span></div>
+          <div><b>${a.clicks}</b><span>Переходов</span></div>
+          <div><b>${a.views ? ((100 * a.clicks) / a.views).toFixed(1) : "0"}%</b><span>CTR</span></div>
+        </div>
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          <button class="btn quiet" data-toggle>${a.active ? "Выключить" : "Включить"}</button>
+          <button class="btn danger" data-del>Удалить</button>
+        </div>
+      </div></div>`).join("");
+  $$(".bc-item", box).forEach((el) => {
+    const a = list.find((x) => x.id === Number(el.dataset.id));
+    $("[data-toggle]", el).onclick = async () => {
+      try { await api.post(`/api/admin/feed-ads/${a.id}/active`, { active: !a.active }); loadFeedAds(); } catch (ex) { toast(ex.message, { error: true }); }
+    };
+    $("[data-del]", el).onclick = async () => {
+      if (!(await confirmDialog(`Удалить рекламу «${a.title}»? Статистика показов тоже удалится.`, "Удалить"))) return;
+      try { await api.del(`/api/admin/feed-ads/${a.id}`); loadFeedAds(); } catch (ex) { toast(ex.message, { error: true }); }
+    };
+  });
+}

@@ -17,7 +17,7 @@ from ..interests import compatible, match_score
 from ..legal import TERMS_VERSION
 from ..models import Conversation, Message, Notification, Swipe, User, utcnow
 from ..realtime import notify
-from ..serializers import photo_url, public_card
+from ..serializers import media_url, photo_url, public_card
 
 router = APIRouter(prefix="/api/feed", tags=["feed"])
 notifications_router = APIRouter(prefix="/api/notifications", tags=["notifications"])
@@ -135,7 +135,52 @@ def get_feed(limit: int = 10, user: User = Depends(current_user), db: Session = 
             card = public_card(people[oid], sc, c, d)
             card["liked_before"] = oid in liked_before
             cards.append(card)
-    return {"total": len(scored), "skipped": skipped, "cards": cards}
+    return {"total": len(scored), "skipped": skipped, "cards": cards, "ads": _feed_ads(db, user), "ad_every": AD_EVERY}
+
+
+AD_EVERY = 5  # рекламная карточка после каждых 5 анкет (пока людей мало)
+
+
+def _ad_out(a) -> dict:
+    return {"id": a.id, "title": a.title, "text": a.text, "image_url": media_url(a.image_path) if a.image_path else None,
+            "link": a.link, "button": a.button or "Подробнее", "advertiser": a.advertiser}
+
+
+def _feed_ads(db: Session, user: User) -> list[dict]:
+    """Действующие рекламные карточки — только взрослым (лента знакомств) и не в демо-версии."""
+    import random
+
+    from ..models import FeedAd, utcnow
+
+    if user.age_group != "adult" or user.is_demo or user.is_bot:
+        return []
+    now = utcnow()
+    rows = [a for a in db.scalars(select(FeedAd).where(FeedAd.active.is_(True)))
+            if (a.starts_at is None or a.starts_at <= now) and (a.ends_at is None or a.ends_at > now)]
+    random.shuffle(rows)  # несколько кампаний — показываются по очереди в случайном порядке
+    return [_ad_out(a) for a in rows]
+
+
+@router.post("/ads/{ad_id}/{event}")
+def ad_event(ad_id: int, event: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Показ (view) или переход (click) по рекламной карточке — для отчёта рекламодателю."""
+    from ..models import FeedAd
+    from ..ratelimit import hit
+
+    if event not in ("view", "click"):
+        raise HTTPException(404)
+    if user.age_group != "adult":
+        return {"status": "ok"}
+    hit(f"ad:{user.id}", 300, 3600)
+    ad = db.get(FeedAd, ad_id)
+    if not ad:
+        raise HTTPException(404, "Реклама не найдена")
+    if event == "view":
+        ad.views = (ad.views or 0) + 1
+    else:
+        ad.clicks = (ad.clicks or 0) + 1
+    db.commit()
+    return {"status": "ok"}
 
 
 def _second_round(db: Session, user: User) -> list[Swipe]:

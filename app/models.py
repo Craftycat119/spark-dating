@@ -403,3 +403,23 @@ class AccountDeletion(Base):
     age_group: Mapped[str] = mapped_column(String(8), default="")  # adult | teen
     provider: Mapped[str] = mapped_column(String(16), default="")  # email | telegram
     by: Mapped[str] = mapped_column(String(8), default="self")  # self — сам, admin — администрация
+
+
+class FeedAd(Base):
+    """Рекламная карточка в ленте знакомств: только взрослым, одна после каждых N анкет."""
+
+    __tablename__ = "feed_ads"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(120))
+    text: Mapped[str] = mapped_column(Text, default="")
+    image_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    link: Mapped[str] = mapped_column(String(500), default="")
+    button: Mapped[str] = mapped_column(String(40), default="Подробнее")
+    advertiser: Mapped[str] = mapped_column(String(300), default="")  # маркировка: рекламодатель, erid
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    views: Mapped[int] = mapped_column(Integer, default=0)
+    clicks: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

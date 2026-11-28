@@ -653,3 +653,35 @@ def test_ads_audience_question_goes_to_manager():
     assert ads_answer("Какая аудитория?", None) == ADS_MANAGER_WILL_ANSWER
     assert ads_answer("Сколько стоит?", None) == ADS_MANAGER_WILL_ANSWER  # цену называет менеджер
     assert ads_answer("Какой у вас прайс?", None) == ADS_MANAGER_WILL_ANSWER
+
+
+
+def test_feed_ads_only_for_adults_with_stats():
+    from conftest import jpeg_bytes
+
+    boss = make_user("boss@example.com", name="Андрей")
+    adult = make_user("fa1@x.io", name="Взрослый", gender="male", looking_for="female")
+    make_user("fa2@x.io", name="Анкета", gender="female", looking_for="male")
+    teen = make_user("fa3@x.io", name="Подросток", age=15, goals=("Дружба",), looking_for="any")
+    r = boss.post("/api/admin/feed-ads", data={"title": "Кофейня «Зерно»", "text": "Скидка 20%", "link": "https://example.com",
+                                                "button": "Забрать скидку", "advertiser": "ООО Зерно, erid: abc"},
+                  files={"image": ("a.jpg", jpeg_bytes(), "image/jpeg")})
+    assert r.status_code == 200
+    ad = r.json()
+    feed = adult.get("/api/feed").json()
+    assert feed["ad_every"] == 5 and [a["title"] for a in feed["ads"]] == ["Кофейня «Зерно»"]
+    assert feed["ads"][0]["image_url"] and adult.get(feed["ads"][0]["image_url"]).status_code == 200
+    assert teen.get("/api/feed").json()["ads"] == []  # подросткам — никогда
+    adult.post(f"/api/feed/ads/{ad['id']}/view")
+    adult.post(f"/api/feed/ads/{ad['id']}/view")
+    adult.post(f"/api/feed/ads/{ad['id']}/click")
+    teen.post(f"/api/feed/ads/{ad['id']}/view")  # от подростка не считается
+    row = boss.get("/api/admin/feed-ads").json()[0]
+    assert (row["views"], row["clicks"]) == (2, 1)
+    boss.post(f"/api/admin/feed-ads/{ad['id']}/active", json={"active": False})
+    assert adult.get("/api/feed").json()["ads"] == []
+    # сроки: закончилась — не показываем
+    boss.post("/api/admin/feed-ads", data={"title": "Старая", "ends": "2020-01-01"})
+    assert adult.get("/api/feed").json()["ads"] == []
+    assert boss.post("/api/admin/feed-ads", data={"title": "x", "link": "javascript:alert(1)"}).status_code == 422
+    assert boss.delete(f"/api/admin/feed-ads/{ad['id']}").json()["status"] == "ok"

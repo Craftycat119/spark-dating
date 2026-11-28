@@ -828,3 +828,83 @@ def delete_animal(post_id: int, _: User = Depends(admin_user), db: Session = Dep
     db.delete(p)
     db.commit()
     return {"status": "deleted"}
+
+
+
+# ---------- Реклама в ленте ----------
+
+def _feed_ad_out(a) -> dict:
+    from .feed import _ad_out
+
+    return {**_ad_out(a), "active": a.active, "views": a.views or 0, "clicks": a.clicks or 0,
+            "starts_at": _iso(a.starts_at), "ends_at": _iso(a.ends_at), "created_at": _iso(a.created_at)}
+
+
+def _check_link(link: str) -> str:
+    link = link.strip()
+    if link and not link.lower().startswith(("https://", "http://", "tg://")):
+        raise HTTPException(422, "Ссылка должна начинаться с https:// (или http://, tg://)")
+    return link
+
+
+def _date(value: str):
+    from datetime import datetime as _dt
+
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        return _dt.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(422, "Дата в формате ГГГГ-ММ-ДД") from exc
+
+
+@router.get("/feed-ads")
+def feed_ads(_: User = Depends(admin_user), db: Session = Depends(get_db)):
+    from ..models import FeedAd
+
+    return [_feed_ad_out(a) for a in db.scalars(select(FeedAd).order_by(FeedAd.id.desc()))]
+
+
+@router.post("/feed-ads")
+def feed_ad_create(title: str = Form(..., min_length=1, max_length=120), text: str = Form("", max_length=600),
+                   link: str = Form("", max_length=500), button: str = Form("Подробнее", max_length=40),
+                   advertiser: str = Form("", max_length=300), starts: str = Form(""), ends: str = Form(""),
+                   image: UploadFile | None = File(None), _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    from ..models import FeedAd
+
+    rel = storage.save_image(storage.read_limited(image, settings.max_image_mb), "ads") if image is not None and image.filename else None
+    ad = FeedAd(title=title.strip(), text=text.strip(), link=_check_link(link), button=button.strip() or "Подробнее",
+                advertiser=advertiser.strip(), image_path=rel, starts_at=_date(starts), ends_at=_date(ends))
+    db.add(ad)
+    db.commit()
+    return _feed_ad_out(ad)
+
+
+class FeedAdActive(BaseModel):
+    active: bool
+
+
+@router.post("/feed-ads/{ad_id}/active")
+def feed_ad_active(ad_id: int, data: FeedAdActive, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    from ..models import FeedAd
+
+    ad = db.get(FeedAd, ad_id)
+    if not ad:
+        raise HTTPException(404, "Реклама не найдена")
+    ad.active = data.active
+    db.commit()
+    return _feed_ad_out(ad)
+
+
+@router.delete("/feed-ads/{ad_id}")
+def feed_ad_delete(ad_id: int, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    from ..models import FeedAd
+
+    ad = db.get(FeedAd, ad_id)
+    if not ad:
+        raise HTTPException(404, "Реклама не найдена")
+    storage.delete_file(ad.image_path)
+    db.delete(ad)
+    db.commit()
+    return {"status": "ok"}

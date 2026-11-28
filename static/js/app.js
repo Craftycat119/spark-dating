@@ -1426,11 +1426,15 @@ async function renderFeed() {
   };
 
   let skipped = 0, restarting = false;
+  // реклама в ленте знакомств (сервер присылает её только взрослым): одна карточка после каждых adEvery анкет
+  let ads = [], adEvery = 5, adIdx = 0, sinceAd = 0, adShown = null;
+  const adViewed = new Set();
   async function load() {
     if (loading) return;
     loading = true;
     try {
       const res = await api.get("/api/feed?limit=10");
+      if (Array.isArray(res.ads)) { ads = res.ads; adEvery = res.ad_every || 5; }
       total = seen + res.total;
       skipped = res.skipped || 0;
       const known = new Set(cards.map((c) => c.id));
@@ -1445,8 +1449,42 @@ async function renderFeed() {
     } finally { loading = false; }
   }
 
+  function drawAd() {
+    const ad = ads[adIdx % ads.length];
+    adShown = ad;
+    thread = null;
+    btns.hidden = false;
+    hint.hidden = true;
+    $(".undo-wrap", btns).hidden = true;
+    $(".like", btns).closest(".bw").hidden = true;
+    counter.textContent = "";
+    deck.replaceChildren(h(`<div>
+      <article class="ad-card enter">
+        <span class="ad-label">Реклама${ad.advertiser ? ` · ${esc(ad.advertiser)}` : ""}</span>
+        ${ad.image_url ? `<img src="${esc(ad.image_url)}" alt="">` : ""}
+        <h2>${esc(ad.title)}</h2>
+        ${ad.text ? `<p>${esc(ad.text)}</p>` : ""}
+        ${ad.link ? `<button class="btn block" data-ad-go>${esc(ad.button || "Подробнее")}</button>` : ""}
+      </article></div>`));
+    if (!adViewed.has(ad.id)) { adViewed.add(ad.id); api.post(`/api/feed/ads/${ad.id}/view`).catch(() => {}); }
+    $("[data-ad-go]", deck)?.addEventListener("click", () => {
+      api.post(`/api/feed/ads/${ad.id}/click`).catch(() => {});
+      try { tgApp().openLink(ad.link, { try_instant_view: false }); } catch { window.open(ad.link, "_blank", "noopener"); }
+    });
+  }
+  /** «Дальше» на рекламе — к следующей анкете. */
+  function closeAd() {
+    adShown = null;
+    sinceAd = 0;
+    adIdx++;
+    $(".undo-wrap", btns).hidden = false;
+    $(".like", btns).closest(".bw").hidden = false;
+    draw();
+  }
+
   function draw() {
     const c = cards[0];
+    if (c && ads.length && sinceAd >= adEvery) return drawAd();
     if (!c) {
       thread = null;
       if (skipped && !restarting) {
@@ -1498,6 +1536,7 @@ async function renderFeed() {
     if (res.match) showMatch({ conversation_id: res.conversation_id, user: res.user, common: res.user.common });
     cards.shift();
     seen++;
+    sinceAd++;
     if (!res.match) history.push({ id: c.id, like });
     if (history.length > 20) history.shift();
     busy = false;
@@ -1525,7 +1564,7 @@ async function renderFeed() {
   }
   undoBtn().onclick = undo;
 
-  $(".skip", btns).onclick = () => decide(false);
+  $(".skip", btns).onclick = () => (adShown ? closeAd() : decide(false));
   $(".like", btns).onclick = () => decide(true);
 
   // Свайп по нитке с интересами: вниз — нравится, вверх — дальше.

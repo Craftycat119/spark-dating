@@ -213,7 +213,7 @@ def media(rel: str, user: User = Depends(current_user), db: Session = Depends(ge
     if not path:
         raise HTTPException(404)
     parts = rel.split("/")
-    if parts[0] in ("photos", "gallery", "animals"):
+    if parts[0] in ("photos", "gallery", "animals", "ads"):
         pass
     elif parts[0] == "selfies":
         if not user.is_admin and user.selfie_path != rel:
