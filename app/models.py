@@ -360,6 +360,16 @@ class TelegramContact(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 
+class TelegramChatLang(Base):
+    """На каком языке писать человеку в Telegram: по language_code из его сообщений боту (ru / uk / en)."""
+
+    __tablename__ = "telegram_chat_langs"
+
+    chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    lang: Mapped[str] = mapped_column(String(8), default="ru")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
 class AppFlag(Base):
     """Одноразовые служебные отметки, например «готовое объявление о питомце уже добавлено»."""
 

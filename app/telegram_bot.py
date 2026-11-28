@@ -37,6 +37,9 @@ _stop = threading.Event()
 
 
 def api(method: str, payload: dict | None = None, timeout: float = 15) -> dict:
+    from .bot_i18n import localize
+
+    payload = localize(method, payload)  # на языке Telegram человека: украинский, русский или английский
     req = urllib.request.Request(
         f"{settings.telegram_api_url}/bot{settings.telegram_bot_token}/{method}",
         data=json.dumps(payload or {}).encode(), headers={"Content-Type": "application/json"},
@@ -171,6 +174,8 @@ def _reachable(url: str) -> bool:
 
 def setup_profile() -> None:
     """Команды и описание бота, чтобы не настраивать их вручную в @BotFather."""
+    from . import bot_i18n
+
     for method, payload in [
         ("setMyCommands", {"commands": [
             {"command": "start", "description": "Как войти на сайт"},
@@ -178,6 +183,11 @@ def setup_profile() -> None:
         ]}),
         ("setMyDescription", {"description": DESCRIPTION}),
         ("setMyShortDescription", {"short_description": SHORT_DESCRIPTION}),
+        # то же для украинского и английского Telegram (остальные языки видят русский вариант по умолчанию)
+        *[(m, {**p, "language_code": code}) for code in ("uk", "en") for m, p in (
+            ("setMyCommands", {"commands": bot_i18n.COMMANDS[code]}),
+            ("setMyDescription", {"description": bot_i18n.DESCRIPTION[code]}),
+            ("setMyShortDescription", {"short_description": bot_i18n.SHORT_DESCRIPTION[code]}))],
     ]:
         try:
             api(method, payload)
@@ -279,6 +289,9 @@ def handle_update(upd: dict) -> list[tuple[str, dict]]:
     if msg := upd.get("message"):
         chat_id = msg["chat"]["id"]
         if msg.get("chat", {}).get("type", "private") == "private":
+            from .bot_i18n import remember
+
+            remember(chat_id, (msg.get("from") or {}).get("language_code"))  # отвечаем на языке Telegram человека
             remember_contact((msg.get("from") or {}).get("username"), chat_id)
             from . import broadcasts
             from .push import _in_background
@@ -319,6 +332,10 @@ def handle_update(upd: dict) -> list[tuple[str, dict]]:
     elif cb := upd.get("callback_query"):
         action, _, token = (cb.get("data") or "").partition(":")
         frm = cb.get("from") or {}
+        if (cb.get("message") or {}).get("chat", {}).get("type", "private") == "private":
+            from .bot_i18n import remember
+
+            remember((cb.get("message") or {}).get("chat", {}).get("id") or frm.get("id"), frm.get("language_code"))
         if action in ("lnk", "lnkno"):  # подключение уведомлений: подтвердили или отменили
             if action == "lnk":
                 reply = _link_account(token, frm)
