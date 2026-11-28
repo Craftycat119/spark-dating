@@ -86,13 +86,13 @@ cd spark-dating
 **Вариант Б: архивом с вашего компьютера.** В PowerShell на своём компьютере (не на сервере):
 
 ```powershell
-scp C:\Users\Алёна\Downloads\cofi.zip root@IP-сервера:/root/
+scp C:\Users\Алёна\Downloads\cofi-server.zip root@IP-сервера:/root/
 ```
 
 И на сервере:
 
 ```bash
-apt-get update && apt-get install -y unzip && unzip cofi.zip && cd cofi
+apt-get update && apt-get install -y unzip && unzip cofi-server.zip && cd cofi-server
 ```
 
 ## Шаг 5. Запустить установку
