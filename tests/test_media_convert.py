@@ -88,3 +88,35 @@ def test_circle_ok_detects_full_range():
     assert not storage.circle_ok("chat/999/c3.mp4")  # «полный» диапазон — перекодировать
     storage.to_playable("chat/999/c3.mp4", "circle")
     assert storage.circle_ok("chat/999/c3.mp4")
+
+
+def test_quiet_android_voice_becomes_audible_and_plays_everywhere(tmp_path):
+    """Тихое голосовое с Android (webm/Opus) → M4A (AAC) и громче; полная тишина в шипение не превращается."""
+    import re
+    import shutil
+    import subprocess
+
+    import pytest
+
+    from app import storage
+    from app.config import settings
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("нет ffmpeg")
+
+    def peak(p):
+        err = subprocess.run(["ffmpeg", "-i", str(p), "-af", "volumedetect", "-vn", "-f", "null", "-"], capture_output=True, text=True).stderr
+        return float(re.search(r"max_volume: (-?[\d.]+) dB", err).group(1))
+
+    folder = settings.media_dir / "chat" / "777"
+    folder.mkdir(parents=True, exist_ok=True)
+    src = folder / "quiet.webm"
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=f=300:sample_rate=48000,volume=0.03", "-t", "2",
+                    "-ac", "1", "-c:a", "libopus", str(src)], check=True)
+    before = peak(src)
+    rel = storage.to_playable("chat/777/quiet.webm", "voice")
+    out = settings.media_dir / rel
+    assert rel.endswith(".m4a") and not src.exists()
+    assert subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_name", "-of", "csv=p=0", str(out)],
+                          capture_output=True, text=True).stdout.strip() == "aac"
+    assert peak(out) > before + 15  # было еле слышно — стало нормально

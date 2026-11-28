@@ -25,11 +25,21 @@ export async function getCamera(facing = "user") {
   return s;
 }
 
-/** Микрофон для голосовых и кружков. */
+/** Микрофон для голосовых и кружков.
+ *  Эхоподавление выключено: на Android оно переводит телефон в «режим звонка» — запись в Telegram местами
+ *  выходит тишиной, а своё голосовое или кружок потом играют еле слышно в разговорный динамик.
+ *  Голосовым оно не нужно: во время записи ничего не играет. Шумоподавление и автогромкость оставляем. */
 export async function getMic() {
   clearTimeout(timers.audio);
   if (alive(live.audio)) return live.audio;
-  live.audio = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  try {
+    live.audio = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+    });
+  } catch (ex) {
+    if (ex?.name === "NotAllowedError" || ex?.name === "SecurityError") throw ex;
+    live.audio = await navigator.mediaDevices.getUserMedia({ audio: true }); // старый телефон не понял настройки
+  }
   return live.audio;
 }
 

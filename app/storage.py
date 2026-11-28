@@ -19,6 +19,7 @@ VIDEO_EXT = {
     "video/quicktime": ".mov",
     "video/x-m4v": ".mp4",
     "video/3gpp": ".mp4",
+    "video/x-matroska": ".mkv",  # Chrome на части Android пишет так, если выбран кодек H.264
 }
 # Телефон иногда не указывает тип файла (пусто или application/octet-stream) — тогда смотрим на расширение
 EXT_TYPE = {".mov": "video/quicktime", ".mp4": "video/mp4", ".m4v": "video/x-m4v", ".webm": "video/webm", ".3gp": "video/3gpp",
@@ -37,7 +38,11 @@ AUDIO_EXT = {
     "audio/mpeg": ".mp3",
     "audio/wav": ".wav",
     "audio/x-m4a": ".m4a",
+    "audio/aac": ".aac",
+    "audio/3gpp": ".3gp",  # старые Android
+    "audio/amr": ".amr",
     "video/webm": ".webm",  # Chrome пишет голос как webm
+    "video/mp4": ".m4a",  # Chrome записал голос в mp4
 }
 
 
@@ -119,8 +124,10 @@ def to_playable(rel: str, kind: str) -> str:
     target_ext = ".m4a" if kind == "voice" else ".mp4"
     if kind == "circle":
         return _normalize_circle(ffmpeg, rel) if ffmpeg and src.exists() else rel
-    if ffmpeg and src.exists() and kind == "video" and src.suffix in (".mp4", ".mov", ".m4v", ".3gp"):
+    if ffmpeg and src.exists() and kind == "video" and src.suffix in (".mp4", ".mov", ".m4v", ".3gp", ".mkv"):
         return _compatible_video(ffmpeg, rel)
+    if kind == "voice" and ffmpeg and src.exists():
+        return _normalize_voice(ffmpeg, rel)
     # mp4/mov с телефонов iPhone и так играет; перекодируем только webm/ogg
     if not ffmpeg or not src.exists() or src.suffix not in (".webm", ".ogg"):
         return rel
@@ -143,6 +150,45 @@ def to_playable(rel: str, kind: str) -> str:
     return new_rel
 
 
+# Громкость голосовых и кружков — к одному уровню: микрофоны многих Android пишут очень тихо,
+# и сообщение кажется «без звука». Тихое поднимаем (не больше чем на 24 dB, чтобы тишина не стала шипением),
+# нормальное и громкое не трогаем.
+VOICE_PEAK_DB = -1.5
+VOICE_MAX_GAIN_DB = 24.0
+
+
+def _level_filter(ffmpeg: str, src: Path) -> str:
+    """Фильтр громкости для записи: насколько поднять, чтобы самый громкий момент был около −1,5 dB."""
+    try:
+        err = subprocess.run([ffmpeg, "-nostdin", "-i", str(src), "-vn", "-af", "volumedetect", "-f", "null", "-"],
+                             capture_output=True, text=True, timeout=60).stderr
+        peak = float(next(line.split("max_volume:")[1].split("dB")[0] for line in err.splitlines() if "max_volume:" in line))
+    except (subprocess.SubprocessError, OSError, StopIteration, ValueError):
+        return "anull"
+    gain = min(VOICE_MAX_GAIN_DB, VOICE_PEAK_DB - peak)
+    return f"volume={gain:.1f}dB,alimiter=limit=0.89" if gain > 1 else "anull"
+
+
+def _normalize_voice(ffmpeg: str, rel: str) -> str:
+    """Голосовое с любого телефона (webm/ogg/mp4/3gp/amr, Opus/AAC/AMR) → M4A (AAC), ровная громкость.
+    Проигрывается и на iPhone, и на старых Android."""
+    src = settings.media_dir / rel
+    new_rel = f"{rel.rsplit('.', 1)[0]}.m4a"
+    dst = settings.media_dir / f"{new_rel}.tmp.m4a"
+    try:
+        subprocess.run([ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(src), "-vn", "-map", "0:a:0",
+                        "-af", _level_filter(ffmpeg, src), "-c:a", "aac", "-b:a", "96k", "-ar", "44100", "-ac", "1", "-movflags", "+faststart",
+                        str(dst)], check=True, timeout=180, capture_output=True)
+    except (subprocess.SubprocessError, OSError) as exc:
+        log.warning("Не удалось подготовить голосовое %s: %s", rel, (getattr(exc, "stderr", None) or b"")[-300:] or exc)
+        dst.unlink(missing_ok=True)
+        return rel
+    dst.replace(settings.media_dir / new_rel)
+    if new_rel != rel:
+        src.unlink(missing_ok=True)
+    return new_rel
+
+
 def _normalize_circle(ffmpeg: str, rel: str) -> str:
     """Кружок из любого телефона — к одному виду, который показывается везде: H.264 Main, 480×480, ровно 30 кадров/с.
     Запись с камеры через canvas на iPhone даёт «плавающую» частоту кадров — на части айфонов такой ролик
@@ -156,7 +202,7 @@ def _normalize_circle(ffmpeg: str, rel: str) -> str:
              # аппаратный декодер iPhone иногда показывает чёрным при живом звуке. Приводим к обычному видео-диапазону
              "-vf", "scale=480:480:force_original_aspect_ratio=increase:out_range=tv,crop=480:480,fps=30,format=yuv420p",
              "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
-             "-c:a", "aac", "-b:a", "96k", "-ar", "44100", "-movflags", "+faststart"]
+             "-af", _level_filter(ffmpeg, src), "-c:a", "aac", "-b:a", "96k", "-ar", "44100", "-movflags", "+faststart"]
     try:
         subprocess.run([ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(src), *codec, str(dst)],
                        check=True, timeout=180, capture_output=True)
