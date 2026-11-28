@@ -663,21 +663,24 @@ def test_feed_ads_only_for_adults_with_stats():
     adult = make_user("fa1@x.io", name="Взрослый", gender="male", looking_for="female")
     make_user("fa2@x.io", name="Анкета", gender="female", looking_for="male")
     teen = make_user("fa3@x.io", name="Подросток", age=15, goals=("Дружба",), looking_for="any")
-    r = boss.post("/api/admin/feed-ads", data={"title": "Кофейня «Зерно»", "text": "Скидка 20%", "link": "https://example.com",
+    r = boss.post("/api/admin/feed-ads", data={"title": "Кофейня «Зерно»", "text": "Скидка 20%", "details": "Адрес: ул. Морская, 5\nРаботаем с 8 до 22",
+                                                "link": "https://example.com",
                                                 "button": "Забрать скидку", "advertiser": "ООО Зерно, erid: abc"},
                   files={"image": ("a.jpg", jpeg_bytes(), "image/jpeg")})
     assert r.status_code == 200
     ad = r.json()
     feed = adult.get("/api/feed").json()
     assert feed["ad_every"] == 5 and [a["title"] for a in feed["ads"]] == ["Кофейня «Зерно»"]
+    assert feed["ads"][0]["details"].startswith("Адрес")
     assert feed["ads"][0]["image_url"] and adult.get(feed["ads"][0]["image_url"]).status_code == 200
     assert teen.get("/api/feed").json()["ads"] == []  # подросткам — никогда
     adult.post(f"/api/feed/ads/{ad['id']}/view")
     adult.post(f"/api/feed/ads/{ad['id']}/view")
+    adult.post(f"/api/feed/ads/{ad['id']}/open")
     adult.post(f"/api/feed/ads/{ad['id']}/click")
     teen.post(f"/api/feed/ads/{ad['id']}/view")  # от подростка не считается
     row = boss.get("/api/admin/feed-ads").json()[0]
-    assert (row["views"], row["clicks"]) == (2, 1)
+    assert (row["views"], row["opens"], row["clicks"]) == (2, 1, 1)
     boss.post(f"/api/admin/feed-ads/{ad['id']}/active", json={"active": False})
     assert adult.get("/api/feed").json()["ads"] == []
     # сроки: закончилась — не показываем

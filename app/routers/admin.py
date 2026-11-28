@@ -836,7 +836,7 @@ def delete_animal(post_id: int, _: User = Depends(admin_user), db: Session = Dep
 def _feed_ad_out(a) -> dict:
     from .feed import _ad_out
 
-    return {**_ad_out(a), "active": a.active, "views": a.views or 0, "clicks": a.clicks or 0,
+    return {**_ad_out(a), "active": a.active, "views": a.views or 0, "opens": a.opens or 0, "clicks": a.clicks or 0,
             "starts_at": _iso(a.starts_at), "ends_at": _iso(a.ends_at), "created_at": _iso(a.created_at)}
 
 
@@ -868,13 +868,13 @@ def feed_ads(_: User = Depends(admin_user), db: Session = Depends(get_db)):
 
 @router.post("/feed-ads")
 def feed_ad_create(title: str = Form(..., min_length=1, max_length=120), text: str = Form("", max_length=600),
-                   link: str = Form("", max_length=500), button: str = Form("Подробнее", max_length=40),
+                   details: str = Form("", max_length=4000), link: str = Form("", max_length=500), button: str = Form("Подробнее", max_length=40),
                    advertiser: str = Form("", max_length=300), starts: str = Form(""), ends: str = Form(""),
                    image: UploadFile | None = File(None), _: User = Depends(admin_user), db: Session = Depends(get_db)):
     from ..models import FeedAd
 
     rel = storage.save_image(storage.read_limited(image, settings.max_image_mb), "ads") if image is not None and image.filename else None
-    ad = FeedAd(title=title.strip(), text=text.strip(), link=_check_link(link), button=button.strip() or "Подробнее",
+    ad = FeedAd(title=title.strip(), text=text.strip(), details=details.strip(), link=_check_link(link), button=button.strip() or "Подробнее",
                 advertiser=advertiser.strip(), image_path=rel, starts_at=_date(starts), ends_at=_date(ends))
     db.add(ad)
     db.commit()

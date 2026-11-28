@@ -413,6 +413,7 @@ class FeedAd(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(120))
     text: Mapped[str] = mapped_column(Text, default="")
+    details: Mapped[str] = mapped_column(Text, default="")  # подробный текст: открывается по нажатию на карточку
     image_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
     link: Mapped[str] = mapped_column(String(500), default="")
     button: Mapped[str] = mapped_column(String(40), default="Подробнее")
@@ -422,4 +423,5 @@ class FeedAd(Base):
     ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     views: Mapped[int] = mapped_column(Integer, default=0)
     clicks: Mapped[int] = mapped_column(Integer, default=0)
+    opens: Mapped[int] = mapped_column(Integer, default=0)  # сколько раз раскрыли подробности
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

@@ -976,10 +976,11 @@ boot();
 // ---------- Реклама в ленте: карточка после каждых 5 анкет, только взрослым ----------
 async function feedads() {
   view.innerHTML = `<h1>Реклама в ленте</h1>
-    <p class="muted">Карточка показывается в ленте знакомств после каждых 5 анкет — только взрослым (18+). В ленту «Дружба» реклама не попадает. Несколько активных кампаний чередуются.</p>
+    <p class="muted">Карточка показывается в ленте знакомств после каждых 5 анкет — только взрослым (18+). В ленту «Дружба» реклама не попадает. Несколько активных кампаний идут по кругу: ни одна не повторяется, пока человек не увидел все. По нажатию карточка раскрывается на весь экран с подробным текстом.</p>
     <form class="stack" style="max-width:560px" data-ad-form>
       <label class="field"><span>Заголовок</span><input class="input" name="title" maxlength="120" required placeholder="Например: кофейня «Зерно» — скидка 20%"></label>
-      <label class="field"><span>Текст</span><textarea class="input" name="text" rows="4" maxlength="600"></textarea></label>
+      <label class="field"><span>Короткий текст (на карточке в ленте)</span><textarea class="input" name="text" rows="3" maxlength="600"></textarea></label>
+      <label class="field"><span>Подробный текст (открывается по нажатию на рекламу)</span><textarea class="input" name="details" rows="7" maxlength="4000" placeholder="Адрес, условия акции, меню, часы работы…"></textarea></label>
       <label class="field"><span>Картинка</span><input class="input" type="file" name="image" accept="image/*"></label>
       <div class="row" style="gap:8px;flex-wrap:wrap">
         <label class="field" style="flex:2;min-width:220px"><span>Ссылка</span><input class="input" name="link" maxlength="500" placeholder="https://…"></label>
@@ -999,7 +1000,7 @@ async function feedads() {
     e.preventDefault();
     const f = e.target;
     const fd = new FormData();
-    for (const k of ["title", "text", "link", "button", "advertiser", "starts", "ends"]) fd.append(k, f[k].value);
+    for (const k of ["title", "text", "details", "link", "button", "advertiser", "starts", "ends"]) fd.append(k, f[k].value);
     if (f.image.files[0]) fd.append("image", f.image.files[0]);
     try {
       await api.post("/api/admin/feed-ads", fd);
@@ -1026,6 +1027,7 @@ async function loadFeedAds() {
           a.link ? `<a href="${esc(a.link)}" target="_blank" rel="noopener">${esc(a.link)}</a>` : "без ссылки"].filter(Boolean).join(" · ")}</p>
         <div class="kpis small-kpis">
           <div><b>${a.views}</b><span>Показов</span></div>
+          <div><b>${a.opens}</b><span>Раскрытий</span></div>
           <div><b>${a.clicks}</b><span>Переходов</span></div>
           <div><b>${a.views ? ((100 * a.clicks) / a.views).toFixed(1) : "0"}%</b><span>CTR</span></div>
         </div>

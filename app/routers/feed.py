@@ -142,32 +142,30 @@ AD_EVERY = 5  # рекламная карточка после каждых 5 а
 
 
 def _ad_out(a) -> dict:
-    return {"id": a.id, "title": a.title, "text": a.text, "image_url": media_url(a.image_path) if a.image_path else None,
+    return {"id": a.id, "title": a.title, "text": a.text, "details": a.details or "", "image_url": media_url(a.image_path) if a.image_path else None,
             "link": a.link, "button": a.button or "Подробнее", "advertiser": a.advertiser}
 
 
 def _feed_ads(db: Session, user: User) -> list[dict]:
     """Действующие рекламные карточки — только взрослым (лента знакомств) и не в демо-версии."""
-    import random
-
     from ..models import FeedAd, utcnow
 
     if user.age_group != "adult" or user.is_demo or user.is_bot:
         return []
     now = utcnow()
-    rows = [a for a in db.scalars(select(FeedAd).where(FeedAd.active.is_(True)))
+    rows = [a for a in db.scalars(select(FeedAd).where(FeedAd.active.is_(True)).order_by(FeedAd.id))
             if (a.starts_at is None or a.starts_at <= now) and (a.ends_at is None or a.ends_at > now)]
-    random.shuffle(rows)  # несколько кампаний — показываются по очереди в случайном порядке
+    # порядок постоянный: клиент показывает кампании по кругу и не повторяет ни одну, пока не показал все
     return [_ad_out(a) for a in rows]
 
 
 @router.post("/ads/{ad_id}/{event}")
 def ad_event(ad_id: int, event: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    """Показ (view) или переход (click) по рекламной карточке — для отчёта рекламодателю."""
+    """Показ (view), раскрытие подробностей (open) или переход по ссылке (click) — для отчёта рекламодателю."""
     from ..models import FeedAd
     from ..ratelimit import hit
 
-    if event not in ("view", "click"):
+    if event not in ("view", "open", "click"):
         raise HTTPException(404)
     if user.age_group != "adult":
         return {"status": "ok"}
@@ -177,6 +175,8 @@ def ad_event(ad_id: int, event: str, user: User = Depends(current_user), db: Ses
         raise HTTPException(404, "Реклама не найдена")
     if event == "view":
         ad.views = (ad.views or 0) + 1
+    elif event == "open":
+        ad.opens = (ad.opens or 0) + 1
     else:
         ad.clicks = (ad.clicks or 0) + 1
     db.commit()

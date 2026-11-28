@@ -1386,6 +1386,60 @@ function plural(n, one, few, many) {
 
 const kmText = (km) => (km == null ? "" : km < 1 ? "меньше 1 км от вас" : `${Math.round(km)} км от вас`);
 
+// ---------- реклама в ленте ----------
+const AD_ROUND_KEY = "cofi.adRound";
+/** Следующая реклама по кругу: ни одна не повторяется, пока не показаны все; потом — второй круг.
+ *  Круг хранится в браузере, чтобы выход из ленты и возврат не начинали его заново. */
+function nextAd(list) {
+  let round = [];
+  try { round = JSON.parse(localStorage.getItem(AD_ROUND_KEY) || "[]"); } catch { round = []; }
+  if (!Array.isArray(round)) round = [];
+  const ids = new Set(list.map((a) => a.id));
+  round = round.filter((id) => ids.has(id)); // удалённые и выключенные кампании из круга выпадают
+  let left = list.filter((a) => !round.includes(a.id));
+  if (!left.length) {
+    // все показаны — новый круг; последнюю показанную не ставим первой, чтобы две одинаковые не шли подряд
+    const last = round[round.length - 1];
+    round = [];
+    left = list.length > 1 ? [...list.filter((a) => a.id !== last), ...list.filter((a) => a.id === last)] : list;
+  }
+  const ad = left[0];
+  round.push(ad.id);
+  try { localStorage.setItem(AD_ROUND_KEY, JSON.stringify(round)); } catch { /* приватный режим — круг живёт до перезагрузки */ }
+  return ad;
+}
+
+function goAd(ad) {
+  api.post(`/api/feed/ads/${ad.id}/click`).catch(() => {});
+  try { tgApp().openLink(ad.link, { try_instant_view: false }); } catch { window.open(ad.link, "_blank", "noopener"); }
+}
+
+/** Реклама целиком — на весь экран, как анкета: большая картинка, заголовок, подробный текст, кнопка. */
+function openAd(ad, { onNext } = {}) {
+  api.post(`/api/feed/ads/${ad.id}/open`).catch(() => {});
+  const text = [ad.text, ad.details].filter(Boolean).join("\n\n");
+  const el = h(`<section class="profile-view ad-view" role="dialog" aria-label="Реклама: ${esc(ad.title)}">
+    ${ad.image_url ? `<div class="gallery"><div class="track"><img src="${esc(ad.image_url)}" alt=""></div></div>` : '<div class="ad-view-top"></div>'}
+    <button class="icon-btn close" aria-label="Закрыть">${icons.back}</button>
+    <div class="profile-body">
+      <span class="ad-label">Реклама${ad.advertiser ? ` · ${esc(ad.advertiser)}` : ""}</span>
+      <h1 class="ad-title">${esc(ad.title)}</h1>
+      ${text ? `<p class="ad-details">${esc(text)}</p>` : ""}
+    </div>
+    <div class="profile-actions">
+      ${ad.link ? `<button class="btn block" data-ad-go>${esc(ad.button || "Подробнее")}</button>` : ""}
+      ${onNext ? '<button class="btn ghost block" data-ad-next>Дальше — к анкетам</button>' : ""}
+    </div>
+  </section>`);
+  const close = () => { el.remove(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e) => e.key === "Escape" && close();
+  $(".close", el).onclick = close;
+  $("[data-ad-go]", el)?.addEventListener("click", () => goAd(ad));
+  $("[data-ad-next]", el)?.addEventListener("click", () => { close(); onNext(); });
+  document.addEventListener("keydown", onKey);
+  document.body.append(el);
+}
+
 async function renderFeed() {
   const root = screen(`
     <div class="topbar"><span class="row" style="gap:8px"><span class="logo">cofi<span>°</span></span>${state.me.is_demo ? '<span class="demo-pill">демо</span>' : ""}</span>
@@ -1427,7 +1481,7 @@ async function renderFeed() {
 
   let skipped = 0, restarting = false;
   // реклама в ленте знакомств (сервер присылает её только взрослым): одна карточка после каждых adEvery анкет
-  let ads = [], adEvery = 5, adIdx = 0, sinceAd = 0, adShown = null;
+  let ads = [], adEvery = 5, sinceAd = 0, adShown = null;
   const adViewed = new Set();
   async function load() {
     if (loading) return;
@@ -1450,7 +1504,7 @@ async function renderFeed() {
   }
 
   function drawAd() {
-    const ad = ads[adIdx % ads.length];
+    const ad = adShown || nextAd(ads);
     adShown = ad;
     thread = null;
     btns.hidden = false;
@@ -1458,25 +1512,25 @@ async function renderFeed() {
     $(".undo-wrap", btns).hidden = true;
     $(".like", btns).closest(".bw").hidden = true;
     counter.textContent = "";
+    // карточка компактная и целиком помещается над кнопками; всё остальное — по нажатию, на весь экран
     deck.replaceChildren(h(`<div>
-      <article class="ad-card enter">
+      <article class="ad-card enter" role="button" tabindex="0" aria-label="Открыть рекламу подробно">
         <span class="ad-label">Реклама${ad.advertiser ? ` · ${esc(ad.advertiser)}` : ""}</span>
         ${ad.image_url ? `<img src="${esc(ad.image_url)}" alt="">` : ""}
         <h2>${esc(ad.title)}</h2>
-        ${ad.text ? `<p>${esc(ad.text)}</p>` : ""}
-        ${ad.link ? `<button class="btn block" data-ad-go>${esc(ad.button || "Подробнее")}</button>` : ""}
+        ${ad.text ? `<p class="ad-short">${esc(ad.text)}</p>` : ""}
+        <span class="ad-more">Нажмите, чтобы узнать подробнее</span>
       </article></div>`));
     if (!adViewed.has(ad.id)) { adViewed.add(ad.id); api.post(`/api/feed/ads/${ad.id}/view`).catch(() => {}); }
-    $("[data-ad-go]", deck)?.addEventListener("click", () => {
-      api.post(`/api/feed/ads/${ad.id}/click`).catch(() => {});
-      try { tgApp().openLink(ad.link, { try_instant_view: false }); } catch { window.open(ad.link, "_blank", "noopener"); }
-    });
+    const card = $(".ad-card", deck);
+    card.onclick = () => openAd(ad, { onNext: closeAd });
+    card.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openAd(ad, { onNext: closeAd }); } };
   }
   /** «Дальше» на рекламе — к следующей анкете. */
   function closeAd() {
+    if (!adShown) return;
     adShown = null;
     sinceAd = 0;
-    adIdx++;
     $(".undo-wrap", btns).hidden = false;
     $(".like", btns).closest(".bw").hidden = false;
     draw();
@@ -1484,7 +1538,7 @@ async function renderFeed() {
 
   function draw() {
     const c = cards[0];
-    if (c && ads.length && sinceAd >= adEvery) return drawAd();
+    if (adShown || (c && ads.length && sinceAd >= adEvery)) return drawAd(); // перерисовка во время рекламы — та же реклама
     if (!c) {
       thread = null;
       if (skipped && !restarting) {
