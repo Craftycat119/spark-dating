@@ -1,8 +1,8 @@
-fastapi>=0.115
+fastapi>=0.115.6
 uvicorn[standard]>=0.30
 sqlalchemy>=2.0.30
 pydantic>=2.7
-python-multipart>=0.0.9
+python-multipart>=0.0.18
 bcrypt>=4.1
 pillow>=10.3
 numpy>=1.26
