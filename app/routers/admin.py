@@ -426,8 +426,19 @@ def conversations(user_id: int | None = None, page: int = 1, _: User = Depends(a
     return [_conv_row(db, c) for c in rows]
 
 
+CHATS_HIDDEN = "Просмотр переписок в админ-панели отключён"
+
+
+@router.get("/privacy")
+def privacy(_: User = Depends(admin_user)):
+    """Что администрации сейчас разрешено видеть."""
+    return {"read_chats": settings.admin_read_chats}
+
+
 @router.get("/conversations/{conv_id}")
 def conversation_messages(conv_id: int, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    if not settings.admin_read_chats:
+        raise HTTPException(403, CHATS_HIDDEN)
     c = db.get(Conversation, conv_id)
     if not c:
         raise HTTPException(404, "Чат не найден")

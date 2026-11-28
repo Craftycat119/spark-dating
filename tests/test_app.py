@@ -166,8 +166,19 @@ def test_admin_panel():
     assert detail["registration_ip"] and detail["created_at"] and detail["registration_lat"] == 55.75
     assert detail["conversations"][0]["id"] == conv_id
 
-    msgs = boss.get(f"/api/admin/conversations/{conv_id}").json()["items"]
-    assert msgs[0]["text"] == "секрет"
+    # просмотр переписок администрацией по умолчанию выключен: виден только факт пары
+    r = boss.get(f"/api/admin/conversations/{conv_id}")
+    assert r.status_code == 403 and "секрет" not in r.text
+    assert boss.get("/api/admin/privacy").json() == {"read_chats": False}
+    assert boss.get("/api/admin/conversations").json()[0]["id"] == conv_id
+    from app.config import settings
+
+    settings.admin_read_chats = True  # включили в .env — снова видно
+    try:
+        msgs = boss.get(f"/api/admin/conversations/{conv_id}").json()["items"]
+        assert msgs[0]["text"] == "секрет"
+    finally:
+        settings.admin_read_chats = False
 
     assert boss.post(f"/api/admin/users/{b.user_id}/ban", json={"banned": True}).status_code == 200
     assert b.get("/api/auth/me").status_code == 401
@@ -222,3 +233,16 @@ def test_profile_details_and_messaging_only_after_match():
 
     conv = her.post("/api/feed/swipe", json={"user_id": me.user_id, "like": True}).json()["conversation_id"]
     assert me.get(f"/api/users/{her.user_id}").json()["conversation_id"] == conv
+
+
+def test_admin_cannot_open_chat_files_while_chat_reading_is_off():
+    from conftest import jpeg_bytes, make_user
+
+    boss = make_user("boss@example.com", name="Андрей")
+    a = make_user("fa@x.io", name="Аня", gender="female")
+    b = make_user("fb@x.io", name="Боря", gender="male")
+    b.post("/api/feed/swipe", json={"user_id": a.user_id, "like": True})
+    conv = a.post("/api/feed/swipe", json={"user_id": b.user_id, "like": True}).json()["conversation_id"]
+    url = a.post(f"/api/chats/{conv}/media", data={"kind": "image"}, files={"file": ("p.jpg", jpeg_bytes(), "image/jpeg")}).json()["media_url"]
+    assert b.get(url).status_code == 200  # собеседник видит
+    assert boss.get(url).status_code == 403  # администрация — нет

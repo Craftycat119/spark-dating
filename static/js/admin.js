@@ -457,8 +457,15 @@ function convRow(c) {
 }
 
 // ---------- Переписки ----------
+let readChats = null; // можно ли открывать переписки (настройка ADMIN_READ_CHATS на сервере)
+const chatsHiddenNote = `<div class="notice">Просмотр переписок временно отключён: тексты, фото, голосовые и кружки администрации не видны.
+  Видно только, кто с кем в паре и сколько сообщений. Включить обратно: <code>ADMIN_READ_CHATS=1</code> в <code>/opt/cofi/.env</code>
+  и <code>sudo systemctl restart cofi</code>.</div>`;
+
 async function chats(arg) {
-  view.innerHTML = `<h1>Переписки</h1><div id="convs"><div class="spinner"></div></div>`;
+  view.innerHTML = `<h1>Переписки</h1><div data-note></div><div id="convs"><div class="spinner"></div></div>`;
+  if (readChats === null) readChats = (await api.get("/api/admin/privacy").catch(() => ({ read_chats: false }))).read_chats;
+  if (!readChats) $("[data-note]", view).innerHTML = chatsHiddenNote;
   const list = await api.get("/api/admin/conversations");
   $("#convs").innerHTML = list.map(convRow).join("") || '<p class="muted">Переписок пока нет.</p>';
   $$(".conv-row", view).forEach((r) => (r.onclick = () => openConversation(Number(r.dataset.id))));
@@ -466,7 +473,10 @@ async function chats(arg) {
 }
 
 async function openConversation(id) {
-  const c = await api.get(`/api/admin/conversations/${id}`);
+  let c;
+  try { c = await api.get(`/api/admin/conversations/${id}`); } catch (ex) {
+    return toast(ex.status === 403 ? "Просмотр переписок временно отключён" : ex.message, { error: true });
+  }
   const [a] = c.users;
   const names = Object.fromEntries(c.users.map((u) => [u.id, u.name]));
   const body = (m) => {

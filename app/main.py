@@ -227,7 +227,7 @@ def media(rel: str, user: User = Depends(current_user), db: Session = Depends(ge
         if not user.is_admin and user.selfie_path != rel:
             raise HTTPException(403)
     elif parts[0] == "chat" and len(parts) >= 3 and parts[1].isdigit():
-        if not user.is_admin:
+        if not (user.is_admin and settings.admin_read_chats):  # администрация видит файлы чатов, только если это включено
             conv = db.scalar(select(Conversation).where(Conversation.id == int(parts[1])))
             if not conv or not conv.has(user.id):
                 raise HTTPException(403)

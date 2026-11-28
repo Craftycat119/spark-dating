@@ -65,6 +65,10 @@ class Settings:
     data_dir: Path = Path(os.environ.get("DATA_DIR", BASE_DIR / "data"))
     database_url: str = os.environ.get("DATABASE_URL", "")
 
+    # Может ли администрация читать переписки пользователей (текст, фото, голосовые, кружки).
+    # Временно выключено. Включить обратно: ADMIN_READ_CHATS=1 в .env и перезапуск сервиса cofi
+    admin_read_chats: bool = _bool("ADMIN_READ_CHATS", False)
+
     cookie_secure: bool = _bool("COOKIE_SECURE", False)
     session_days: int = int(os.environ.get("SESSION_DAYS", "30"))
 
