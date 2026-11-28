@@ -103,7 +103,10 @@ def test_support_and_ads_threads():
     guest.post(f"/api/support/threads/{ad['id']}/messages", json={"text": "Какие форматы рекламы?"})
     guest.post(f"/api/support/threads/{ad['id']}/messages", json={"text": "Какая аудитория?"})
     msgs = guest.get(f"/api/support/threads/{ad['id']}").json()["messages"]
-    assert "тестовый период" in msgs[2]["text"] and "анкет" in msgs[4]["text"]
+    bot = [m["text"] for m in msgs if m["author"] == "bot"]
+    assert "реклама не" not in " ".join(bot).lower() and "плата не" not in " ".join(bot).lower()
+    assert sum("принята" in x for x in bot) == 1  # «заявка принята» — один раз, после первого сообщения
+    assert any("Форматы" in x for x in bot) and any("анкет" in x for x in bot)
     assert len(boss.get("/api/admin/support?topic=ads").json()) == 1
 
 

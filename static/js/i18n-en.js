@@ -16,6 +16,10 @@ const w = (x) => EN[x] ?? CITY_EN[x] ?? x;
 
 export const EN = {
   // ---- добавлено: опрос, ошибки, подсказки ----
+  "Разместить рекламу или предложить сотрудничество — напишите в этот чат или на craftycat119@mail.ru.": "To advertise or partner with us, write in this chat or to craftycat119@mail.ru.",
+  "Здравствуйте! Это раздел для рекламодателей и партнёров COFI. Расскажите о компании и задаче и оставьте контакт (телефон, почту или Telegram) — менеджер ответит в этом чате. Почта для рекламодателей: craftycat119@mail.ru.": "Hello! This is the section for COFI advertisers and partners. Tell us about your company and goal and leave a contact (phone, email or Telegram) — a manager will reply in this chat. Advertisers' email: craftycat119@mail.ru.",
+  "Форматы: 1) нативная карточка в ленте между анкетами, 2) баннер в списке чатов, 3) рассылка через Telegram-бота COFI, 4) спецпроекты с лентой «Питомцы». Менеджер подберёт подходящий под вашу задачу.": "Formats: 1) a native card in the feed between profiles, 2) a banner in the chat list, 3) a broadcast via the COFI Telegram bot, 4) special projects with the Pets feed. A manager will pick the right one for your goal.",
+  "Стоимость зависит от формата и срока размещения. Оставьте контакт и задачу — менеджер подготовит предложение.": "The price depends on the format and duration. Leave a contact and your goal — a manager will prepare an offer.",
   "Удалить это видео из анкеты? Вернуть его будет нельзя": "Delete this video from your profile? You can't undo this",
   "Удалить это фото из анкеты? Вернуть его будет нельзя": "Delete this photo from your profile? You can't undo this",
   "Отменить загрузку видео?": "Cancel the video upload?",
@@ -674,6 +678,7 @@ export const EN = {
 };
 
 export const PATTERNS = [
+  [/^Спасибо! Заявка №(\d+) принята\. Менеджер изучит её и свяжется с вами — ответ придёт в этот чат и на контакт, если вы его оставили\.$/, "Thanks! Request #$1 received. A manager will review it and get back to you — the reply will come to this chat and to your contact, if you left one."],
   [/^Пауза · (\d+)%\nНажмите, чтобы продолжить$/, "Paused · $1%\nTap to resume"],
   [/^(Видео|GIF) весит ([\d.]+) МБ, а можно до (\d+) МБ\. Обрежьте его в галерее телефона или снимите покороче$/, (_, w, a, b) => `${w === "GIF" ? "The GIF" : "The video"} is ${a} MB; the limit is ${b} MB. Trim it in your phone's gallery or record a shorter one`],
   [/^Видео длится (\d+) с — это дольше минуты\. Обрежьте его в галерее телефона до (\d+) секунд и выберите снова$/, "The video is $1 s — longer than a minute. Trim it to $2 seconds in your phone's gallery and choose it again"],
