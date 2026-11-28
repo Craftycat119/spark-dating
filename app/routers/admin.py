@@ -106,11 +106,44 @@ def stats(_: User = Depends(admin_user), db: Session = Depends(get_db)):
         "online": len(manager.connections),
         "matches": db.scalar(select(func.count(Conversation.id))) or 0,
         "messages": db.scalar(select(func.count(Message.id))) or 0,
+        "pairs": _pairs_stats(db),
         "top_interests": [{"name": k, "count": v} for k, v in top],
         "audience": _audience(db),
         "deletions": _deletions(db),
         "funnel": _funnel(db),
         "feed": _feed_visibility(db),
+    }
+
+
+def _pairs_stats(db: Session) -> dict:
+    """Пары — только цифры, без имён: сколько всего, сколько переписываются, сколько новых за период.
+    Считаем пары настоящих людей (без ботов и гостей демо)."""
+    from sqlalchemy.orm import aliased
+
+    ua, ub = aliased(User), aliased(User)
+    real = (select(Conversation.id, Conversation.active, Conversation.created_at)
+            .join(ua, ua.id == Conversation.user_a_id).join(ub, ub.id == Conversation.user_b_id)
+            .where(ua.is_bot.is_(False), ua.is_demo.is_(False), ub.is_bot.is_(False), ub.is_demo.is_(False)))
+    rows = db.execute(real).all()
+    ids = [r.id for r in rows]
+    talking, msgs = 0, 0
+    if ids:
+        per = dict(db.execute(select(Message.conversation_id, func.count(Message.id))
+                              .where(Message.conversation_id.in_(ids)).group_by(Message.conversation_id)).all())
+        talking = sum(1 for n in per.values() if n)
+        msgs = sum(per.values())
+    now = utcnow()
+    since = lambda days: sum(1 for r in rows if r.created_at and r.created_at >= now - timedelta(days=days))  # noqa: E731
+    total = len(rows)
+    return {
+        "total": total,
+        "active": sum(1 for r in rows if r.active),
+        "talking": talking,
+        "silent": total - talking,
+        "new_24h": since(1),
+        "new_7d": since(7),
+        "new_30d": since(30),
+        "avg_messages": round(msgs / talking, 1) if talking else 0,
     }
 
 
@@ -281,7 +314,8 @@ def user_detail(user_id: int, _: User = Depends(admin_user), db: Session = Depen
         "likes_given": db.scalar(select(func.count(Swipe.id)).where(Swipe.from_user_id == u.id, Swipe.liked.is_(True))) or 0,
         "likes_received": db.scalar(select(func.count(Swipe.id)).where(Swipe.to_user_id == u.id, Swipe.liked.is_(True))) or 0,
         "sessions": [{"ip": s.ip, "created_at": _iso(s.created_at)} for s in sessions],
-        "conversations": [_conv_row(db, c) for c in convs],
+        "pairs_count": len(convs),
+        "conversations": [_conv_row(db, c) for c in convs] if settings.admin_read_chats else [],
     }
 
 
@@ -415,8 +449,13 @@ def remove_user(user_id: int, admin: User = Depends(admin_user), db: Session = D
     return {"status": "deleted"}
 
 
+CHATS_HIDDEN = "Просмотр переписок в админ-панели отключён"
+
+
 @router.get("/conversations")
 def conversations(user_id: int | None = None, page: int = 1, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    if not settings.admin_read_chats:
+        raise HTTPException(403, CHATS_HIDDEN)
     q = select(Conversation)
     if user_id:
         q = q.where(or_(Conversation.user_a_id == user_id, Conversation.user_b_id == user_id))
@@ -424,9 +463,6 @@ def conversations(user_id: int | None = None, page: int = 1, _: User = Depends(a
         q.order_by(Conversation.last_message_at.desc().nulls_last(), Conversation.id.desc()).offset((max(page, 1) - 1) * 50).limit(50)
     ).unique().all()
     return [_conv_row(db, c) for c in rows]
-
-
-CHATS_HIDDEN = "Просмотр переписок в админ-панели отключён"
 
 
 @router.get("/privacy")

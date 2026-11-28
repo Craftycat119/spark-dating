@@ -164,13 +164,15 @@ def test_admin_panel():
     assert users["total"] == 1
     detail = boss.get(f"/api/admin/users/{a.user_id}").json()
     assert detail["registration_ip"] and detail["created_at"] and detail["registration_lat"] == 55.75
-    assert detail["conversations"][0]["id"] == conv_id
+    assert detail["pairs_count"] == 1 and detail["conversations"] == []  # с кем пара — не показываем
+    pairs = boss.get("/api/admin/stats").json()["pairs"]
+    assert pairs["total"] == 1 and pairs["talking"] == 1 and pairs["new_24h"] == 1 and "Аня" not in str(pairs)
 
     # просмотр переписок администрацией по умолчанию выключен: виден только факт пары
     r = boss.get(f"/api/admin/conversations/{conv_id}")
     assert r.status_code == 403 and "секрет" not in r.text
     assert boss.get("/api/admin/privacy").json() == {"read_chats": False}
-    assert boss.get("/api/admin/conversations").json()[0]["id"] == conv_id
+    assert boss.get("/api/admin/conversations").status_code == 403  # и списка пар с именами нет
     from app.config import settings
 
     settings.admin_read_chats = True  # включили в .env — снова видно
@@ -188,7 +190,7 @@ def test_admin_panel():
 
     assert boss.delete(f"/api/admin/users/{a.user_id}").status_code == 200
     assert boss.get(f"/api/admin/users/{a.user_id}").status_code == 404
-    assert boss.get("/api/admin/conversations").json() == []
+    assert boss.get("/api/admin/stats").json()["pairs"]["total"] == 0
 
 
 def test_delete_own_account():

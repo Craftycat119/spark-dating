@@ -10,6 +10,7 @@ const usersState = { q: "", interest: "", kind: "people", step: "", age: "", pag
 const STEP_LABELS = { email: "Подтверждение почты", about: "Имя, дата рождения, согласия", identity: "Пол и кого ищет", extras: "Рост, вес, знак",
   survey: "Интересы", photo: "Фото", scan: "Проверка лица", location: "Геопозиция", done: "Регистрация завершена" };
 let catalog = [];
+let readChats = false; // можно ли видеть переписки (ADMIN_READ_CHATS на сервере); выключено — раздела нет совсем
 let cfg = {}; // настройки приложения: пол, сексуальность, знаки, опрос — для форм редактирования
 
 // Время в админке — в часовом поясе статистики (STATS_TZ_HOURS, по умолчанию Вьетнам), а не компьютера, с которого открыли
@@ -31,6 +32,9 @@ async function boot() {
     $(".rail nav").hidden = true;
     return;
   }
+  readChats = (await api.get("/api/admin/privacy").catch(() => ({ read_chats: false }))).read_chats;
+  const chatsLink = $('.rail nav a[data-view="chats"]');
+  if (chatsLink) chatsLink.hidden = !readChats; // переписки скрыты полностью, пока ADMIN_READ_CHATS выключен
   window.addEventListener("hashchange", route);
   connectSocket();
   route();
@@ -43,11 +47,27 @@ function route() {
   closeDrawer();
   // раздел по адресу; неизвестный — «Обзор». (Раньше «?? overview()» срабатывал и после разделов,
   // которые ничего не возвращают, — «Рассылка» сразу затиралась «Обзором»)
-  const view = { overview, users, chats, mail, support, animals, feedads }[name];
+  const view = { overview, users, chats: readChats ? chats : null, mail, support, animals, feedads }[name];
   if (view) view(arg); else overview();
 }
 
 // ---------- Обзор ----------
+function pairsHtml(p) {
+  if (!p) return "";
+  return `<h3 style="margin-top:28px">Пары <span class="muted small">взаимные симпатии настоящих людей, без ботов и демо · только цифры, без имён</span></h3>
+    <div class="kpis">
+      <div><b>${p.total}</b><span>Всего пар</span></div>
+      <div><b>${p.talking}</b><span>Переписываются</span></div>
+      <div><b>${p.silent}</b><span>Ещё не написали друг другу</span></div>
+      <div><b>${p.avg_messages}</b><span>Сообщений в среднем на пару</span></div>
+    </div>
+    <table class="grid audience" style="margin-top:12px">
+      <thead><tr><th>Новых пар</th><th>За сутки</th><th>За 7 дней</th><th>За 30 дней</th></tr></thead>
+      <tbody><tr><td>Количество</td><td><b>${p.new_24h}</b></td><td><b>${p.new_7d}</b></td><td><b>${p.new_30d}</b></td></tr></tbody>
+    </table>
+    ${p.total - p.active ? `<p class="muted small" style="margin-top:8px">Из них отменили симпатию: ${p.total - p.active}</p>` : ""}`;
+}
+
 function feedHtml(f) {
   if (!f) return "";
   const hidden = Object.entries(f.hidden || {});
@@ -124,6 +144,7 @@ async function overview() {
       <div><b>${s.messages}</b><span>Сообщений</span></div>
       <div><b>${s.banned}</b><span>Заблокировано</span></div>
     </div>
+    ${pairsHtml(s.pairs)}
     ${feedHtml(s.feed)}
     ${funnelHtml(s.funnel)}
     ${deletionsHtml(s.deletions)}
@@ -330,8 +351,8 @@ async function openUser(id) {
       <dt>Интересы</dt><dd>${tags(u.interests) || "—"}</dd>
       <dt>О себе</dt><dd>${esc(u.bio || "—")}</dd>
     </dl>
-    <h3>Переписки (${u.conversations.length})</h3>
-    <div>${u.conversations.map((c) => convRow(c)).join("") || '<p class="muted small">Пар пока нет</p>'}</div>`;
+    ${readChats ? `<h3>Переписки (${u.conversations.length})</h3>
+    <div>${u.conversations.map((c) => convRow(c)).join("") || '<p class="muted small">Пар пока нет</p>'}</div>` : `<h3>Пары</h3><p>${u.pairs_count ?? 0}</p>`}`;
   $(".close", drawer).onclick = closeDrawer;
   const run = async (fn, ok) => { try { await fn(); toast(ok); openUser(id); loadUsers(); } catch (ex) { toast(ex.message, { error: true }); } };
   const upload = (input, url, extra = {}) => {
@@ -457,15 +478,8 @@ function convRow(c) {
 }
 
 // ---------- Переписки ----------
-let readChats = null; // можно ли открывать переписки (настройка ADMIN_READ_CHATS на сервере)
-const chatsHiddenNote = `<div class="notice">Просмотр переписок временно отключён: тексты, фото, голосовые и кружки администрации не видны.
-  Видно только, кто с кем в паре и сколько сообщений. Включить обратно: <code>ADMIN_READ_CHATS=1</code> в <code>/opt/cofi/.env</code>
-  и <code>sudo systemctl restart cofi</code>.</div>`;
-
 async function chats(arg) {
-  view.innerHTML = `<h1>Переписки</h1><div data-note></div><div id="convs"><div class="spinner"></div></div>`;
-  if (readChats === null) readChats = (await api.get("/api/admin/privacy").catch(() => ({ read_chats: false }))).read_chats;
-  if (!readChats) $("[data-note]", view).innerHTML = chatsHiddenNote;
+  view.innerHTML = `<h1>Переписки</h1><div id="convs"><div class="spinner"></div></div>`;
   const list = await api.get("/api/admin/conversations");
   $("#convs").innerHTML = list.map(convRow).join("") || '<p class="muted">Переписок пока нет.</p>';
   $$(".conv-row", view).forEach((r) => (r.onclick = () => openConversation(Number(r.dataset.id))));
