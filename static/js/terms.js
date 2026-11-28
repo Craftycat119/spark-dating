@@ -215,7 +215,9 @@ const articleHtml = (key) => {
   // документы — на русском: юридически действует русская редакция
   const note = getLang() === "en"
     ? `<p class="legal-lang-note">These documents are published in Russian, and the Russian version is legally binding. You can use your browser's translate feature to read them.</p>`
-    : "";
+    : getLang() === "uk"
+      ? `<p class="legal-lang-note" translate="no">Документи опубліковано російською мовою, юридичну силу має російська редакція. Щоб прочитати їх українською, скористайтеся перекладом у браузері.</p>`
+      : "";
   return `${note}
   <article class="terms" translate="no">
     <h1>${doc.title}</h1>

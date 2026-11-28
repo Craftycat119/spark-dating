@@ -16,7 +16,7 @@ import { LEGAL_DOCS, renderTerms } from "./terms.js";
 import { renderAds, renderGuestSupport, renderSupportHub, renderThread, reportUser } from "./support.js";
 import { currentHash, navigate, onRoute } from "./router.js";
 import { getThemePref, resolvedTheme, setTheme } from "./theme.js";
-import { cityLabel, getLang, setLang, t } from "./i18n.js";
+import { cityLabel, getLang, locale, setLang, t } from "./i18n.js";
 import { $, $$, confirmDialog, esc, fmtDay, fmtDur, fmtShort, fmtTime, h, toast, wordmark } from "./ui.js";
 
 const app = document.getElementById("app");
@@ -534,13 +534,13 @@ function renderAuth(mode = "login") {
           <a class="chip" href="#/guide">Как это работает</a>
           ${state.config.telegram_bot_username && !tgApp()?.initData ? `<a class="chip tg-chip" href="https://t.me/${encodeURIComponent(state.config.telegram_bot_username)}" target="_blank" rel="noopener">${icons.send} Перейти в Telegram</a>` : ""}
         </div>
-        <div class="hero-foot"><a href="#/help">Поддержка</a><a href="#/ads">Реклама в COFI</a><button class="lang-toggle" data-lang-toggle>${getLang() === "en" ? "RU" : "EN"}</button></div>
+        <div class="hero-foot"><a href="#/help">Поддержка</a><a href="#/ads">Реклама в COFI</a><span class="lang-pick" translate="no">${[["ru", "RU"], ["uk", "UA"], ["en", "EN"]].map(([k, l]) => `<button class="lang-toggle${getLang() === k ? " on" : ""}" data-lang-set="${k}" aria-pressed="${getLang() === k}">${l}</button>`).join("")}</span></div>
       </div>
     </section>
 ${sheet}`, { nav: false, cls: "auth" });
     mount3d($(".stage", root), "knot");
     $("[data-demo]", root)?.addEventListener("click", startDemo);
-    $("[data-lang-toggle]", root).onclick = () => { setLang(getLang() === "en" ? "ru" : "en"); rerender(); };
+    $$("[data-lang-set]", root).forEach((b) => (b.onclick = () => { if (b.dataset.langSet !== getLang()) { setLang(b.dataset.langSet); rerender(); } }));
     $(".theme-toggle", root).onclick = (e) => {
       setTheme(resolvedTheme() === "light" ? "dark" : "light");
       e.currentTarget.innerHTML = themeIcon();
@@ -2795,7 +2795,7 @@ function renderSettings() {
       <h3>О себе</h3>
       <label class="field"><span>Имя</span><input class="input" name="name" maxlength="64" value="${esc(me.name)}"></label>
       <div class="field"><span>Дата рождения</span>
-        <div class="readonly">${me.birth_date ? new Date(me.birth_date).toLocaleDateString(getLang() === "en" ? "en-GB" : "ru-RU") : "—"}</div>
+        <div class="readonly">${me.birth_date ? new Date(me.birth_date).toLocaleDateString(locale()) : "—"}</div>
         <span class="hint">Изменить дату можно только через <a href="#/support">поддержку</a></span></div>
       <div class="stack" data-identity></div>
       <div class="field"><span>Кого ищу</span>${choiceGroup("looking_for", state.config.looking_for, me.looking_for)}</div>
@@ -2833,8 +2833,8 @@ function renderSettings() {
 
     <div class="section">
       <h3>Язык</h3>
-      <div class="choice-grid" style="grid-template-columns:repeat(2,1fr)" role="radiogroup" aria-label="Язык">
-        ${[["ru", "Русский"], ["en", "English"]].map(([k, l]) => `<button type="button" class="chip" data-lang="${k}" translate="no" aria-pressed="${getLang() === k}">${l}</button>`).join("")}
+      <div class="choice-grid" style="grid-template-columns:repeat(3,1fr)" role="radiogroup" aria-label="Язык">
+        ${[["ru", "Русский"], ["uk", "Українська"], ["en", "English"]].map(([k, l]) => `<button type="button" class="chip" data-lang="${k}" translate="no" aria-pressed="${getLang() === k}">${l}</button>`).join("")}
       </div>
     </div>
 

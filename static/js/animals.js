@@ -151,7 +151,7 @@ export async function openPet(postId, { adult, onChange = () => {} }) {
   try { p = await api.get(`/api/animals/${postId}`); } catch (ex) { return toast(ex.message, { error: true }); }
   const photos = p.photos.length ? p.photos : [null];
   const closed = p.category === "charity" && !p.fundraising_open;
-  const posted = new Date(p.created_at).toLocaleDateString(document.documentElement.lang === "en" ? "en-GB" : "ru-RU", { day: "numeric", month: "long", year: "numeric" });
+  const posted = new Date(p.created_at).toLocaleDateString(({ en: "en-GB", uk: "uk-UA" })[document.documentElement.lang] || "ru-RU", { day: "numeric", month: "long", year: "numeric" });
   const rows = [
     ["Кто это", p.species], ["Возраст", p.age_text], ["Город", p.city],
     ["Расстояние", p.distance_km != null ? `${Math.round(p.distance_km)} км от вас` : ""],

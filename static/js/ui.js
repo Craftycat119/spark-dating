@@ -1,7 +1,5 @@
 // Мелкие помощники интерфейса
-import { getLang } from "./i18n.js";
-
-const locale = () => (getLang() === "en" ? "en-GB" : "ru-RU");
+import { locale } from "./i18n.js";
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 

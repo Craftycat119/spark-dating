@@ -110,7 +110,7 @@ def apply_profile(db: Session, user: User, data: ProfileIn, ip: str | None = Non
         user.consent_ip = ip
         user.terms_version = TERMS_VERSION
         user.age_confirmation = "adult" if user.age_group == "adult" else "guardian"
-    if data.language in ("ru", "en"):
+    if data.language in ("ru", "uk", "en"):
         user.language = data.language
     if data.bio is not None:
         user.bio = data.bio.strip()

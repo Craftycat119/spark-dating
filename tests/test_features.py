@@ -688,3 +688,9 @@ def test_feed_ads_only_for_adults_with_stats():
     assert adult.get("/api/feed").json()["ads"] == []
     assert boss.post("/api/admin/feed-ads", data={"title": "x", "link": "javascript:alert(1)"}).status_code == 422
     assert boss.delete(f"/api/admin/feed-ads/{ad['id']}").json()["status"] == "ok"
+
+
+def test_ukrainian_language_is_saved():
+    u = make_user("ua-lang@x.io", name="Оксана")
+    assert u.put("/api/profile", json={"language": "uk"}).json()["language"] == "uk"
+    assert u.put("/api/profile", json={"language": "xx"}).json()["language"] == "uk"  # неизвестный язык не сохраняем
