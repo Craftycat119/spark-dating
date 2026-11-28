@@ -651,4 +651,5 @@ def test_ads_audience_question_goes_to_manager():
 
     assert ads_answer("Сколько пользователей у вас?", None) == ADS_MANAGER_WILL_ANSWER
     assert ads_answer("Какая аудитория?", None) == ADS_MANAGER_WILL_ANSWER
-    assert "Стоимость" in ads_answer("Сколько стоит?", None)
+    assert ads_answer("Сколько стоит?", None) == ADS_MANAGER_WILL_ANSWER  # цену называет менеджер
+    assert ads_answer("Какой у вас прайс?", None) == ADS_MANAGER_WILL_ANSWER
