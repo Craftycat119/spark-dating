@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import secrets
-from collections import Counter
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
@@ -32,6 +31,7 @@ ADS_GREETING = (
     "Здравствуйте! Это раздел для рекламодателей и партнёров COFI. Расскажите о компании и задаче и оставьте контакт "
     f"(телефон, почту или Telegram) — менеджер ответит в этом чате. Почта для рекламодателей: {ADS_EMAIL}."
 )
+ADS_MANAGER_WILL_ANSWER = "С вами свяжется менеджер и ответит на все интересующие вопросы, в том числе об аудитории COFI."
 ADS_ACCEPTED = ("Спасибо! Заявка №{id} принята. Менеджер изучит её и свяжется с вами — ответ придёт в этот чат "
                 "и на контакт, если вы его оставили.")
 # Сначала бот здоровается и просит описать суть, а «принято» пишет только после сообщения пользователя
@@ -44,20 +44,11 @@ REPORT_GREETING = "Здравствуйте! Вы жалуетесь на анк
 SUPPORT_GREETING = "Спасибо! Обращение №{id} принято. Оператор ответит прямо здесь, обычно в течение часа."
 
 
-
-def _audience(db: Session) -> str:
-    users = db.scalars(select(User).where(User.is_bot.is_(False), User.is_demo.is_(False), User.photo_verified.is_(True))).all()
-    if not users:
-        return "Мы только запускаемся: свежая аудитория, сейчас набираем первых пользователей."
-    adults = sum(1 for u in users if u.age_group == "adult")
-    top = Counter(i for u in users for i in u.interests).most_common(5)
-    tops = ", ".join(f"{k} ({v})" for k, v in top) or "пока мало данных"
-    return (f"Сейчас в COFI {len(users)} анкет с подтверждённым фото, из них {adults} старше 18 лет. "
-            f"Популярные интересы: {tops}. Лента «Дружба» (до 18 лет) для рекламы закрыта.")
-
-
 def ads_answer(text: str, db: Session) -> str | None:
     t = text.lower()
+    # аудитория — первой: «Сколько пользователей?» иначе ушло бы в ответ про цену («сколько»)
+    if any(w in t for w in ("аудитор", "охват", "сколько пользоват", "статист", "audience", "reach", "stat")):
+        return ADS_MANAGER_WILL_ANSWER
     if any(w in t for w in ("формат", "размест", "вариант", "рассылк", "format", "placement", "newsletter", "broadcast")):
         return ("Форматы: 1) нативная карточка в ленте между анкетами, 2) баннер в списке чатов, "
                 "3) рассылка через Telegram-бота COFI, 4) спецпроекты с лентой «Питомцы». "
@@ -65,8 +56,6 @@ def ads_answer(text: str, db: Session) -> str | None:
     if any(w in t for w in ("цен", "стоим", "бюджет", "сколько", "прайс", "price", "cost", "budget")):
         return ("Стоимость зависит от формата и срока размещения. Оставьте контакт и задачу — "
                 "менеджер подготовит предложение.")
-    if any(w in t for w in ("аудитор", "охват", "сколько пользоват", "статист", "audience", "reach", "stat")):
-        return _audience(db)
     if any(w in t for w in ("заявк", "менеджер", "связ", "контакт", "звон", "request", "manager", "contact", "call")):
         return (f"Почта для рекламодателей: {ADS_EMAIL}. Или оставьте здесь телефон, почту или Telegram "
                 "и название компании, менеджер свяжется с вами.")

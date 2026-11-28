@@ -16,6 +16,7 @@ const w = (x) => EN[x] ?? CITY_EN[x] ?? x;
 
 export const EN = {
   // ---- добавлено: опрос, ошибки, подсказки ----
+  "С вами свяжется менеджер и ответит на все интересующие вопросы, в том числе об аудитории COFI.": "A manager will contact you and answer all your questions, including about the COFI audience.",
   "Разместить рекламу или предложить сотрудничество — напишите в этот чат или на craftycat119@mail.ru.": "To advertise or partner with us, write in this chat or to craftycat119@mail.ru.",
   "Здравствуйте! Это раздел для рекламодателей и партнёров COFI. Расскажите о компании и задаче и оставьте контакт (телефон, почту или Telegram) — менеджер ответит в этом чате. Почта для рекламодателей: craftycat119@mail.ru.": "Hello! This is the section for COFI advertisers and partners. Tell us about your company and goal and leave a contact (phone, email or Telegram) — a manager will reply in this chat. Advertisers' email: craftycat119@mail.ru.",
   "Форматы: 1) нативная карточка в ленте между анкетами, 2) баннер в списке чатов, 3) рассылка через Telegram-бота COFI, 4) спецпроекты с лентой «Питомцы». Менеджер подберёт подходящий под вашу задачу.": "Formats: 1) a native card in the feed between profiles, 2) a banner in the chat list, 3) a broadcast via the COFI Telegram bot, 4) special projects with the Pets feed. A manager will pick the right one for your goal.",

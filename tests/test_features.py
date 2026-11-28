@@ -106,7 +106,8 @@ def test_support_and_ads_threads():
     bot = [m["text"] for m in msgs if m["author"] == "bot"]
     assert "реклама не" not in " ".join(bot).lower() and "плата не" not in " ".join(bot).lower()
     assert sum("принята" in x for x in bot) == 1  # «заявка принята» — один раз, после первого сообщения
-    assert any("Форматы" in x for x in bot) and any("анкет" in x for x in bot)
+    assert any("Форматы" in x for x in bot) and any("свяжется менеджер" in x for x in bot)
+    assert not any("анкет с подтверждённым фото" in x for x in bot)  # цифры аудитории бот не раскрывает
     assert len(boss.get("/api/admin/support?topic=ads").json()) == 1
 
 
@@ -642,3 +643,12 @@ def test_teens_have_no_language_exchange_goal():
     assert teen.put("/api/profile", json={"goals": ["Языковой обмен"]}).status_code == 422
     adult = make_user("adultlang@x.io", name="Взрослый")
     assert "Языковой обмен" in adult.put("/api/profile", json={"goals": ["Языковой обмен"]}).json()["goals"]
+
+
+
+def test_ads_audience_question_goes_to_manager():
+    from app.routers.support import ADS_MANAGER_WILL_ANSWER, ads_answer
+
+    assert ads_answer("Сколько пользователей у вас?", None) == ADS_MANAGER_WILL_ANSWER
+    assert ads_answer("Какая аудитория?", None) == ADS_MANAGER_WILL_ANSWER
+    assert "Стоимость" in ads_answer("Сколько стоит?", None)
