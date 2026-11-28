@@ -1105,3 +1105,10 @@ html.in-tg .tg-drop { top: 32px; }
   .ad-card .ad-short { -webkit-line-clamp: 1; line-clamp: 1; }
 }
 @media (max-height: 600px) { .feed .ad-card .ad-short { display: none; } }
+
+/* крестик развёрнутой рекламы: прилипает к верху и виден при любой прокрутке */
+.ad-view .ad-close { position: sticky; z-index: 3; top: calc(14px + env(safe-area-inset-top)); float: right; margin: calc(14px + env(safe-area-inset-top)) 12px -58px 0;
+  width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: #fff;
+  background: rgba(18, 12, 9, .6); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 0 0 1px rgba(255, 255, 255, .14); }
+.ad-view .ad-close .ph { font-size: 22px; }
+.ad-view .ad-close:active { transform: scale(.92); }

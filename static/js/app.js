@@ -1419,8 +1419,8 @@ function openAd(ad, { onNext } = {}) {
   api.post(`/api/feed/ads/${ad.id}/open`).catch(() => {});
   const text = [ad.text, ad.details].filter(Boolean).join("\n\n");
   const el = h(`<section class="profile-view ad-view" role="dialog" aria-label="Реклама: ${esc(ad.title)}">
+    <button class="ad-close" aria-label="Закрыть">${icons.x}</button>
     ${ad.image_url ? `<div class="gallery"><div class="track"><img src="${esc(ad.image_url)}" alt=""></div></div>` : '<div class="ad-view-top"></div>'}
-    <button class="icon-btn close" aria-label="Закрыть">${icons.back}</button>
     <div class="profile-body">
       <span class="ad-label">Реклама${ad.advertiser ? ` · ${esc(ad.advertiser)}` : ""}</span>
       <h1 class="ad-title">${esc(ad.title)}</h1>
@@ -1431,12 +1431,27 @@ function openAd(ad, { onNext } = {}) {
       ${onNext ? '<button class="btn ghost block" data-ad-next>Дальше — к анкетам</button>' : ""}
     </div>
   </section>`);
-  const close = () => { el.remove(); document.removeEventListener("keydown", onKey); };
+  // закрыть: крестик (всегда на виду), Esc, кнопка «Назад» в Telegram и системная «Назад» на Android/в браузере
+  const tgBack = tgApp()?.BackButton;
+  let open = true;
+  const close = ({ fromHistory = false } = {}) => {
+    if (!open) return;
+    open = false;
+    el.remove();
+    document.removeEventListener("keydown", onKey);
+    window.removeEventListener("popstate", onPop);
+    try { tgBack?.offClick(onTgBack); tgBack?.hide(); } catch { /* старый Telegram */ }
+    if (!fromHistory && history.state?.adView) history.back(); // убрать свою запись из истории
+  };
   const onKey = (e) => e.key === "Escape" && close();
-  $(".close", el).onclick = close;
+  const onPop = () => close({ fromHistory: true });
+  const onTgBack = () => close();
+  $(".ad-close", el).onclick = () => close();
   $("[data-ad-go]", el)?.addEventListener("click", () => goAd(ad));
   $("[data-ad-next]", el)?.addEventListener("click", () => { close(); onNext(); });
   document.addEventListener("keydown", onKey);
+  try { history.pushState({ ...(history.state || {}), adView: true }, ""); window.addEventListener("popstate", onPop); } catch { /* без истории — остаются крестик и Esc */ }
+  try { tgBack?.onClick(onTgBack); tgBack?.show(); } catch { /* старый Telegram */ }
   document.body.append(el);
 }
 
