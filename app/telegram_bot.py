@@ -298,7 +298,7 @@ def handle_update(upd: dict) -> list[tuple[str, dict]]:
 
             text = (msg.get("text") or "").strip()
             # пост о безопасности для новых — после приветствия; на /start проверяем, что он и сейчас закреплён
-            _in_background(broadcasts.deliver_to_newcomer, chat_id, 2.0, text.startswith("/start"))
+            _in_background(broadcasts.deliver_to_newcomer, chat_id, 2.0, text.split("@")[0] == "/start")
         text = (msg.get("text") or "").strip()
         if text.startswith("/start link_"):
             calls.append(("sendMessage", _link_question(text.removeprefix("/start link_").strip(), chat_id)))

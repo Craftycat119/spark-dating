@@ -179,17 +179,16 @@ def _pin(chat: int, message_id: int) -> None:
 _newcomer_lock = threading.Lock()
 
 
-def _pinned_id(chat_id: int) -> int | None:
-    """Какое сообщение сейчас закреплено в чате человека с ботом (None — ничего или Telegram не ответил)."""
-    res = _call("getChat", {"chat_id": chat_id})
-    return (((res or {}).get("result") or {}).get("pinned_message") or {}).get("message_id")
+REPIN_EVERY = 600  # на /start пост приходит снова не чаще раза в 10 минут: частые /start не превращаются в спам
+_last_repin: dict[int, float] = {}
 
 
 def deliver_to_newcomer(chat_id: int | None, delay: float = 2.0, recheck: bool = False) -> None:
     """Пост «для новых пользователей» (о безопасности) — сразу после приветствия, закреплённым вверху чата.
 
-    recheck (нажали /start): пост уже приходил, но его нет в закрепе — человек очистил или удалил чат с ботом,
-    открепил сообщение или зашёл заново. Тогда присылаем и закрепляем ещё раз: такой пост должен быть у каждого."""
+    recheck — человек нажал «Запустить» (/start без параметров). Так бывает, когда чат с ботом очистили или удалили:
+    у человека пост пропал, а у бота он остаётся и считается закреплённым, поэтому Telegram не скажет, что его нет.
+    В этом случае присылаем и закрепляем пост ещё раз (старую копию открепляем)."""
     if not chat_id or chat_id <= 0 or not settings.telegram_bot_token:
         return
     time.sleep(delay)
@@ -203,12 +202,16 @@ def deliver_to_newcomer(chat_id: int | None, delay: float = 2.0, recheck: bool =
             log.info("Telegram: поста для новых пользователей нет — новичку (%s) закреплять нечего", chat_id)
             return
         delivered = json.loads(b.deliveries or "{}")
-        if str(chat_id) in delivered and (not recheck or _pinned_id(chat_id) == delivered[str(chat_id)]):
+        old = delivered.get(str(chat_id))
+        if old and (not recheck or time.time() - _last_repin.get(chat_id, 0) < REPIN_EVERY):
             return
         res = _call("sendMessage", _payload(b, chat_id))
         mid = (res or {}).get("result", {}).get("message_id")
         if not mid:
             return
+        if old:
+            _call("unpinChatMessage", {"chat_id": chat_id, "message_id": old})  # прежняя копия, если она ещё есть
+            _last_repin[chat_id] = time.time()
         _pin(chat_id, mid)
         delivered[str(chat_id)] = mid
         b.deliveries = json.dumps(delivered)

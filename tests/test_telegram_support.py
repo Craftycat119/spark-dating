@@ -171,20 +171,19 @@ def test_pinned_post_for_newcomers_without_changing_greeting(monkeypatch):
     bot.calls.clear()
     broadcasts.deliver_to_newcomer(8888, 0)
     assert bot.calls == []
-    # /start снова, пост всё ещё закреплён — не дублируем
-    pinned_mid = int(__import__("json").loads(
-        __import__("app.database", fromlist=["x"]).SessionLocal().get(__import__("app.models", fromlist=["x"]).Broadcast,
-                                                                       boss.get("/api/admin/broadcasts").json()[0]["id"]).deliveries)["8888"])
-    still = lambda m, p=None, timeout=15: bot.calls.append((m, p)) or {"ok": True, "result": {"pinned_message": {"message_id": pinned_mid}}}  # noqa: E731
-    monkeypatch.setattr(telegram_bot, "api", still)
+    # человек очистил чат с ботом и нажал «Запустить» (/start): у бота пост «закреплён», но у человека его нет —
+    # присылаем и закрепляем снова, старую копию открепляем
+    broadcasts._last_repin.clear()
     broadcasts.deliver_to_newcomer(8888, 0, True)
-    assert [m for m, _ in bot.calls] == ["getChat"]
-    # человек очистил чат с ботом (закрепа нет) и нажал /start — пост приходит и закрепляется снова
-    monkeypatch.setattr(telegram_bot, "api", bot)
+    assert [m for m, _ in bot.calls] == ["sendMessage", "unpinChatMessage", "pinChatMessage"]
+    # ещё раз /start сразу же — не спамим
     bot.calls.clear()
     broadcasts.deliver_to_newcomer(8888, 0, True)
-    assert [m for m, _ in bot.calls] == ["getChat", "sendMessage", "pinChatMessage"]
-    bot.calls.clear()
+    assert bot.calls == []
+    # вход через сайт (/start login_…) пост повторно не присылает
+    broadcasts._last_repin.clear()
+    broadcasts.deliver_to_newcomer(8888, 0, False)
+    assert bot.calls == []
     # выключили «новым» — новичкам больше не приходит
     bid = boss.get("/api/admin/broadcasts").json()[0]["id"]
     boss.post(f"/api/admin/broadcasts/{bid}/newcomers", json={"on": False})
