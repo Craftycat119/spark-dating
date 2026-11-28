@@ -385,6 +385,8 @@ class Broadcast(Base):
     failed: Mapped[int] = mapped_column(Integer, default=0)
     deliveries: Mapped[str] = mapped_column(Text, default="{}")  # {chat_id: message_id}
     loud: Mapped[bool] = mapped_column(Boolean, default=False)  # со звуком даже тем, кто выключил уведомления в COFI
+    kind: Mapped[str] = mapped_column(String(8), default="news")  # news — новости COFI; ads — реклама (только 18+)
+    advertiser: Mapped[str] = mapped_column(String(300), default="")  # маркировка рекламы: рекламодатель, erid
     failures: Mapped[str] = mapped_column(Text, default="{}")  # {chat_id: ответ Telegram} — кому не дошло и почему
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     edited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

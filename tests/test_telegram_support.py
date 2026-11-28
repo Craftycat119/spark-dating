@@ -305,7 +305,7 @@ def test_broadcast_audience_counts():
     with SessionLocal() as db:
         db.add(TelegramContact(username="g", chat_id=7103))
         db.commit()
-    assert boss.get("/api/admin/broadcast/audience").json() == {"subscribed": 1, "everyone": 3, "muted": 1}
+    assert boss.get("/api/admin/broadcast/audience").json() == {"subscribed": 1, "everyone": 3, "muted": 1, "ads": 3}
 
 
 
@@ -388,3 +388,48 @@ def test_screenshot_goes_to_telegram_as_photo(monkeypatch):
     reply = {"message": {"message_id": 9, "chat": {"id": -1001, "type": "supergroup"}, "from": {"id": 1, "is_bot": False},
                          "text": "Разберёмся", "reply_to_message": {"from": {"is_bot": True}, "caption": caption}}}
     assert "Ответ отправлен" in telegram_bot.handle_update(reply)[0][1]["text"]
+
+
+
+def test_ads_broadcast_skips_teens_by_app_age_and_telegram_birthdate(monkeypatch):
+    from datetime import date
+
+    from app import broadcasts, telegram_bot
+    from app.database import SessionLocal
+    from app.models import TelegramContact, User
+
+    calls = []
+
+    def fake(method, payload=None, timeout=15):
+        calls.append((method, payload))
+        if method == "getChat":
+            cid = payload["chat_id"]
+            year = {8803: date.today().year - 15, 8801: 1990}.get(cid)  # гость 8803 — 15 лет по Telegram
+            return {"ok": True, "result": {"id": cid, **({"birthdate": {"day": 1, "month": 1, "year": year}} if year else {})}}
+        return {"ok": True, "result": {"message_id": 700 + len(calls)}}
+
+    monkeypatch.setattr(settings, "telegram_bot_token", "x")
+    monkeypatch.setattr(telegram_bot, "api", fake)
+    monkeypatch.setattr(broadcasts, "PAUSE", 0)
+    boss = make_user("boss@example.com", name="Андрей")
+    adult = make_user("adad@x.io", name="Взрослый")
+    teen = make_user("adteen@x.io", name="Подросток", age=15, goals=("Дружба",))
+    with SessionLocal() as db:
+        db.get(User, adult.user_id).telegram_id = 8801
+        db.get(User, teen.user_id).telegram_id = 8802
+        db.add(TelegramContact(username="guestadult", chat_id=8804))  # гость без даты рождения — возраст неизвестен
+        db.add(TelegramContact(username="guestteen", chat_id=8803))
+        db.commit()
+    assert boss.get("/api/admin/broadcast/audience").json()["ads"] == 3  # подросток из COFI исключён сразу
+    boss.post("/api/admin/broadcast", data={"subject": "Скидка", "body": "Текст", "kind": "ads", "advertiser": "ООО Кофе, erid: abc",
+                                            "newcomers": "true"})
+    sent = {p["chat_id"]: p for m, p in calls if m == "sendMessage"}
+    assert set(sent) == {8801, 8804}  # 8802 — подросток в COFI, 8803 — 15 лет по Telegram
+    assert sent[8801]["text"].endswith("<i>Реклама. ООО Кофе, erid: abc</i>")
+    b = boss.get("/api/admin/broadcasts").json()[0]
+    assert b["kind"] == "ads" and not b["newcomers"] and b["reasons"] == {"Младше 18 по данным Telegram": 1}
+    assert b["missing"] == 0  # досылать подростку не будем
+    # обычная новость уходит и подросткам
+    calls.clear()
+    boss.post("/api/admin/broadcast", data={"subject": "Новость", "body": "Текст", "everyone": "true"})
+    assert 8802 in {p["chat_id"] for m, p in calls if m == "sendMessage"}

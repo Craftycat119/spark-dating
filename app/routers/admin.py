@@ -441,13 +441,15 @@ def broadcast_audience(_: User = Depends(admin_user), db: Session = Depends(get_
     from ..broadcasts import quiet_chats
 
     everyone = _bc_audience(db, True)
-    return {"subscribed": len(_bc_audience(db, False)), "everyone": len(everyone), "muted": len(everyone & quiet_chats(db))}
+    return {"subscribed": len(_bc_audience(db, False)), "everyone": len(everyone), "muted": len(everyone & quiet_chats(db)),
+            "ads": len(_bc_audience(db, True, "ads"))}
 
 
 @router.post("/broadcast")
 def broadcast(background: BackgroundTasks, subject: str = Form(..., min_length=1, max_length=200),
               body: str = Form(..., min_length=1, max_length=3900), everyone: bool = Form(False),
               pin: bool = Form(False), newcomers: bool = Form(False), only_new: bool = Form(False), loud: bool = Form(False),
+              kind: str = Form("news"), advertiser: str = Form("", max_length=300),
               image: UploadFile | None = File(None), _: User = Depends(admin_user), db: Session = Depends(get_db)):
     """Новость через Telegram-бота: картинка (если есть) и текст — одним сообщением.
     Кто выключил уведомления в COFI, получает беззвучно, если не отмечено «со звуком всем» (loud)."""
@@ -458,13 +460,17 @@ def broadcast(background: BackgroundTasks, subject: str = Form(..., min_length=1
         raise HTTPException(503, "Telegram-бот не настроен: укажите TELEGRAM_BOT_TOKEN в .env")
     data = BroadcastIn(subject=subject, body=body, everyone=everyone)
     image_name = _save_broadcast_image(image) if image is not None and image.filename else None
-    chats = _bc_audience(db, data.everyone)
+    kind = "ads" if kind == "ads" else "news"
+    if kind == "ads":
+        newcomers = only_new = False  # реклама не уходит автоматически новичкам: среди них могут быть подростки
+    chats = _bc_audience(db, data.everyone, kind)
     if newcomers and only_new:
         chats = set()  # сейчас никому: пост только для новых пользователей
     if newcomers:  # «для новых» может быть только один пост — прежний перестаёт рассылаться новичкам
         db.execute(Broadcast.__table__.update().values(newcomers=False))
     b = Broadcast(subject=data.subject.strip(), body=data.body.strip(), image_name=image_name, everyone=data.everyone,
-                  recipients=len(chats), pin=pin or newcomers, newcomers=newcomers, loud=loud,
+                  recipients=len(chats), pin=pin or newcomers, newcomers=newcomers, loud=loud, kind=kind,
+                  advertiser=advertiser.strip() if kind == "ads" else "",
                   status="sending" if chats else "sent")
     db.add(b)
     db.commit()
@@ -492,8 +498,12 @@ def _save_broadcast_image(image: UploadFile) -> str:
     return name
 
 
-def _bc_audience(db: Session, everyone: bool) -> set[int]:
-    """Кому уходит рассылка: с подключённым Telegram (и уведомлениями), а служебная — всем, кто писал боту."""
+def _bc_audience(db: Session, everyone: bool, kind: str = "news") -> set[int]:
+    """Кому уходит рассылка: с подключённым Telegram (и уведомлениями), а служебная — всем, кто писал боту.
+    Реклама — всем, кто писал боту, кроме тех, кто в COFI младше 18 (их возраст известен по дате рождения).
+    Возраст по Telegram (если человек открыл дату рождения) проверяется ещё раз при отправке."""
+    if kind == "ads":
+        everyone = True
     q = select(User.telegram_id).where(User.telegram_id.is_not(None), User.is_banned.is_(False), User.is_bot.is_(False))
     if not everyone:
         q = q.where(User.tg_notifications.is_(True))
@@ -504,6 +514,10 @@ def _bc_audience(db: Session, everyone: bool) -> set[int]:
 
         banned = set(db.scalars(select(User.telegram_id).where(User.is_banned.is_(True), User.telegram_id.is_not(None))))
         chats |= {c for c in db.scalars(select(TelegramContact.chat_id)) if c and c > 0 and c not in banned}
+    if kind == "ads":
+        teens = set(db.scalars(select(User.telegram_id).where(User.telegram_id.is_not(None), User.birth_date.is_not(None),
+                                                              User.birth_date > _years_ago(18))))
+        chats -= teens
     return chats
 
 
@@ -511,8 +525,8 @@ def _broadcast_out(b, db: Session | None = None) -> dict:
     from ..broadcasts import image_url, reasons_summary, resend_targets
 
     # дослать можно разосланному всем посту (не «только новым», где получателей не было)
-    missing = len(resend_targets(b, _bc_audience(db, b.everyone))) if db is not None and b.status == "sent" and b.recipients else 0
-    return {"reasons": reasons_summary(b), "missing": missing, "loud": b.loud,"id": b.id, "subject": b.subject, "body": b.body, "everyone": b.everyone, "status": b.status,
+    missing = len(resend_targets(b, _bc_audience(db, b.everyone, b.kind))) if db is not None and b.status == "sent" and b.recipients else 0
+    return {"reasons": reasons_summary(b), "missing": missing, "loud": b.loud, "kind": b.kind, "advertiser": b.advertiser,"id": b.id, "subject": b.subject, "body": b.body, "everyone": b.everyone, "status": b.status,
             "pin": b.pin, "newcomers": b.newcomers,
             "recipients": b.recipients, "sent": b.sent, "failed": b.failed,
             "image_url": f"/pub/broadcast/{b.image_name}" if b.image_name else None, "public_image": image_url(b),
@@ -578,7 +592,7 @@ def broadcast_resend(bid: int, background: BackgroundTasks, _: User = Depends(ad
     b = db.get(Broadcast, bid)
     if not b or b.status != "sent" or not b.recipients:
         raise HTTPException(404, "Рассылка не найдена")
-    chats = broadcasts.resend_targets(b, _bc_audience(db, b.everyone))
+    chats = broadcasts.resend_targets(b, _bc_audience(db, b.everyone, b.kind))
     if not chats:
         return {"status": "nothing", "recipients": 0}
     b.status = "sending"

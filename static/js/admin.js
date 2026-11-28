@@ -781,6 +781,13 @@ function mail() {
         <span class="muted small">Если этот пост уже приходил всем раньше.</span></span></label>
       <label class="check"><input type="checkbox" name="loud"><span><b>Со звуком даже тем, кто выключил уведомления</b><br>
         <span class="muted small">Без галочки они получат пост беззвучно<span data-count="muted"></span>. Ставьте только для важного: технические работы, сбои, изменения правил.</span></span></label>
+      <div class="field"><span>Тип рассылки</span>
+        <div class="bc-kind" role="radiogroup">
+          <label class="check"><input type="radio" name="kind" value="news" checked><span><b>Новости COFI</b><br><span class="muted small">Изменения, новые функции, техработы</span></span></label>
+          <label class="check"><input type="radio" name="kind" value="ads"><span><b>Реклама</b><br><span class="muted small">Всем, кто писал боту, кроме подростков: младше 18 по анкете в COFI или по дате рождения в Telegram. Внизу будет пометка «Реклама»</span></span></label>
+        </div></div>
+      <label class="field" data-ad-only hidden><span>Рекламодатель и erid (маркировка)</span>
+        <input class="input" name="advertiser" maxlength="300" placeholder="Например: ООО «Кофейня», ИНН 1234567890, erid: 2Vtzqx…"></label>
       <button class="btn" data-send="everyone">Отправить всем, кто писал боту <span data-count="everyone"></span></button>
       <p class="muted small">Если человек сам выключил звук у чата с ботом в Telegram, сообщение придёт без звука — бот это изменить не может.</p>
     </form>
@@ -795,10 +802,23 @@ function mail() {
   };
   $("[data-clear-image]", view).onclick = () => { fileIn.value = ""; prev.hidden = true; };
   const counts = {};
+  // реклама: свой счётчик, поле маркировки, без «новым пользователям»
+  const syncKind = () => {
+    const f = $("form", view), ads = f.kind.value === "ads";
+    $("[data-ad-only]", view).hidden = !ads;
+    f.newcomers.disabled = f.only_new.disabled = ads;
+    if (ads) f.newcomers.checked = f.only_new.checked = false;
+    const btn = $('[data-send="everyone"]', view);
+    btn.firstChild.textContent = ads ? "Отправить рекламу " : "Отправить всем, кто писал боту ";
+    const n = ads ? counts.ads : counts.everyone;
+    $('[data-count="everyone"]', view).textContent = n != null ? `(${n})` : "";
+  };
+  $$("[name=kind]", view).forEach((r) => (r.onchange = syncKind));
   api.get("/api/admin/broadcast/audience").then((c) => {
     Object.assign(counts, c);
     const e1 = $('[data-count="everyone"]', view), e2 = $('[data-count="muted"]', view);
     if (e1) e1.textContent = `(${c.everyone})`;
+    syncKind();
     if (e2) e2.textContent = ` (сейчас таких ${c.muted})`;
   }).catch(() => {});
   $("form", view).onsubmit = async (e) => {
@@ -807,15 +827,21 @@ function mail() {
     const everyone = true;
     const loud = f.loud.checked;
     const onlyNew = f.newcomers.checked && f.only_new.checked;
-    const n = counts.everyone;
+    const ads = f.kind.value === "ads";
+    const n = ads ? counts.ads : counts.everyone;
     const how = loud ? "Со звуком у всех, даже у тех, кто выключил уведомления." : "Кто выключил уведомления — получит беззвучно.";
-    if (!(await confirmDialog(onlyNew ? "Сохранить пост для новых пользователей? Сейчас он никому не уйдёт." : `Отправить рассылку всем, кто писал боту${n != null ? ` (${n})` : ""}? ${how}`, onlyNew ? "Сохранить" : "Отправить"))) return;
+    const question = ads
+      ? `Отправить рекламу${n != null ? ` (${n})` : ""}? Подросткам (младше 18 по анкете COFI или по дате рождения в Telegram) не уйдёт. ${how}`
+      : `Отправить рассылку всем, кто писал боту${n != null ? ` (${n})` : ""}? ${how}`;
+    if (!(await confirmDialog(onlyNew ? "Сохранить пост для новых пользователей? Сейчас он никому не уйдёт." : question, onlyNew ? "Сохранить" : "Отправить"))) return;
     try {
       const fd = new FormData();
       fd.append("subject", f.subject.value);
       fd.append("body", f.body.value);
       fd.append("everyone", everyone ? "true" : "false");
       fd.append("loud", loud ? "true" : "false");
+      fd.append("kind", ads ? "ads" : "news");
+      fd.append("advertiser", ads ? f.advertiser.value : "");
       fd.append("pin", f.pin.checked ? "true" : "false");
       fd.append("newcomers", f.newcomers.checked ? "true" : "false");
       fd.append("only_new", f.newcomers.checked && f.only_new.checked ? "true" : "false");
@@ -824,6 +850,7 @@ function mail() {
       toast(onlyNew ? "Пост сохранён: его получат новые пользователи" : `Рассылка поставлена в очередь: ${r.recipients} получателей`);
       f.reset();
       prev.hidden = true;
+      syncKind();
       setTimeout(loadBroadcasts, 1500);
     } catch (ex) { toast(ex.message, { error: true }); }
   };
@@ -867,7 +894,7 @@ async function loadBroadcasts() {
       <div class="bc-body">
         <b>${esc(b.subject)}</b> ${st(b)}${b.edited_at ? ' <span class="muted small">изменена</span>' : ""}
         ${b.newcomers ? ' <span class="tag hot">📌 новым пользователям</span>' : b.pin ? ' <span class="tag">📌 закреплена</span>' : ""}
-        <p class="muted small">${dt(b.created_at)}${b.everyone ? " · всем, кто писал боту" : " · подписанным"}${b.loud ? " · со звуком всем" : ""}</p>
+        <p class="muted small">${dt(b.created_at)}${b.kind === "ads" ? " · реклама, без подростков" : b.everyone ? " · всем, кто писал боту" : " · подписанным"}${b.loud ? " · со звуком всем" : ""}</p>
         ${Object.keys(b.reasons || {}).length ? `<p class="muted small">Почему не дошло: ${Object.entries(b.reasons).map(([k, n]) => `${esc(k)} — ${n}`).join(" · ")}</p>` : ""}
         <p class="bc-text">${esc(b.body).slice(0, 300)}${b.body.length > 300 ? "…" : ""}</p>
         ${b.status === "sent" ? `<div class="row" style="gap:8px;flex-wrap:wrap">

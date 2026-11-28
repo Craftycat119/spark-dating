@@ -51,10 +51,18 @@ def format_body(body: str) -> str:
     return "\n".join(out)
 
 
-def compose(subject: str, body: str) -> str:
-    """Текст сообщения (HTML для Telegram): заголовок жирным, затем текст с оформлением."""
-    room = TEXT_MAX - len(subject) - 10
-    return f"📣 <b>{html.escape(subject.strip(), quote=False)}</b>\n\n{format_body(body.strip()[:room])}"
+def compose(subject: str, body: str, ad_mark: str | None = None) -> str:
+    """Текст сообщения (HTML для Telegram): заголовок жирным, затем текст с оформлением.
+    ad_mark — для рекламы: внизу пометка «Реклама» и рекламодатель / erid (маркировка по закону)."""
+    mark = ""
+    if ad_mark is not None:
+        mark = "\n\n<i>Реклама" + (f". {html.escape(ad_mark.strip(), quote=False)}" if ad_mark.strip() else "") + "</i>"
+    room = TEXT_MAX - len(subject) - len(mark) - 10
+    return f"📣 <b>{html.escape(subject.strip(), quote=False)}</b>\n\n{format_body(body.strip()[:room])}{mark}"
+
+
+def _text(b: Broadcast) -> str:
+    return compose(b.subject, b.body, b.advertiser if b.kind == "ads" else None)
 
 
 def image_url(b: Broadcast) -> str | None:
@@ -80,7 +88,7 @@ def quiet_chats(db) -> set[int]:
 def _payload(b: Broadcast, chat_id: int) -> dict:
     from .push import _open_button
 
-    p: dict = {"chat_id": chat_id, "text": compose(b.subject, b.body), "parse_mode": "HTML"}
+    p: dict = {"chat_id": chat_id, "text": _text(b), "parse_mode": "HTML"}
     url = image_url(b)
     # картинка над текстом, крупно; без картинки — без превью ссылок
     p["link_preview_options"] = ({"url": url, "prefer_large_media": True, "show_above_text": True} if url else {"is_disabled": True})
@@ -129,6 +137,7 @@ REASONS = [  # (часть ответа Telegram, понятная подпис�
     ("chat not found", "Не начинали чат с ботом"),
     ("initiate conversation", "Не начинали чат с ботом"),
     ("too many requests", "Telegram попросил подождать"),
+    ("under 18", "Младше 18 по данным Telegram"),
 ]
 
 
@@ -146,7 +155,20 @@ def reasons_summary(b: Broadcast) -> dict[str, int]:
 
 
 # повторять бесполезно: человек сам закрыл бота или удалил аккаунт
-_FINAL = ("Заблокировали бота", "Удалили аккаунт Telegram")
+_FINAL = ("Заблокировали бота", "Удалили аккаунт Telegram", "Младше 18 по данным Telegram")
+
+
+def telegram_age(chat_id: int) -> int | None:
+    """Возраст по дате рождения, которую человек сам открыл в профиле Telegram. None — даты нет, скрыта или без года.
+    Telegram не сообщает ботам возраст иначе: это единственный способ узнать его у тех, кто не регистрировался в COFI."""
+    from datetime import date
+
+    res = _call("getChat", {"chat_id": chat_id})
+    bd = ((res or {}).get("result") or {}).get("birthdate") or {}
+    if not bd.get("year"):
+        return None
+    today = date.today()
+    return today.year - bd["year"] - ((today.month, today.day) < (bd.get("month", 1), bd.get("day", 1)))
 
 
 def _pin(chat: int, message_id: int) -> None:
@@ -196,6 +218,12 @@ def send(broadcast_id: int, chats: list[int]) -> None:
         for chat in chats:
             if str(chat) in delivered:
                 continue
+            if b.kind == "ads":  # реклама: ещё раз проверяем возраст по дате рождения в Telegram, если она открыта
+                age = telegram_age(chat)
+                time.sleep(PAUSE)
+                if age is not None and age < 18:
+                    failures[str(chat)] = "under 18: реклама не отправлена"
+                    continue
             p = _payload(b, chat)
             if chat in quiet:
                 p["disable_notification"] = True  # уведомления выключены — сообщение придёт без звука
