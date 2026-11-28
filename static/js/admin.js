@@ -909,10 +909,14 @@ async function loadBroadcasts() {
   let list;
   try { list = await api.get("/api/admin/broadcasts"); } catch (ex) { box.innerHTML = `<p class="error-text">${esc(ex.message)}</p>`; return; }
   if (!list.length) { box.innerHTML = `<p class="muted">Рассылок пока не было.</p>`; return; }
+  const forNew = list.find((b) => b.newcomers && b.status !== "deleted");
   const st = (b) => b.status === "deleted" ? '<span class="tag warn">удалена у всех</span>'
     : b.status === "sending" ? '<span class="tag">отправляется…</span>'
     : `<span class="tag ok">доставлено ${b.sent} из ${b.recipients}</span>${b.failed ? ` <span class="tag warn">не дошло ${b.failed}</span>` : ""}`;
-  box.innerHTML = list.map((b) => `
+  box.innerHTML = (forNew
+    ? `<p class="notice">📌 Новым пользователям после приветствия приходит и закрепляется: «${esc(forNew.subject)}». Если человек очистит чат с ботом, при следующем /start пост придёт и закрепится снова.</p>`
+    : `<p class="notice">⚠️ Новым пользователям сейчас ничего не закрепляется. Нажмите «📌 Показывать новым» у поста о безопасности — он будет приходить каждому новому после приветствия.</p>`)
+    + list.map((b) => `
     <div class="bc-item" data-id="${b.id}">
       ${b.image_url ? `<img src="${esc(b.image_url)}" alt="">` : ""}
       <div class="bc-body">

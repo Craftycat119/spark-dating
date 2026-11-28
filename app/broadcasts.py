@@ -179,20 +179,31 @@ def _pin(chat: int, message_id: int) -> None:
 _newcomer_lock = threading.Lock()
 
 
-def deliver_to_newcomer(chat_id: int | None, delay: float = 2.0) -> None:
-    """Пост «для новых пользователей» (закреплённый) — тем, кто его ещё не получал. Приветствие бота не меняется:
-    пост приходит отдельным сообщением чуть позже и закрепляется вверху чата."""
+def _pinned_id(chat_id: int) -> int | None:
+    """Какое сообщение сейчас закреплено в чате человека с ботом (None — ничего или Telegram не ответил)."""
+    res = _call("getChat", {"chat_id": chat_id})
+    return (((res or {}).get("result") or {}).get("pinned_message") or {}).get("message_id")
+
+
+def deliver_to_newcomer(chat_id: int | None, delay: float = 2.0, recheck: bool = False) -> None:
+    """Пост «для новых пользователей» (о безопасности) — сразу после приветствия, закреплённым вверху чата.
+
+    recheck (нажали /start): пост уже приходил, но его нет в закрепе — человек очистил или удалил чат с ботом,
+    открепил сообщение или зашёл заново. Тогда присылаем и закрепляем ещё раз: такой пост должен быть у каждого."""
     if not chat_id or chat_id <= 0 or not settings.telegram_bot_token:
         return
     time.sleep(delay)
     with _newcomer_lock, SessionLocal() as db:
         from sqlalchemy import select
 
-        b = db.scalar(select(Broadcast).where(Broadcast.newcomers.is_(True), Broadcast.status == "sent").order_by(Broadcast.id.desc()))
+        # «sending» — пост сейчас досылают остальным; новичку он нужен всё равно
+        b = db.scalar(select(Broadcast).where(Broadcast.newcomers.is_(True), Broadcast.status.in_(("sent", "sending")))
+                      .order_by(Broadcast.id.desc()))
         if not b:
+            log.info("Telegram: поста для новых пользователей нет — новичку (%s) закреплять нечего", chat_id)
             return
         delivered = json.loads(b.deliveries or "{}")
-        if str(chat_id) in delivered:
+        if str(chat_id) in delivered and (not recheck or _pinned_id(chat_id) == delivered[str(chat_id)]):
             return
         res = _call("sendMessage", _payload(b, chat_id))
         mid = (res or {}).get("result", {}).get("message_id")

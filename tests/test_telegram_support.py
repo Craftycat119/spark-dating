@@ -28,7 +28,7 @@ def test_message_to_bot_becomes_support_thread_and_staff_reply_goes_back(monkeyp
 
     # ответ из админки — человеку в Telegram
     boss.post(f"/api/admin/support/{t['id']}/reply", json={"text": "Проверьте папку «Спам»"})
-    assert any(len(a) > 1 and a[0] == 555 and "Проверьте папку" in a[1] for a in sent)
+    assert any(len(a) > 1 and a[0] == 555 and isinstance(a[1], str) and "Проверьте папку" in a[1] for a in sent)
 
 
 def test_commands_still_show_help(monkeypatch):
@@ -51,7 +51,7 @@ def test_reply_in_support_group_goes_to_user(monkeypatch):
                                "reply_to_message": {"from": {"is_bot": True}, "text": f"🆘 Нужна помощь #{tid} от гостя"}}}
     calls = telegram_bot.handle_update(group_reply)
     assert "Ответ отправлен" in calls[0][1]["text"]
-    assert any(len(a) > 1 and a[0] == 777 and "Уже смотрим" in a[1] for a in sent)
+    assert any(len(a) > 1 and a[0] == 777 and isinstance(a[1], str) and "Уже смотрим" in a[1] for a in sent)
     # из чужой группы — нельзя
     sent.clear()
     group_reply["message"]["chat"]["id"] = -999
@@ -171,6 +171,20 @@ def test_pinned_post_for_newcomers_without_changing_greeting(monkeypatch):
     bot.calls.clear()
     broadcasts.deliver_to_newcomer(8888, 0)
     assert bot.calls == []
+    # /start снова, пост всё ещё закреплён — не дублируем
+    pinned_mid = int(__import__("json").loads(
+        __import__("app.database", fromlist=["x"]).SessionLocal().get(__import__("app.models", fromlist=["x"]).Broadcast,
+                                                                       boss.get("/api/admin/broadcasts").json()[0]["id"]).deliveries)["8888"])
+    still = lambda m, p=None, timeout=15: bot.calls.append((m, p)) or {"ok": True, "result": {"pinned_message": {"message_id": pinned_mid}}}  # noqa: E731
+    monkeypatch.setattr(telegram_bot, "api", still)
+    broadcasts.deliver_to_newcomer(8888, 0, True)
+    assert [m for m, _ in bot.calls] == ["getChat"]
+    # человек очистил чат с ботом (закрепа нет) и нажал /start — пост приходит и закрепляется снова
+    monkeypatch.setattr(telegram_bot, "api", bot)
+    bot.calls.clear()
+    broadcasts.deliver_to_newcomer(8888, 0, True)
+    assert [m for m, _ in bot.calls] == ["getChat", "sendMessage", "pinChatMessage"]
+    bot.calls.clear()
     # выключили «новым» — новичкам больше не приходит
     bid = boss.get("/api/admin/broadcasts").json()[0]["id"]
     boss.post(f"/api/admin/broadcasts/{bid}/newcomers", json={"on": False})
