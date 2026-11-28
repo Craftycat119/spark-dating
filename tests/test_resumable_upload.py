@@ -38,3 +38,31 @@ def test_upload_cancel_limits_and_foreign_access():
     assert a.get(f"/api/chats/{conv}/uploads/{'a' * 31}%2F").status_code == 404
     a.delete(f"/api/chats/{conv}/uploads/{uid}")
     assert a.get(f"/api/chats/{conv}/uploads/{uid}").status_code == 404
+
+
+def test_video_is_processed_in_background_and_finish_retry_is_safe(tmp_path):
+    import shutil
+    import subprocess
+
+    import pytest
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("нет ffmpeg")
+    a, b, conv = _pair()
+    src = tmp_path / "IMG.MOV"
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=s=320x240:r=60", "-f", "lavfi", "-i",
+                    "sine=f=440", "-t", "1", "-c:v", "libx265", "-tag:v", "hvc1", "-c:a", "aac", str(src)], check=True)
+    data = src.read_bytes()
+    uid = a.post(f"/api/chats/{conv}/uploads", json={"kind": "video", "size": len(data), "filename": "IMG.MOV",
+                                                      "content_type": "video/quicktime"}).json()["id"]
+    a.put(f"/api/chats/{conv}/uploads/{uid}?offset=0", content=data)
+    first = a.post(f"/api/chats/{conv}/uploads/{uid}/finish").json()
+    assert first["kind"] == "video" and first["processing"] is True  # ответ сразу, ролик готовится фоном
+    # телефон не дождался ответа и спросил снова — то же сообщение, а не «загрузка не найдена»
+    again = a.post(f"/api/chats/{conv}/uploads/{uid}/finish")
+    assert again.status_code == 200 and again.json()["id"] == first["id"]
+    msgs = b.get(f"/api/chats/{conv}").json()
+    msgs = msgs.get("messages", msgs) if isinstance(msgs, dict) else msgs
+    done = next(m for m in msgs if m["id"] == first["id"])
+    assert done["processing"] is False and done["media_url"].endswith(".mp4") and done["poster_url"]
+    assert len([m for m in msgs if m["kind"] == "video"]) == 1  # без дубликатов

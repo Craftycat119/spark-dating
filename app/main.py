@@ -107,6 +107,14 @@ async def lifespan(_app: FastAPI):
         log.warning("FACE_MODE=dev — проверка лица ОТКЛЮЧЕНА. Не используйте в продакшене.")
     set_loop(asyncio.get_running_loop())
     telegram_bot.start()
+    try:  # видео, обработка которых прервалась перезапуском, — доделать фоном
+        import threading
+
+        from .routers.chat import resume_unfinished_videos
+
+        threading.Thread(target=resume_unfinished_videos, name="video-resume", daemon=True).start()
+    except Exception:  # noqa: BLE001
+        log.exception("Не удалось запустить доработку видео")
     yield
     telegram_bot.stop()
 

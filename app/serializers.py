@@ -137,6 +137,7 @@ def message_out(m: Message) -> dict:
         "read_at": m.read_at.isoformat() + "Z" if m.read_at else None,
         "reply_to": reply,
         "edited": bool(m.edited_at),
+        "processing": bool(getattr(m, "processing", False)),
     }
 
 

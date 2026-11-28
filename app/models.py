@@ -224,6 +224,8 @@ class Message(Base):
     read_at: Mapped[datetime | None] = mapped_column(DateTime)
     reply_to_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # ответ на сообщение
     edited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # видео ещё перекодируется на сервере (тяжёлые ролики с iPhone — до нескольких минут): в чате видно «обрабатывается»
+    processing: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class UserPhoto(Base):

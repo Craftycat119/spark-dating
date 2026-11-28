@@ -7,7 +7,9 @@ const IDLE_MS = 45000;
 const live = { video: null, audio: null };
 const timers = { video: 0, audio: 0 };
 
-const alive = (s) => s && s.getTracks().some((t) => t.readyState === "live");
+// «Живой» — дорожка не остановлена и не заглушена системой (входящий звонок, другое приложение забрало микрофон):
+// заглушённый микрофон пишет тишину, поэтому такой поток не переиспользуем, а просим новый
+const alive = (s) => s && s.getTracks().some((t) => t.readyState === "live" && !t.muted);
 
 /** Камера: facing — "user" (фронтальная) или "environment" (основная). Возвращает общий поток — не останавливайте его сами. */
 export async function getCamera(facing = "user") {
@@ -31,9 +33,16 @@ export async function getMic() {
   return live.audio;
 }
 
-/** Камера/микрофон больше не нужны прямо сейчас: выключим чуть позже, если никто не попросит снова. */
+/** Камера/микрофон больше не нужны прямо сейчас: выключим чуть позже, если никто не попросит снова.
+ *  Микрофон выключаем сразу: пока он включён, iPhone и Android переводят звук в «режим разговора» —
+ *  голосовые и кружки играют еле слышно в разговорный динамик или не играют вовсе. */
 export function release(kind = "video") {
   clearTimeout(timers[kind]);
+  if (kind === "audio") {
+    live.audio?.getTracks().forEach((t) => t.stop());
+    live.audio = null;
+    return;
+  }
   timers[kind] = setTimeout(() => {
     live[kind]?.getTracks().forEach((t) => t.stop());
     live[kind] = null;

@@ -1112,3 +1112,23 @@ html.in-tg .tg-drop { top: 32px; }
   background: rgba(18, 12, 9, .6); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 0 0 1px rgba(255, 255, 255, .14); }
 .ad-view .ad-close .ph { font-size: 22px; }
 .ad-view .ad-close:active { transform: scale(.92); }
+
+/* видео ещё обрабатывается на сервере */
+.bubble.video-processing { display: flex; gap: 12px; align-items: center; padding: 14px 16px; min-width: 220px; }
+.bubble.video-processing small { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
+.bubble.video-processing .spin { flex: none; width: 26px; height: 26px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--orange); animation: vp-spin .9s linear infinite; }
+.bubble.video-processing .caption { flex-basis: 100%; }
+@keyframes vp-spin { to { transform: rotate(360deg); } }
+.msg.mine .bubble.video-processing small { color: inherit; opacity: .82; }
+.msg.mine .bubble.video-processing .spin { border-color: rgba(255, 255, 255, .35); border-top-color: #fff; }
+
+/* ---------- Экран не «ездит» вбок ----------
+   1) всё, что прокручивается по вертикали, по горизонтали не сдвигается (iPhone даёт двигать даже на 1 px лишней ширины);
+   2) двойное нажатие не увеличивает экран (после увеличения он начинает ездить в стороны);
+   3) старые iPhone и Android не знают overflow: clip — для них обрезаем лишнее по ширине у всей страницы. */
+.messages, .sticker-panel, .profile-view, .bottom-sheet, .terms-sheet, .attach-panel, .chat-screen { overflow-x: hidden; }
+html, body { touch-action: manipulation; }
+html { overflow-x: hidden; max-width: 100%; }
+@supports not (overflow: clip) {
+  .feed .thread svg.yarn { overflow: hidden; }
+}

@@ -129,7 +129,8 @@ def to_playable(rel: str, kind: str) -> str:
     if kind == "voice":
         codec = ["-vn", "-c:a", "aac", "-b:a", "96k"]
     else:
-        codec = _h264_args(1920, crf=23, preset="faster", fps=_fps(_probe(src)))
+        info = _probe(src)
+        codec = _h264_args(1920, crf=23, preset="faster", fps=_fps(info), hdr=_is_hdr(info))
     try:
         subprocess.run([ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(src), *codec, str(dst)],
                        check=True, timeout=180, capture_output=True)
@@ -272,16 +273,52 @@ def _fps(info: dict) -> float:
     return 0.0
 
 
-def _h264_args(max_side: int, crf: int, preset: str, fps: float = 0.0, audio: bool = True, maxrate: str | None = None) -> list[str]:
+HDR_TRANSFERS = ("smpte2084", "arib-std-b67")  # PQ (HDR10, Dolby Vision) и HLG — так снимают iPhone и флагманы Android
+
+
+def _is_hdr(info: dict) -> bool:
+    return _stream(info, "video").get("color_transfer") in HDR_TRANSFERS
+
+
+_ZSCALE: bool | None = None
+
+
+def _has_zscale() -> bool:
+    """Есть ли в ffmpeg фильтр zscale (нужен для правильного перевода HDR в обычное видео)."""
+    global _ZSCALE
+    if _ZSCALE is None:
+        try:
+            out = subprocess.run([shutil.which("ffmpeg") or "ffmpeg", "-hide_banner", "-filters"], capture_output=True, text=True, timeout=30).stdout
+            _ZSCALE = " zscale " in out
+        except (subprocess.SubprocessError, OSError):
+            _ZSCALE = False
+    return _ZSCALE
+
+
+def _sdr_filter(hdr: bool) -> str:
+    """HDR → обычное видео (SDR, BT.709) с пересчётом яркости и цвета. Без этого HDR-ролик с iPhone после
+    перекодирования выглядит серым и блёклым, а часть Android его вовсе не показывает."""
+    if not hdr:
+        return ""
+    if _has_zscale():
+        return ("zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,"
+                "zscale=t=bt709:m=bt709:r=tv,format=yuv420p,")
+    return "colorspace=all=bt709:iall=bt2020:fast=1,"  # запасной вариант: хотя бы правильные цвета
+
+
+def _h264_args(max_side: int, crf: int, preset: str, fps: float = 0.0, audio: bool = True, maxrate: str | None = None,
+               hdr: bool = False) -> list[str]:
     """Параметры ffmpeg для совместимого H.264. Ширина и высота — чётные (иначе x264 падает), без увеличения."""
-    vf = f"scale=w='trunc(min({max_side},iw)/2)*2':h='trunc(min({max_side},ih)/2)*2':force_original_aspect_ratio=decrease:out_range=tv"
+    # сначала лишние кадры и размер (60 → 30 к/с, 4K → 1080p), потом пересчёт HDR: так в разы быстрее
+    vf = "fps=30," if fps > 30.5 else ""
+    vf += f"scale=w='trunc(min({max_side},iw)/2)*2':h='trunc(min({max_side},ih)/2)*2':force_original_aspect_ratio=decrease"
+    vf += "" if hdr else ":out_range=tv"
     vf += ",scale=trunc(iw/2)*2:trunc(ih/2)*2"  # после уменьшения стороны снова чётные
-    if fps > 30.5:
-        vf += ",fps=30"
-    vf += ",format=yuv420p"
+    vf += "," + _sdr_filter(hdr) + "format=yuv420p"
     args = ["-map", "0:v:0", "-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-profile:v", "main",
             "-level", "4.0" if max_side > 1280 else "3.1", "-pix_fmt", "yuv420p", "-vf", vf,
-            "-color_range", "tv", "-movflags", "+faststart", "-map_metadata", "-1"]
+            "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+            "-movflags", "+faststart", "-map_metadata", "-1"]
     if maxrate:  # потолок битрейта: ролик в анкете начинает играть быстро даже по мобильной сети
         args += ["-maxrate", maxrate, "-bufsize", f"{int(maxrate.rstrip('k')) * 2}k"]
     if audio:
@@ -298,6 +335,8 @@ def _video_problem(info: dict) -> str | None:
         return "нет видео"
     if v.get("codec_name") != "h264":
         return f"кодек {v.get('codec_name')}"
+    if v.get("color_transfer") in HDR_TRANSFERS:
+        return "HDR"
     if v.get("pix_fmt") not in ("yuv420p", "yuvj420p"):
         return f"цвет {v.get('pix_fmt')}"  # 10-битное HDR и т. п.
     if max(int(v.get("width") or 0), int(v.get("height") or 0)) > COMPAT_MAX_SIDE:
@@ -332,7 +371,7 @@ def _compatible_video(ffmpeg: str, rel: str) -> str:
     dst = settings.media_dir / f"{new_rel}.tmp.mp4"
     try:
         subprocess.run([ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(src),
-                        *_h264_args(COMPAT_MAX_SIDE, crf=22, preset="faster", fps=_fps(info)), str(dst)],
+                        *_h264_args(COMPAT_MAX_SIDE, crf=22, preset="faster", fps=_fps(info), hdr=_is_hdr(info)), str(dst)],
                        check=True, timeout=900, capture_output=True)
     except (subprocess.SubprocessError, OSError) as exc:
         log.warning("Видео %s не перекодировалось (%s): %s", rel, problem or "сжатие", (getattr(exc, "stderr", None) or b"")[-300:] or exc)
@@ -401,7 +440,7 @@ def clip_from_file(src_path: Path) -> str:
                                      f"(в анкету попадут первые {CLIP_SECONDS} секунд) и выберите снова")
         dst, rel = _target("gallery", ".mp4")
         cmd = [ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(src_path), "-t", str(CLIP_SECONDS),
-               *_h264_args(720, crf=23, preset="medium", fps=_fps(info), audio=False, maxrate="1500k"), str(dst)]
+               *_h264_args(720, crf=23, preset="medium", fps=_fps(info), audio=False, maxrate="1500k", hdr=_is_hdr(info)), str(dst)]
         try:
             _sp.run(cmd, check=True, timeout=180, capture_output=True)
         except (_sp.SubprocessError, OSError) as exc:

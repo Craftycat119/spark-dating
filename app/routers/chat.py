@@ -213,20 +213,60 @@ def send_media(
 
 def _media_message(db: Session, conv: Conversation, user: User, kind: str, rel: str, duration: float | None,
                    caption: str, background: BackgroundTasks) -> dict:
-    """Файл уже на диске: доводим до вида, который играет везде, и создаём сообщение."""
-    if kind != "image":
+    """Файл уже на диске: доводим до вида, который играет везде, и создаём сообщение.
+
+    Голосовые и кружки короткие — готовим сразу. Видео бывает тяжёлым (4K HDR с iPhone перекодируется минутами):
+    сообщение появляется сразу с пометкой «обрабатывается», а готовый ролик приходит обоим следом.
+    Раньше телефон ждал ответа всё это время, при обрыве связи повторял запрос и видео терялось или ломалось."""
+    processing = kind == "video"
+    if kind not in ("image", "video"):
         rel = storage.to_playable(rel, kind)  # webm → mp4/m4a, иначе на iPhone не играет
-        if kind == "video":
-            storage.make_poster(rel)
     msg = _store(
         db,
         conv,
-        Message(conversation_id=conv.id, sender_id=user.id, kind=kind, text=caption.strip(), media_path=rel, duration=duration),
+        Message(conversation_id=conv.id, sender_id=user.id, kind=kind, text=caption.strip(), media_path=rel, duration=duration,
+                processing=processing),
     )
+    if processing:
+        background.add_task(finish_video, msg.id)
     _publish(conv, msg)
     push.notify_message(conv.other(user.id), user.name, conv.id, MEDIA_PREVIEW[kind] + (f": {caption.strip()}" if caption.strip() else ""))
     _maybe_bot_reply(conv, user, background)
     return message_out(msg)
+
+
+def finish_video(message_id: int) -> None:
+    """Фоном: видео → формат, который играет на любом телефоне, + первый кадр; обоим приходит обновлённое сообщение."""
+    with SessionLocal() as db:
+        m = db.get(Message, message_id)
+        if not m or not m.processing or not m.media_path:
+            return
+        src = m.media_path
+    try:
+        rel = storage.to_playable(src, "video")
+        storage.make_poster(rel)
+    except Exception:  # noqa: BLE001 — не вышло: оставляем исходный файл, чем «вечную» обработку
+        log.exception("Видео %s не обработано", src)
+        rel = src
+    with SessionLocal() as db:
+        m = db.get(Message, message_id)
+        if not m:  # сообщение удалили, пока шла обработка
+            storage.delete_file(rel)
+            return
+        m.media_path, m.processing = rel, False
+        db.commit()
+        conv = db.get(Conversation, m.conversation_id)
+        out = message_out(m)
+        for uid in (conv.user_a_id, conv.user_b_id):
+            notify(uid, {"type": "message_edit", "message": out})
+
+
+def resume_unfinished_videos() -> None:
+    """После перезапуска сервера дорабатываем видео, обработка которых прервалась."""
+    with SessionLocal() as db:
+        ids = db.scalars(select(Message.id).where(Message.processing.is_(True))).all()
+    for mid in ids:
+        finish_video(mid)
 
 
 # ---------- Загрузка по частям: можно поставить на паузу и продолжить с того же места (даже после закрытия приложения) ----------
@@ -331,6 +371,11 @@ async def upload_chunk(conv_id: int, uid: str, offset: int, request: Request, us
 def upload_finish(conv_id: int, uid: str, background: BackgroundTasks, user: User = Depends(current_user),
                   db: Session = Depends(get_db)):
     conv = get_conversation(db, conv_id, user)
+    done = _uploads_dir() / f"{uid}.done" if uid.isalnum() and len(uid) == 32 else None
+    if done and done.exists():  # телефон не дождался ответа и спросил снова — отдаём уже созданное сообщение
+        m = db.get(Message, int(done.read_text() or 0))
+        if m and m.conversation_id == conv.id and m.sender_id == user.id:
+            return message_out(m)
     meta, part = _upload(uid, user, conv)
     if _received(part) != meta["size"]:
         raise HTTPException(409, {"message": "Файл загружен не полностью", "received": _received(part)})
@@ -345,7 +390,9 @@ def upload_finish(conv_id: int, uid: str, background: BackgroundTasks, user: Use
     finally:
         part.unlink(missing_ok=True)
         (_uploads_dir() / f"{uid}.json").unlink(missing_ok=True)
-    return _media_message(db, conv, user, kind, rel, meta["duration"], meta["caption"], background)
+    out = _media_message(db, conv, user, kind, rel, meta["duration"], meta["caption"], background)
+    (_uploads_dir() / f"{uid}.done").write_text(str(out["id"]))  # старые метки чистит _cleanup_uploads
+    return out
 
 
 @router.delete("/{conv_id}/uploads/{uid}")

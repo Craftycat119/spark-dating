@@ -20,6 +20,28 @@ import { $, $$, confirmDialog, esc, fmtDay, fmtDur, fmtShort, fmtTime, h, toast,
 
 const app = document.getElementById("app");
 
+// ---------- Компьютер или телефон ----------
+// Компьютер — есть мышь или тачпад и окно шире 1024 px: тогда боковое меню, лента в две колонки, чаты списком
+// слева и перепиской справа. Телефоны, планшеты и Telegram (там окно узкое) — привычный вид для телефона.
+const DESKTOP_MQ = matchMedia("(hover: hover) and (pointer: fine) and (min-width: 1024px)");
+const isDesktop = () => DESKTOP_MQ.matches;
+function applyDevice() {
+  const was = document.documentElement.classList.contains("desktop");
+  document.documentElement.classList.toggle("desktop", isDesktop());
+  document.documentElement.classList.toggle("touch", !isDesktop());
+  if (was !== isDesktop() && app.firstElementChild) rerender(); // окно растянули или сузили — экран под новый вид
+}
+DESKTOP_MQ.addEventListener?.("change", applyDevice);
+applyDevice();
+// На компьютере анкета и реклама открываются окном поверх страницы: щелчок мимо окна закрывает его
+document.addEventListener("pointerdown", (e) => {
+  if (!isDesktop() || e.button > 0) return;
+  const pv = document.querySelector(".profile-view");
+  if (!pv || pv.contains(e.target) || e.target.closest(".overlay, .toast-host, .lightbox, .media-viewer, .attach-sheet, .chat-screen, dialog")) return;
+  e.preventDefault();
+  pv.querySelector(".ad-close, .close")?.click();
+});
+
 const state = {
   config: null,
   me: null,
@@ -371,7 +393,7 @@ function navBar() {
   const item = (key, label, icon) =>
     `<a href="#/${key}" class="${cur === key || (key === "chats" && cur === "chat") || (key === "feed" && cur === "animals") ? "on" : ""}">${icon}<span>${label}</span>${
       key === "chats" && state.unread ? `<b class="badge">${state.unread}</b>` : ""}</a>`;
-  const nav = h(`<nav class="nav" aria-label="Разделы">${item("feed", "Ленты", icons.flame)}${item("chats", "Чаты", icons.chat)}${item("likes", "Отклики", icons.heartLine)}${item("settings", "Профиль", icons.user)}</nav>`);
+  const nav = h(`<nav class="nav" aria-label="Разделы"><a class="nav-logo" href="#/feed" aria-label="COFI">cofi<span>°</span></a>${item("feed", "Ленты", icons.flame)}${item("chats", "Чаты", icons.chat)}${item("likes", "Отклики", icons.heartLine)}${item("settings", "Профиль", icons.user)}<a class="nav-extra${cur === "support" ? " on" : ""}" href="#/support">${icons.headset}<span>Поддержка</span></a></nav>`);
   nav.addEventListener("click", onNavTap);
   return nav;
 }
@@ -1461,7 +1483,7 @@ async function renderFeed() {
       <span class="row" style="gap:10px">${state.me.city_name ? `<button class="my-place" data-relocate title="Обновить геопозицию">${icons.pin} ${esc(cityLabel(state.me.city_name))}</button>` : ""}<span class="counter"></span></span></div>
     ${feedTabs("people", state.me)}
     <div class="deck" aria-live="polite"><div class="skeleton" style="position:relative;height:420px"></div></div>
-    <p class="swipe-hint" hidden>Свайп по нитке вниз: нравится, вверх: дальше. Нажмите на фото, чтобы открыть анкету</p>
+    <p class="swipe-hint" hidden>${isDesktop() ? "Клавиши: → нравится, ← дальше. Нажмите на фото, чтобы открыть анкету" : "Свайп по нитке вниз: нравится, вверх: дальше. Нажмите на фото, чтобы открыть анкету"}</p>
     <div class="btns" hidden>
       <div class="bw undo-wrap"><button class="undo" aria-label="Вернуть" disabled>${icons.undo}</button><span class="undo-label">Вернуть</span></div>
       <div class="bw"><button class="skip" aria-label="Дальше">${icons.x}</button><span>Дальше</span></div>
@@ -1680,6 +1702,7 @@ async function renderFeed() {
   const keys = (e) => {
     if (!document.body.contains(deck)) return document.removeEventListener("keydown", keys);
     if (e.target.closest("input, textarea") || $(".profile-view")) return;
+    if (adShown) { if (e.key.startsWith("Arrow")) { e.preventDefault(); closeAd(); } return; }
     if (e.key === "ArrowDown" || e.key === "ArrowRight") decide(true);
     if (e.key === "ArrowUp" || e.key === "ArrowLeft") decide(false);
   };
@@ -1845,7 +1868,7 @@ function telegramNudge() {
 }
 
 async function renderChats() {
-  const root = screen(`<h1>Чаты</h1>${telegramNudge()}<div id="chats"></div>`);
+  const root = screen(`<h1>Чаты</h1>${telegramNudge()}<div id="chats"></div>`, { cls: "chats" });
   $("[data-tg-link]", root)?.addEventListener("click", linkTelegram);
   let chats = [];
   try { chats = await api.get("/api/chats"); } catch (ex) { toast(ex.message, { error: true }); }
@@ -1862,7 +1885,7 @@ async function renderChats() {
     ${fresh.length ? `<div class="new-matches" aria-label="Новые пары">${fresh.map((c) =>
       `<a href="#/chat/${c.id}"><img src="${esc(c.user.photo_url)}" alt="">${esc(c.user.name)}</a>`).join("")}</div>` : ""}
     <div class="chat-list">${talks.map((c) => `
-      <a class="chat-item" href="#/chat/${c.id}">
+      <a class="chat-item${String(c.id) === currentHash().split("/")[2] ? " on" : ""}" href="#/chat/${c.id}">
         <span class="avatar-wrap"><img class="avatar" src="${esc(c.user.photo_url)}" alt="">${c.user.online ? '<i class="dot" title="В сети"></i>' : ""}</span>
         <span class="body">
           <span class="top"><b translate="no">${esc(c.user.name)}</b><span class="time">${fmtShort(c.last_message.created_at)}</span></span>
@@ -2357,6 +2380,10 @@ function messageEl(m, mine) {
       return el;
     }
     case "video":
+      if (m.processing) {
+        return wrap("media", `<div class="bubble video-processing"><span class="spin" aria-hidden="true"></span>
+          <span>Видео обрабатывается…<small>Появится здесь само, можно продолжать переписку</small></span>${m.text ? `<div class="caption">${esc(m.text)}</div>` : ""}</div>`);
+      }
       // poster — первый кадр с сервера; #t=0.1 — запасной способ, чтобы iPhone показал кадр, а не серый квадрат
       return wrap("media", `<div class="bubble"><video src="${esc(m.media_url)}#t=0.1" ${m.poster_url ? `poster="${esc(m.poster_url)}"` : ""} controls playsinline preload="metadata"></video></div>`);
     case "voice":
@@ -2371,6 +2398,17 @@ function messageEl(m, mine) {
   }
 }
 
+/** iPhone в беззвучном режиме: в Telegram звук голосовых и кружков не слышно. Подсказываем один раз. */
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function silentModeHint() {
+  if (!IOS) return;
+  try {
+    if (localStorage.getItem("cofi.silentHint")) return;
+    localStorage.setItem("cofi.silentHint", "1");
+  } catch { return; }
+  toast("Не слышно звук? Выключите беззвучный режим на iPhone (переключатель сбоку) и прибавьте громкость", { timeout: 7000 });
+}
+
 function voiceEl(m, mine, time) {
   let seed = m.id * 9301;
   const rnd = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
@@ -2379,7 +2417,11 @@ function voiceEl(m, mine, time) {
     <div class="voice"><button class="play" aria-label="Слушать">${icons.play}</button><div class="bars">${bars}</div><span class="len">${fmtDur(m.duration)}</span></div>
     ${time}<audio preload="none" src="${esc(m.media_url)}"></audio></div></div>`);
   const audio = $("audio", el), btn = $(".play", el), len = $(".len", el), ticks = $$(".bars i", el);
-  btn.onclick = () => (audio.paused ? audio.play().catch((ex) => mediaFailed(el, audio, "voice", ex)) : audio.pause());
+  btn.onclick = () => {
+    if (!audio.paused) return audio.pause();
+    silentModeHint();
+    audio.play().catch((ex) => mediaFailed(el, audio, "voice", ex));
+  };
   audio.onerror = () => mediaFailed(el, audio, "voice");
   audio.onplay = () => (btn.innerHTML = icons.pause);
   audio.onpause = () => (btn.innerHTML = icons.play);
@@ -2686,6 +2728,7 @@ function circleEl(m, mine, time) {
   v.onerror = () => mediaFailed(el, v, "circle");
   const toggle = () => {
     if (v.muted) {
+      silentModeHint();
       v.muted = false; v.loop = false; v.currentTime = 0; v.play().catch((ex) => mediaFailed(el, v, "circle", ex));
     } else {
       v.muted = true; v.loop = true; ring.setAttribute("stroke-dashoffset", C); v.play().catch(() => {});

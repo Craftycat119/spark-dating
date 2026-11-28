@@ -1,0 +1,164 @@
+/* ==========================================================================
+   COFI на компьютере (класс html.desktop ставит app.js: мышь/тачпад и окно от 1024 px).
+   Не «телефон посреди экрана», а настоящая раскладка: меню слева, лента в две колонки,
+   чаты — списком слева и перепиской справа, анкета — окном поверх страницы.
+   ========================================================================== */
+
+.nav .nav-logo, .nav .nav-extra { display: none; } /* только в боковом меню на компьютере */
+
+html.desktop { --side: 248px; --list: 380px; }
+
+/* ---------- Каркас: боковое меню + рабочая область ---------- */
+html.desktop #app { max-width: none; margin: 0; }
+html.desktop #app:has(> .nav) { padding-left: var(--side); }
+html.desktop .screen { width: 100%; max-width: 1080px; margin: 0 auto; padding: 40px 56px 72px; }
+html.desktop .screen::before { left: calc(50% + var(--side) / 2); width: 90vw; }
+html.desktop .screen h1 { font-size: 34px; letter-spacing: -0.03em; }
+
+html.desktop .nav {
+  left: 0; top: 0; bottom: 0; transform: none; width: var(--side); border-radius: 0;
+  display: flex; flex-direction: column; gap: 4px; padding: 28px 16px 24px;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  box-shadow: inset -1px 0 0 var(--line);
+}
+html.desktop .nav-logo { display: block; padding: 0 14px 26px; font: 700 26px var(--display); letter-spacing: -0.6px; color: var(--text); text-decoration: none; }
+html.desktop .nav-logo span { color: var(--orange); }
+html.desktop .nav a:not(.nav-logo) {
+  flex-direction: row; justify-content: flex-start; gap: 14px; min-height: 50px; padding: 0 16px;
+  border-radius: 16px; font-size: 15px; font-weight: 500;
+}
+html.desktop .nav a:not(.nav-logo):not(.on):hover { background: var(--surface-2); color: var(--text); }
+html.desktop .nav a i { font-size: 22px; }
+html.desktop .nav a .badge { position: static; margin-left: auto; }
+html.desktop .nav .nav-extra { display: flex; margin-top: auto; }
+
+/* курсор и наведение там, где на телефоне было только касание */
+html.desktop .btn:hover, html.desktop .chip:hover { filter: brightness(1.08); }
+html.desktop .btns button:hover:not(:disabled) { transform: translateY(-2px); }
+
+/* ---------- Вход и регистрация: 3D слева, форма справа ---------- */
+html.desktop .screen.auth {
+  max-width: none; min-height: 100dvh; padding: 0;
+  display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(440px, 1fr); align-items: center;
+}
+html.desktop .auth .hero3d { grid-column: 1; grid-row: 1 / span 3; align-self: stretch; position: sticky; top: 0; height: 100dvh; min-height: 0; margin: 0; }
+html.desktop .auth .hero3d::after { inset: 45% 0 0; }
+html.desktop .auth .hero3d .brand { left: 40px; transform: none; top: 32px; font-size: 22px; }
+html.desktop .auth .hero-copy { left: 56px; right: 56px; bottom: 56px; text-align: left; }
+html.desktop .auth .hero-copy h1 { font-size: clamp(44px, 4.4vw, 68px); max-width: 13ch; }
+html.desktop .auth .hero-copy p { margin-left: 0; font-size: 18px; }
+html.desktop .auth .hero-links, html.desktop .auth .hero-foot { justify-content: flex-start; }
+html.desktop .auth .theme-toggle { position: fixed; left: auto; right: 24px; top: 24px; }
+html.desktop .auth .sheet { grid-column: 2; width: min(460px, calc(100% - 96px)); margin: 48px auto; padding: 30px 28px; animation: rise .8s var(--ease) both; }
+html.desktop .auth > :not(.hero3d):not(.sheet) { grid-column: 2; }
+
+/* экраны без меню (анкета при регистрации, правила): аккуратной колонкой по центру */
+html.desktop .screen.no-nav:not(.auth) { max-width: 640px; padding-top: 56px; }
+
+/* ---------- Лента: фото слева, всё о человеке справа ----------
+   Карточка «раскрывается» в общую сетку экрана (display: contents): справа по порядку имя, описание,
+   общие интересы, нитка, подсказка и кнопки — без пустоты между ниткой и кнопками. */
+html.desktop .screen.feed {
+  display: grid; grid-template-columns: minmax(320px, 440px) minmax(0, 1fr); grid-template-rows: repeat(10, auto) 1fr;
+  column-gap: 56px; align-content: start;
+}
+html.desktop .feed > .topbar, html.desktop .feed > .feed-tabs, html.desktop .feed > :not(.deck):not(.btns):not(.swipe-hint) { grid-column: 1 / -1; }
+html.desktop .feed .topbar { margin: 0 0 6px; }
+html.desktop .feed .topbar .logo { visibility: hidden; }
+html.desktop .animals .topbar .logo { visibility: hidden; }
+html.desktop .animals .feed-tabs { max-width: 440px; }
+html.desktop .feed .feed-tabs { max-width: 440px; margin-bottom: 22px; }
+html.desktop .feed .deck { grid-column: 1 / -1; }
+html.desktop .feed .deck:has(> div > .person), html.desktop .feed .deck > div:has(> .person) { display: contents; }
+html.desktop .feed .person { display: contents; text-align: left; }
+html.desktop .feed .ava {
+  grid-column: 1; grid-row: 3 / -1; align-self: start; width: 100%; height: auto; aspect-ratio: 4 / 5; border-radius: 32px; font-size: 96px;
+  box-shadow: 0 30px 60px -30px rgba(0, 0, 0, .8);
+}
+html.desktop .feed .ava img { border-radius: 32px; }
+html.desktop .feed .ava::after { border-radius: 38px; }
+html.desktop .feed .ava:hover { transform: translateY(-3px); }
+html.desktop .feed .ava .more { right: 16px; bottom: 16px; font-size: 13px; padding: 6px 12px; }
+html.desktop .feed .pname, html.desktop .feed .meta, html.desktop .feed .pbio, html.desktop .feed .liked-before,
+html.desktop .feed .shared-lbl, html.desktop .feed .thread, html.desktop .feed .swipe-hint, html.desktop .feed .btns { grid-column: 2; }
+html.desktop .feed .pname { margin-top: 26px; font-size: 46px; letter-spacing: -1.4px; }
+html.desktop .feed .meta { margin-top: 8px; font-size: 15px; }
+html.desktop .feed .liked-before { justify-self: start; margin-top: 12px; }
+html.desktop .feed .pbio { margin-top: 18px; max-width: 54ch; font-size: 17px; -webkit-line-clamp: 6; }
+html.desktop .feed .shared-lbl { margin-top: 28px; text-align: left; font-size: 14px; }
+html.desktop .feed .thread { margin: 6px 0 0; height: 170px; }
+html.desktop .feed .swipe-hint { text-align: left; margin-top: 4px; }
+html.desktop .feed .btns {
+  position: static; justify-content: flex-start; margin: 18px 0 0; padding: 0; background: none; gap: 22px;
+}
+html.desktop .feed .btns .bw span { text-shadow: none; }
+/* реклама: карточка и кнопка «Дальше» — одной колонкой */
+html.desktop .feed:has(.ad-card) .btns { grid-column: 1; justify-content: center; }
+/* реклама и пустые состояния — по центру своей колонки */
+html.desktop .feed .deck > div:has(> .ad-card) { max-width: 520px; }
+html.desktop .feed .ad-card { max-height: none; }
+html.desktop .feed .ad-card img { flex: none; height: auto; aspect-ratio: 16 / 10; }
+html.desktop .feed .deck > .empty { max-width: 560px; }
+
+/* ---------- Чаты: список слева, переписка справа ---------- */
+html.desktop .screen.chats {
+  max-width: none; width: var(--list); margin: 0; min-height: 100dvh; padding: 36px 20px 40px;
+  box-shadow: inset -1px 0 0 var(--line); background: color-mix(in srgb, var(--surface) 25%, transparent);
+}
+html.desktop .screen.chats::after {
+  content: "Выберите чат слева"; position: fixed; inset: 0 0 0 calc(var(--side) + var(--list)); z-index: -1;
+  display: grid; place-items: center; color: var(--muted); font-size: 15px;
+}
+html.desktop .chats .chat-item { padding: 12px; margin: 0 -12px; border-radius: 16px; }
+html.desktop .chats .chat-item + .chat-item { border-top: 0; }
+html.desktop .chats .chat-item:hover { background: var(--surface-2); }
+html.desktop .chats .chat-item.on { background: color-mix(in srgb, var(--orange) 18%, transparent); }
+html.desktop .chats .new-matches { flex-wrap: wrap; overflow: visible; }
+
+html.desktop .chat-screen {
+  left: calc(var(--side) + var(--list)); right: 0; max-width: none; margin: 0; z-index: 25;
+  animation: none; box-shadow: none;
+}
+html.desktop .chat-screen .chat-header { padding: 16px 28px; }
+html.desktop .chat-screen .chat-header > a.icon-btn:first-child { display: none; } /* «назад» не нужен: список и так слева */
+html.desktop .chat-screen .messages { padding: 24px max(28px, calc((100% - 860px) / 2)); }
+html.desktop .chat-screen .msg { max-width: min(68%, 560px); }
+html.desktop .chat-screen .composer, html.desktop .chat-screen .reply-bar, html.desktop .chat-screen .upload-status,
+html.desktop .chat-screen .sticker-panel, html.desktop .chat-screen .pinned-bar, html.desktop .chat-screen .typing {
+  padding-left: max(20px, calc((100% - 880px) / 2)); padding-right: max(20px, calc((100% - 880px) / 2));
+}
+html.desktop .chat-screen .sticker-panel { grid-template-columns: repeat(10, 1fr); }
+html.desktop .msg.media img, html.desktop .msg.media video { max-height: 420px; }
+
+/* ---------- Анкета, реклама, листы и окна — по центру поверх страницы ---------- */
+html.desktop .profile-view {
+  top: 28px; bottom: 28px; left: var(--side); right: 0; width: min(560px, calc(100vw - var(--side) - 64px)); max-width: none;
+  margin: 0 auto; border-radius: 30px;
+  box-shadow: 0 0 0 100vmax rgba(8, 5, 3, .72), 0 40px 90px -30px rgba(0, 0, 0, .9);
+  animation: dlg-in .35s var(--ease);
+}
+html.desktop .profile-view .gallery .track { aspect-ratio: auto; width: 100%; height: min(64vh, 640px); max-height: none; }
+html.desktop .profile-view .profile-body { padding: 0 28px 24px; }
+html.desktop .profile-view .profile-actions { position: sticky; left: auto; bottom: 0; transform: none; width: 100%; padding: 28px 28px 22px; }
+html.desktop .profile-view .close { top: 20px; left: 20px; }
+html.desktop .profile-view { cursor: auto; }
+@keyframes dlg-in { from { opacity: 0; transform: translateY(18px) scale(.98); } }
+html.desktop .bottom-sheet { border-radius: 28px; margin-bottom: 6vh; }
+html.desktop .attach-panel { width: 520px; left: 50%; right: auto; margin-left: -260px; border-radius: 28px 28px 0 0; }
+html.desktop .toast-host { left: calc(50% + var(--side) / 2); }
+
+/* ---------- Отклики и профиль: шире и в колонки ---------- */
+html.desktop #likes { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); column-gap: 40px; align-items: start; }
+html.desktop .like-item { border-radius: 16px; padding: 10px 12px; margin: 0 -12px; width: calc(100% + 24px); }
+html.desktop .like-item:hover { background: var(--surface-2); }
+html.desktop .screen:not(.feed):not(.chats):not(.auth) .section { max-width: 760px; }
+html.desktop .profile-hero { grid-template-columns: 160px minmax(0, 1fr); }
+html.desktop .profile-hero img { width: 160px; height: 200px; border-radius: 28px; }
+html.desktop .gallery-edit { grid-template-columns: repeat(6, 1fr); }
+
+/* окно уже, чем 1200 px: меню компактнее */
+@media (max-width: 1200px) {
+  html.desktop { --side: 216px; --list: 330px; }
+  html.desktop .screen { padding: 32px 36px 64px; }
+  html.desktop .screen.feed, html.desktop .feed .deck > div:has(> .person) { column-gap: 36px; grid-template-columns: minmax(280px, 380px) minmax(0, 1fr); }
+}

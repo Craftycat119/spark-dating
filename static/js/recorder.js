@@ -142,6 +142,11 @@ export function recordCircle() {
       // звук отдельным потоком: при смене камеры во время записи он не прерывается
       micStream = await getMic();
       await openCamera();
+      // iPhone: запрос камеры может заглушить уже открытый микрофон — тогда кружок записался бы без звука
+      if (!micStream.getAudioTracks().some((t) => t.readyState === "live" && !t.muted)) {
+        release("audio");
+        micStream = await getMic();
+      }
     } catch {
       close(null);
       return toast("Нет доступа к камере или микрофону", { error: true });
@@ -337,6 +342,7 @@ export function recordCircle() {
       el.classList.add("busy");
       try {
         const ac = new (window.AudioContext || window.webkitAudioContext)();
+        await ac.resume().catch(() => {}); // iPhone создаёт его «на паузе» — тогда обрезанный кружок был бы без звука
         const src = ac.createMediaElementSource(preview);
         const dest = ac.createMediaStreamDestination();
         src.connect(dest); // звук идёт только в запись, не в динамик

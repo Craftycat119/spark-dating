@@ -16,6 +16,11 @@ const w = (x) => EN[x] ?? CITY_EN[x] ?? x;
 
 export const EN = {
   // ---- добавлено: опрос, ошибки, подсказки ----
+  "Клавиши: → нравится, ← дальше. Нажмите на фото, чтобы открыть анкету": "Keys: → like, ← skip. Click the photo to open the profile",
+  "Выберите чат слева": "Pick a chat on the left",
+  "Видео обрабатывается…": "Processing video…",
+  "Появится здесь само, можно продолжать переписку": "It will appear here by itself, keep chatting",
+  "Не слышно звук? Выключите беззвучный режим на iPhone (переключатель сбоку) и прибавьте громкость": "No sound? Turn off silent mode on your iPhone (the side switch) and turn up the volume",
   "Нажмите, чтобы узнать подробнее": "Tap to learn more",
   "Дальше — к анкетам": "Next — back to profiles",
   "Открыть рекламу подробно": "Open the ad",
