@@ -37,6 +37,13 @@ def test_chat_files_only_for_participants_and_admin():
     conv = b.post("/api/feed/swipe", json={"user_id": a.user_id, "like": True}).json()["conversation_id"]
     url = a.post(f"/api/chats/{conv}/media", data={"kind": "image"}, files={"file": ("p.jpg", jpeg_bytes(), "image/jpeg")}).json()["media_url"]
     assert a.get(url).status_code == 200 and b.get(url).status_code == 200
-    assert boss.get(url).status_code == 200
+    assert boss.get(url).status_code == 403  # чтение переписок администрацией сейчас выключено (ADMIN_READ_CHATS=0)
+    from app.config import settings
+
+    settings.admin_read_chats = True
+    try:
+        assert boss.get(url).status_code == 200  # включили — снова видно
+    finally:
+        settings.admin_read_chats = False
     assert stranger.get(url).status_code == 403
     assert new_client().get(url).status_code == 401
