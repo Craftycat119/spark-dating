@@ -467,3 +467,16 @@ def test_ads_without_advertiser_can_be_sent(monkeypatch):
     assert r.status_code == 200
     text = next(p["text"] for m, p in calls if m == "sendMessage")
     assert text.endswith("<i>Реклама</i>")
+
+
+def test_pin_service_message_gets_no_second_greeting():
+    """Бот закрепил пост — Telegram присылает служебное «закреплено». Раньше бот отвечал на него вторым приветствием."""
+    from app import telegram_bot
+
+    pin = {"message": {"message_id": 9, "chat": {"id": 4242, "type": "private"}, "from": {"id": 1, "is_bot": True},
+                       "pinned_message": {"message_id": 8, "text": "Безопасность"}}}
+    assert telegram_bot.handle_update(pin) == []
+    pin["message"]["from"] = {"id": 4242}  # и даже если «от» указан человек — служебное без ответа
+    assert telegram_bot.handle_update(pin) == []
+    start = telegram_bot.handle_update({"message": {"message_id": 1, "chat": {"id": 4242, "type": "private"}, "from": {"id": 4242}, "text": "/start"}})
+    assert len([c for c in start if c[0] == "sendMessage"]) == 1  # приветствие — один раз

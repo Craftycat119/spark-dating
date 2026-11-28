@@ -263,6 +263,11 @@ def _chat_id_reply(chat: dict) -> dict:
             f"TELEGRAM_SUPPORT_CHAT_ID={chat['id']}\nи перезапустите сервер COFI. Ссылки-приглашения t.me/+… для этого не подходят."}
 
 
+SERVICE_KEYS = ("pinned_message", "new_chat_members", "left_chat_member", "new_chat_title", "new_chat_photo", "delete_chat_photo",
+                "group_chat_created", "supergroup_chat_created", "message_auto_delete_timer_changed", "write_access_allowed",
+                "chat_background_set", "forum_topic_created", "migrate_from_chat_id")
+
+
 def handle_update(upd: dict) -> list[tuple[str, dict]]:
     """Обрабатывает одно обновление бота и возвращает вызовы API, которые нужно сделать.
     Вынесено отдельно, чтобы проверять логику без сети."""
@@ -288,6 +293,10 @@ def handle_update(upd: dict) -> list[tuple[str, dict]]:
         return calls
     if msg := upd.get("message"):
         chat_id = msg["chat"]["id"]
+        # служебные сообщения («бот закрепил сообщение» и т. п.) и сообщения ботов — не от человека, не отвечаем.
+        # Иначе после закрепа поста о безопасности приходило второе приветствие
+        if (msg.get("from") or {}).get("is_bot") or any(k in msg for k in SERVICE_KEYS):
+            return calls
         if msg.get("chat", {}).get("type", "private") == "private":
             from .bot_i18n import remember
 
